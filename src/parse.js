@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 // 合并后设置档里唯一的策略组名称，套用 Script.js 覆写后会被整个取代
 export const GROUP_NAME = '节点选择';

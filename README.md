@@ -85,7 +85,7 @@ Worker 直连失败时就改用这份缓存（最多保留 3 天）。只要设�
   全部失败时 Worker 会返回错误，客户端会保留上一次成功的配置。建议优先使用机场提供的 Clash / Meta 订阅链接。
 - **免费额度**：Cloudflare Workers 免费方案每天 10 万次请求、KV 每天 1000 次写入，个人使用绰绰有余。
 - **更新程序**：Worker 和管理页都在本仓库，push 后 Cloudflare 会自动重新部署。
-- **依赖自动更新**：Dependabot 每月 1 号检查所有 npm 依赖和 GitHub Actions 的新版本，开一个 PR（CI 每次都用最新的 Node 版本）；测试通过后自动合并到 `main`，Cloudflare 随即重新部署。
+- **依赖自动更新**：Dependabot 每月 1 号检查所有 npm 依赖和 GitHub Actions 的新版本，全部合成**一个** PR（CI 每次都用最新的 Node 版本）；测试通过后自动合并到 `main`，Cloudflare 随即重新部署。
 
 ## 开发
 

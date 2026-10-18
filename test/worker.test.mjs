@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import worker from '../src/worker.js';
 import { cacheKey } from '../src/cache.js';
 
