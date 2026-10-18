@@ -1,0 +1,26 @@
+name: 代抓订阅缓存
+
+# 每 3 小时从 GitHub 的机器抓一次所有机场订阅，写进 Worker 的 KV；
+# 机场屏蔽 Cloudflare 时，Worker 改用这份缓存
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+concurrency: refresh-cache
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: latest
+          cache: npm
+      - run: npm ci
+      - run: node scripts/refresh-cache.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
