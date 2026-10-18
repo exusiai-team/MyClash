@@ -1,10 +1,10 @@
 import yaml from 'js-yaml';
 
-// 合併後設定檔裡唯一的策略組名稱，套用 Script.js 覆寫後會被整個取代
-export const GROUP_NAME = '節點選擇';
+// 合并后设置档里唯一的策略组名称，套用 Script.js 覆写后会被整个取代
+export const GROUP_NAME = '节点选择';
 
 /**
- * 解析單一訂閱內容（mihomo YAML 或 base64 / 純文字 URI 列表）
+ * 解析单一订阅内容（mihomo YAML 或 base64 / 纯文本 URI 列表）
  * @returns {{ proxies: object[], dns: object | null, hosts: object | null, skipped: number }}
  */
 export function parseSubscription(text) {
@@ -298,10 +298,10 @@ function parseHysteria2(line) {
   return proxy;
 }
 
-// --- 合併 ---
+// --- 合并 ---
 
 /**
- * 合併多份訂閱為一份可直接被 Script.js 覆寫的 mihomo 設定（不含 proxy-providers）
+ * 合并多份订阅为一份可直接被 Script.js 覆写的 mihomo 设置（不含 proxy-providers）
  * @param {{ prefix: string, parsed: ReturnType<typeof parseSubscription> }[]} sources
  */
 export function mergeSubscriptions(sources) {
@@ -320,7 +320,7 @@ export function mergeSubscriptions(sources) {
       renamed.set(proxy.name, unique);
       proxies.push({ ...proxy, name: unique });
     }
-    // 同一份訂閱內的 dialer-proxy 引用跟著改名
+    // 同一份订阅内的 dialer-proxy 引用跟着改名
     for (let i = proxies.length - parsed.proxies.length; i < proxies.length; i++) {
       const target = proxies[i]['dialer-proxy'];
       if (target && renamed.has(target)) proxies[i]['dialer-proxy'] = renamed.get(target);
@@ -354,7 +354,7 @@ function mergeDns(acc, next) {
 }
 
 /**
- * 加總多個 subscription-userinfo header：流量相加，到期日取最早的
+ * 加总多个 subscription-userinfo header：流量相加，到期日取最早的
  */
 export function sumUserinfo(values) {
   const total = { upload: 0, download: 0, total: 0 };

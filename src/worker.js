@@ -19,7 +19,7 @@ export default {
     try {
       return await route(request, env);
     } catch (err) {
-      return json({ error: err.expose ? err.message : '伺服器錯誤' }, err.status ?? 500);
+      return json({ error: err.expose ? err.message : '服务器错误' }, err.status ?? 500);
     }
   },
 };
@@ -28,30 +28,30 @@ async function route(request, env) {
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean);
 
-  if (parts.length === 0) return text('MyClash 訂閱合併 Worker 運作中。合併訂閱網址：/sub/<TOKEN>\n');
+  if (parts.length === 0) return text('MyClash 订阅合并 Worker 运行中。合并订阅链接：/sub/<TOKEN>\n');
   if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1]);
   if (parts[0] === 'api') return api(request, env, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
 
-// --- 訂閱輸出 ---
+// --- 订阅输出 ---
 
 async function serveSubscription(env, token) {
   const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
-  if (!record) return text('找不到這個 TOKEN（可能已刪除或已更換）', 404);
+  if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
   const results = await Promise.all(record.sources.map((source, i) => fetchSource(source, i)));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
-  if (ok.length === 0) return text('所有機場訂閱都抓取失敗或沒有節點，請稍後再試', 502);
+  if (ok.length === 0) return text('所有机场订阅都抓取失败或没有节点，请稍后再试', 502);
 
   const config = mergeSubscriptions(ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })));
   const comments = [
-    `MyClash 合併訂閱：${record.name}`,
-    `更新時間：${new Date().toISOString()}`,
+    `MyClash 合并订阅：${record.name}`,
+    `更新时间：${new Date().toISOString()}`,
     ...results.map((r) =>
       r.parsed
-        ? `[${r.prefix}] ${r.parsed.proxies.length} 個節點${r.parsed.skipped ? `（${r.parsed.skipped} 個無法解析已略過）` : ''}`
-        : `[${r.prefix}] 失敗：${r.error}`,
+        ? `[${r.prefix}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}`
+        : `[${r.prefix}] 失败：${r.error}`,
     ),
   ];
 
@@ -78,10 +78,10 @@ async function fetchSource(source, index) {
     });
     if (!res.ok) return { prefix, error: `HTTP ${res.status}` };
     const parsed = parseSubscription(await res.text());
-    if (parsed.proxies.length === 0) return { prefix, parsed, error: '沒有可用節點' };
+    if (parsed.proxies.length === 0) return { prefix, parsed, error: '没有可用节点' };
     return { prefix, parsed, userinfo: res.headers.get('subscription-userinfo') };
   } catch (err) {
-    return { prefix, error: err?.name === 'TimeoutError' ? '逾時' : '連線失敗' };
+    return { prefix, error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
   }
 }
 
@@ -112,9 +112,9 @@ async function api(request, env, parts) {
   }
 
   const token = parts[1];
-  if (!/^[a-f0-9]{32}$/.test(token ?? '')) throw new HttpError(404, '找不到這個 TOKEN');
+  if (!/^[a-f0-9]{32}$/.test(token ?? '')) throw new HttpError(404, '找不到这个 TOKEN');
   const record = await env.SUB_STORE.get(KEY_PREFIX + token, 'json');
-  if (!record) throw new HttpError(404, '找不到這個 TOKEN');
+  if (!record) throw new HttpError(404, '找不到这个 TOKEN');
 
   if (parts.length === 2) {
     if (method === 'GET') return json({ token, ...record });
@@ -137,7 +137,7 @@ async function api(request, env, parts) {
     return json({ token: next, ...updated });
   }
 
-  throw new HttpError(405, '不支援的操作');
+  throw new HttpError(405, '不支持的操作');
 }
 
 function putRecord(env, token, record) {
@@ -148,17 +148,17 @@ async function readJson(request) {
   try {
     return await request.json();
   } catch {
-    throw new HttpError(400, '內容不是有效的 JSON');
+    throw new HttpError(400, '内容不是有效的 JSON');
   }
 }
 
 function validate(input) {
   const name = String(input?.name ?? '').trim();
-  if (!name || name.length > 60) throw new HttpError(400, '名稱必填，且不能超過 60 字');
+  if (!name || name.length > 60) throw new HttpError(400, '名称必填，且不能超过 60 字');
   if (!Array.isArray(input.sources) || input.sources.length === 0) {
-    throw new HttpError(400, '至少要有一個機場訂閱');
+    throw new HttpError(400, '至少要有一个机场订阅');
   }
-  if (input.sources.length > MAX_SOURCES) throw new HttpError(400, `最多 ${MAX_SOURCES} 個機場訂閱`);
+  if (input.sources.length > MAX_SOURCES) throw new HttpError(400, `最多 ${MAX_SOURCES} 个机场订阅`);
 
   const sources = input.sources.map((s, i) => {
     const url = String(s?.url ?? '').trim();
@@ -166,10 +166,10 @@ function validate(input) {
     try {
       parsed = new URL(url);
     } catch {
-      throw new HttpError(400, `第 ${i + 1} 個訂閱網址格式錯誤`);
+      throw new HttpError(400, `第 ${i + 1} 个订阅链接格式错误`);
     }
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-      throw new HttpError(400, `第 ${i + 1} 個訂閱網址必須是 http(s)`);
+      throw new HttpError(400, `第 ${i + 1} 个订阅链接必须是 http(s)`);
     }
     const sourceName = String(s?.name ?? '').trim().slice(0, 20);
     return { name: sourceName, url };

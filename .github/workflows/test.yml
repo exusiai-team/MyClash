@@ -1,4 +1,4 @@
-name: 測試
+name: 测试
 
 on:
   push:
