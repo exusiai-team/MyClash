@@ -3,7 +3,7 @@
 把多個機場訂閱合併成**一個**訂閱網址（節點聯集），再在客戶端套用
 [AIsouler/MyClash](https://github.com/AIsouler/MyClash) 的覆寫腳本。
 
-- 在 GitHub Pages 管理頁貼上多個機場訂閱，**按一下就產生**合併後的訂閱網址
+- 打開 Worker 網址就是管理頁，貼上多個機場訂閱，**按一下就產生**合併後的訂閱網址
 - 每產生一次就是一個獨立的 **TOKEN**，可以在管理頁**編輯、刪除、換 TOKEN**
 - 客戶端每次更新時，都會即時抓所有機場的最新節點，並把各機場的流量加總顯示
 - 支援 mihomo / Clash YAML 訂閱，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2` 連結
@@ -29,23 +29,19 @@
 
 4. 部署完成後，進入這個 Worker 的 **設定 → 變數和機密 → 新增**：類型選 **密鑰（Secret）**，
    名稱 `ADMIN_PASSWORD`，值填你自己的管理密碼（登入管理頁時要用），儲存
-5. 記下 Worker 網址，長得像 `https://myclash-sub.你的帳號.workers.dev`
+5. 打開 Worker 網址（長得像 `https://myclash-sub.你的帳號.workers.dev`），**這就是管理頁**
 
 > 存訂閱用的 KV 資料庫會在部署時自動建立，不用另外設定。
-> 之後 push 到本倉庫，Cloudflare 會自動重新部署 Worker。
+> 之後 push 到本倉庫，Cloudflare 會自動重新部署 Worker 和管理頁。
 
-### 第 2 步：開啟 GitHub Pages 管理頁
+### 第 2 步：產生合併訂閱
 
-到本 repo 的 **Settings → Pages**，**Source** 選 **GitHub Actions**。
-之後到 **Actions → 部署管理頁到 GitHub Pages → Run workflow** 執行一次（之後修改 `docs/` 會自動部署）。
-
-管理頁網址：<https://silverwolfxai.github.io/MyClash/>
-
-### 第 3 步：產生合併訂閱
-
-1. 打開管理頁，填入第 1 步的 Worker 網址和管理密碼，按「登入」
+1. 打開 Worker 網址，輸入管理密碼，按「登入」（預設會記住密碼，下次打開自動登入）
 2. 按「產生新的訂閱」，填名稱並貼上各機場的訂閱網址（可用「批次貼上」，一行一個）
 3. 按「儲存並產生連結」，再按「複製連結」或「一鍵匯入 Clash」
+
+> 管理頁也同時部署在 GitHub Pages：<https://silverwolfxai.github.io/MyClash/>（需在 Settings → Pages 選 GitHub Actions），
+> 在那邊使用時要另外填 Worker 網址；直接用 Worker 網址最方便。
 
 ## 客戶端設定
 
@@ -68,7 +64,7 @@
   全部失敗時 Worker 會回傳錯誤，客戶端會保留上一次成功的設定。建議優先使用機場提供的 Clash / Meta 訂閱連結。
 - **免費額度**：Cloudflare Workers 免費方案每天 10 萬次請求、KV 每天 1000 次寫入，個人使用綽綽有餘。
 - **管理密碼**：要修改的話，到 Cloudflare 後台 → Workers → `myclash-sub` → 設定 → 變數和機密，修改 `ADMIN_PASSWORD`。
-- **更新程式**：Worker 和管理頁都在本倉庫，push 後 Cloudflare 會自動重新部署 Worker、GitHub Actions 會自動部署管理頁。
+- **更新程式**：Worker 和管理頁都在本倉庫，push 後 Cloudflare 會自動重新部署。
 
 ## 開發
 

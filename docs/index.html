@@ -60,14 +60,16 @@
   <p class="sub">把多個機場訂閱合併成一個訂閱網址（節點聯集），再自己在客戶端套用 MyClash 覆寫腳本。</p>
 
   <section class="card" id="login-card">
-    <h2>連線設定</h2>
+    <h2 id="login-title">連線設定</h2>
+    <div id="worker-url-box">
     <label for="worker-url">Worker 網址（部署完 Cloudflare 會給你，例如 https://myclash-sub.xxx.workers.dev）</label>
     <input type="url" id="worker-url" placeholder="https://myclash-sub.你的帳號.workers.dev" autocomplete="off">
+    </div>
     <label for="password">管理密碼（ADMIN_PASSWORD）</label>
     <input type="password" id="password" autocomplete="current-password">
     <div class="row" style="margin-top:12px">
       <button class="primary" id="login-btn">登入</button>
-      <label class="muted" style="margin:0"><input type="checkbox" id="remember"> 在這台裝置記住密碼</label>
+      <label class="muted" style="margin:0"><input type="checkbox" id="remember" checked> 在這台裝置記住密碼</label>
       <button id="logout-btn" class="hidden">登出</button>
     </div>
     <div class="msg" id="login-msg"></div>
@@ -137,7 +139,9 @@
     del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch {} },
   };
 
-  let workerUrl = store.get('workerUrl', true);
+  // 由 Worker 本身提供這個頁面時，API 就在同一個網址，不用另外填
+  const onWorker = /^https?:$/.test(location.protocol) && !location.hostname.endsWith('github.io');
+  let workerUrl = onWorker ? location.origin : store.get('workerUrl', true);
   let password = store.get('password', true) || store.get('password', false);
   let editingToken = null;
   let previewText = '';
@@ -145,7 +149,11 @@
 
   $('worker-url').value = workerUrl;
   $('password').value = password;
-  $('remember').checked = !!store.get('password', true);
+  if (password) $('remember').checked = !!store.get('password', true);
+  if (onWorker) {
+    $('worker-url-box').classList.add('hidden');
+    $('login-title').textContent = '登入';
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -176,14 +184,14 @@
 
   // --- 登入 ---
   async function login() {
-    workerUrl = $('worker-url').value.trim().replace(/\/+$/, '');
+    if (!onWorker) workerUrl = $('worker-url').value.trim().replace(/\/+$/, '');
     password = $('password').value;
     if (!/^https?:\/\//.test(workerUrl)) return showMsg($('login-msg'), '請填入完整的 Worker 網址（https:// 開頭）');
     if (!password) return showMsg($('login-msg'), '請輸入管理密碼');
     $('login-btn').disabled = true;
     try {
       await api('GET', '/ping');
-      store.set('workerUrl', workerUrl, true);
+      if (!onWorker) store.set('workerUrl', workerUrl, true);
       store.del('password');
       store.set('password', password, $('remember').checked);
       showMsg($('login-msg'), '已登入', true);
