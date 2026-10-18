@@ -7,5 +7,7 @@
   // 存放订阅组的 KV；部署时会自动创建（名称 myclash-sub-store），不用填 id
   "kv_namespaces": [{ "binding": "SUB_STORE" }],
   // 管理页：打开 Worker 地址就是管理页
-  "assets": { "directory": "./public" }
+  "assets": { "directory": "./public" },
+  // Cloudflare 的预览构建（wrangler preview）要求有这个区块；预览版本不绑定 KV，只用来确认能正常构建
+  "previews": {}
 }

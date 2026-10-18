@@ -18,6 +18,7 @@ export default {
 };
 
 async function route(request, env) {
+  if (!env.SUB_STORE) return text('这个版本没有绑定 KV（预览版本），请使用正式的 Worker 地址', 503);
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean);
 
