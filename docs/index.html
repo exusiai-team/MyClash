@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>MyClash 訂閱合併</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
+    --accent: #2f6fed; --accent-text: #ffffff; --danger: #d92d20; --ok: #12805c; --code: #f1f3f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --card: #1b1e26; --text: #e6e8ee; --muted: #9aa3b2; --border: #2c313c;
+      --accent: #5b8cff; --accent-text: #0d1220; --danger: #ff6b5e; --ok: #45c48f; --code: #232733;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  p.sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=url], input[type=password], textarea {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  textarea { min-height: 110px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+  button {
+    padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--card);
+    color: var(--text); font: inherit; cursor: pointer; white-space: nowrap;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > .grow { flex: 1 1 200px; min-width: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .msg { margin-top: 10px; font-size: 14px; }
+  .msg.err { color: var(--danger); } .msg.ok { color: var(--ok); }
+  .item { border-top: 1px solid var(--border); padding: 14px 0; }
+  .item:first-child { border-top: 0; padding-top: 0; }
+  .item-title { font-weight: 600; }
+  .link { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--code); padding: 6px 8px; border-radius: 6px; overflow-wrap: anywhere; margin: 6px 0 8px; }
+  .src-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 6px; margin-bottom: 6px; }
+  @media (max-width: 560px) { .src-row { grid-template-columns: 1fr auto; } .src-row input:first-child { grid-column: 1 / -1; } }
+  pre { background: var(--code); padding: 12px; border-radius: 8px; overflow: auto; max-height: 420px; font-size: 12.5px; }
+  .hidden { display: none !important; }
+  details summary { cursor: pointer; color: var(--muted); }
+  ol { padding-left: 20px; margin: 6px 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>MyClash 訂閱合併</h1>
+  <p class="sub">把多個機場訂閱合併成一個訂閱網址（節點聯集），再自己在客戶端套用 MyClash 覆寫腳本。</p>
+
+  <section class="card" id="login-card">
+    <h2>連線設定</h2>
+    <label for="worker-url">Worker 網址（部署完 Cloudflare 會給你，例如 https://myclash-sub.xxx.workers.dev）</label>
+    <input type="url" id="worker-url" placeholder="https://myclash-sub.你的帳號.workers.dev" autocomplete="off">
+    <label for="password">管理密碼（ADMIN_PASSWORD）</label>
+    <input type="password" id="password" autocomplete="current-password">
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="login-btn">登入</button>
+      <label class="muted" style="margin:0"><input type="checkbox" id="remember"> 在這台裝置記住密碼</label>
+      <button id="logout-btn" class="hidden">登出</button>
+    </div>
+    <div class="msg" id="login-msg"></div>
+  </section>
+
+  <section class="card hidden" id="list-card">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">我的合併訂閱</h2>
+      <button class="primary" id="new-btn">＋ 產生新的訂閱</button>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <section class="card hidden" id="edit-card">
+    <h2 id="edit-title">產生新的訂閱</h2>
+    <label for="edit-name">名稱（顯示在客戶端的設定檔名稱）</label>
+    <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手機">
+    <label>機場訂閱（前綴名稱可留空，會自動用 S1、S2…）</label>
+    <div id="sources"></div>
+    <div class="row">
+      <button id="add-src">＋ 新增一列</button>
+      <button id="bulk-btn">批次貼上</button>
+    </div>
+    <div id="bulk-box" class="hidden" style="margin-top:8px">
+      <textarea id="bulk-text" placeholder="一行一個訂閱網址，或「名稱 網址」"></textarea>
+      <div class="row" style="margin-top:6px"><button id="bulk-apply">加入</button></div>
+    </div>
+    <p class="muted">前綴名稱請避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字樣，否則會影響 MyClash 腳本的地區分組與節點過濾。</p>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="save-btn">儲存並產生連結</button>
+      <button id="cancel-btn">取消</button>
+    </div>
+    <div class="msg" id="edit-msg"></div>
+  </section>
+
+  <section class="card hidden" id="preview-card">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0" id="preview-title">預覽</h2>
+      <div class="row"><button id="download-btn">下載 YAML</button><button id="close-preview">關閉</button></div>
+    </div>
+    <div class="muted" id="preview-info"></div>
+    <pre id="preview"></pre>
+  </section>
+
+  <section class="card">
+    <h2>客戶端怎麼用</h2>
+    <ol>
+      <li>按「複製連結」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客戶端新增<b>遠端訂閱</b>，並開啟自動更新。</li>
+      <li>對這個訂閱新增<b>腳本覆寫</b>，填入：
+        <div class="link" id="script-url">https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js</div>
+        <button id="copy-script">複製腳本連結</button>
+      </li>
+      <li><b>關閉客戶端的 DNS 覆寫</b>（MyClash 腳本要求）。</li>
+    </ol>
+    <details><summary>安全提醒</summary>
+      <p class="muted">每個訂閱網址裡的 TOKEN 都等同密碼，拿到的人就能用你的節點。如果外流了，按「換 TOKEN」，舊網址會立刻失效，再把新網址貼回客戶端就好。</p>
+    </details>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, persistent) { try { return (persistent ? localStorage : sessionStorage).getItem(k) || ''; } catch { return ''; } },
+    set(k, v, persistent) { try { (persistent ? localStorage : sessionStorage).setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch {} },
+  };
+
+  let workerUrl = store.get('workerUrl', true);
+  let password = store.get('password', true) || store.get('password', false);
+  let editingToken = null;
+  let previewText = '';
+  let previewName = '';
+
+  $('worker-url').value = workerUrl;
+  $('password').value = password;
+  $('remember').checked = !!store.get('password', true);
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  function subUrl(token) { return `${workerUrl}/sub/${token}`; }
+  function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-TW', { hour12: false }) : ''; }
+
+  async function api(method, path, body) {
+    const res = await fetch(workerUrl + '/api' + path, {
+      method,
+      headers: { Authorization: 'Bearer ' + password, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok) throw new Error(data.error || `錯誤 ${res.status}`);
+    return data;
+  }
+
+  async function copy(text, btn) {
+    try { await navigator.clipboard.writeText(text); } catch {
+      const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
+      document.execCommand('copy'); t.remove();
+    }
+    const old = btn.textContent; btn.textContent = '已複製 ✓'; setTimeout(() => (btn.textContent = old), 1500);
+  }
+
+  // --- 登入 ---
+  async function login() {
+    workerUrl = $('worker-url').value.trim().replace(/\/+$/, '');
+    password = $('password').value;
+    if (!/^https?:\/\//.test(workerUrl)) return showMsg($('login-msg'), '請填入完整的 Worker 網址（https:// 開頭）');
+    if (!password) return showMsg($('login-msg'), '請輸入管理密碼');
+    $('login-btn').disabled = true;
+    try {
+      await api('GET', '/ping');
+      store.set('workerUrl', workerUrl, true);
+      store.del('password');
+      store.set('password', password, $('remember').checked);
+      showMsg($('login-msg'), '已登入', true);
+      $('logout-btn').classList.remove('hidden');
+      $('list-card').classList.remove('hidden');
+      await loadList();
+    } catch (e) {
+      showMsg($('login-msg'), e.message === 'Failed to fetch' ? '連不到 Worker，請確認網址正確且已部署完成' : e.message);
+    } finally { $('login-btn').disabled = false; }
+  }
+  $('login-btn').onclick = login;
+  $('password').addEventListener('keydown', (e) => e.key === 'Enter' && login());
+  $('logout-btn').onclick = () => {
+    store.del('password'); password = ''; $('password').value = '';
+    ['list-card', 'edit-card', 'preview-card', 'logout-btn'].forEach((id) => $(id).classList.add('hidden'));
+    showMsg($('login-msg'), '已登出', true);
+  };
+
+  // --- 列表 ---
+  async function loadList() {
+    const { items } = await api('GET', '/subs');
+    const list = $('list');
+    if (!items.length) { list.innerHTML = '<p class="muted">還沒有任何合併訂閱，按右上角「產生新的訂閱」開始。</p>'; return; }
+    list.innerHTML = items.map((it) => `
+      <div class="item" data-token="${escapeHtml(it.token)}" data-name="${escapeHtml(it.name)}">
+        <div class="item-title">${escapeHtml(it.name)} <span class="muted">· ${it.count} 個機場 · 更新於 ${fmtTime(it.updatedAt)}</span></div>
+        <div class="link">${escapeHtml(subUrl(it.token))}</div>
+        <div class="row">
+          <button data-act="copy" class="primary">複製連結</button>
+          <button data-act="import">一鍵匯入 Clash</button>
+          <button data-act="preview">預覽</button>
+          <button data-act="edit">編輯</button>
+          <button data-act="rotate">換 TOKEN</button>
+          <button data-act="delete" class="danger">刪除</button>
+        </div>
+      </div>`).join('');
+  }
+
+  $('list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const item = btn.closest('.item');
+    const { token, name } = item.dataset;
+    try {
+      switch (btn.dataset.act) {
+        case 'copy': return copy(subUrl(token), btn);
+        case 'import':
+          location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token))}&name=${encodeURIComponent(name)}`;
+          return;
+        case 'preview': return preview(token, name);
+        case 'edit': return openEditor(await api('GET', '/subs/' + token));
+        case 'rotate':
+          if (!confirm(`「${name}」換新 TOKEN 後，舊的訂閱網址會立刻失效，要繼續嗎？`)) return;
+          await api('POST', `/subs/${token}/rotate`);
+          return loadList();
+        case 'delete':
+          if (!confirm(`確定刪除「${name}」？使用這個網址的客戶端將無法再更新。`)) return;
+          await api('DELETE', '/subs/' + token);
+          return loadList();
+      }
+    } catch (err) { alert(err.message); }
+  });
+
+  // --- 編輯 ---
+  function addSourceRow(src = {}) {
+    const row = document.createElement('div');
+    row.className = 'src-row';
+    row.innerHTML = `<input type="text" placeholder="前綴（選填）" maxlength="20">
+      <input type="url" placeholder="https://機場訂閱網址">
+      <button class="danger" title="移除">✕</button>`;
+    row.children[0].value = src.name || '';
+    row.children[1].value = src.url || '';
+    row.children[2].onclick = () => { row.remove(); if (!$('sources').children.length) addSourceRow(); };
+    $('sources').appendChild(row);
+  }
+
+  function openEditor(record) {
+    editingToken = record ? record.token : null;
+    $('edit-title').textContent = record ? `編輯「${record.name}」` : '產生新的訂閱';
+    $('edit-name').value = record ? record.name : '';
+    $('sources').innerHTML = '';
+    (record ? record.sources : [{}, {}]).forEach(addSourceRow);
+    $('edit-msg').textContent = '';
+    $('bulk-box').classList.add('hidden');
+    $('edit-card').classList.remove('hidden');
+    $('edit-card').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  $('new-btn').onclick = () => openEditor(null);
+  $('add-src').onclick = () => addSourceRow();
+  $('cancel-btn').onclick = () => $('edit-card').classList.add('hidden');
+  $('bulk-btn').onclick = () => $('bulk-box').classList.toggle('hidden');
+  $('bulk-apply').onclick = () => {
+    const rows = [...$('sources').children];
+    rows.filter((r) => !r.children[1].value.trim()).forEach((r) => r.remove());
+    for (const line of $('bulk-text').value.split(/\r?\n/)) {
+      const m = line.trim().match(/^(?:(.+?)\s+)?(https?:\/\/\S+)$/);
+      if (m) addSourceRow({ name: (m[1] || '').trim(), url: m[2] });
+    }
+    if (!$('sources').children.length) addSourceRow();
+    $('bulk-text').value = '';
+    $('bulk-box').classList.add('hidden');
+  };
+
+  $('save-btn').onclick = async () => {
+    const name = $('edit-name').value.trim();
+    const sources = [...$('sources').children]
+      .map((r) => ({ name: r.children[0].value.trim(), url: r.children[1].value.trim() }))
+      .filter((s) => s.url);
+    if (!name) return showMsg($('edit-msg'), '請填名稱');
+    if (!sources.length) return showMsg($('edit-msg'), '至少要填一個機場訂閱網址');
+    $('save-btn').disabled = true;
+    try {
+      const saved = editingToken
+        ? await api('PUT', '/subs/' + editingToken, { name, sources })
+        : await api('POST', '/subs', { name, sources });
+      $('edit-card').classList.add('hidden');
+      await loadList();
+      const el = document.querySelector(`.item[data-token="${saved.token}"]`);
+      if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('.link').style.outline = '2px solid var(--accent)'; }
+    } catch (e) { showMsg($('edit-msg'), e.message); }
+    finally { $('save-btn').disabled = false; }
+  };
+
+  // --- 預覽 ---
+  async function preview(token, name) {
+    $('preview-card').classList.remove('hidden');
+    $('preview-title').textContent = `預覽：${name}`;
+    $('preview-info').textContent = '抓取中…（會即時抓取所有機場，可能要幾秒）';
+    $('preview').textContent = '';
+    $('preview-card').scrollIntoView({ behavior: 'smooth' });
+    try {
+      const res = await fetch(subUrl(token), { cache: 'no-store' });
+      previewText = await res.text();
+      previewName = name;
+      const info = res.headers.get('subscription-userinfo');
+      const count = [...previewText.matchAll(/\] (\d+) 個節點/g)].reduce((n, m) => n + Number(m[1]), 0);
+      let infoText = res.ok ? `節點數：${count}` : `錯誤 ${res.status}`;
+      if (info) {
+        const v = Object.fromEntries(info.split(';').map((p) => p.trim().split('=')));
+        const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1) + ' GB';
+        infoText += `　已用 ${gb(Number(v.upload) + Number(v.download))} / 總共 ${gb(v.total)}`;
+        if (Number(v.expire)) infoText += `　最早到期 ${new Date(Number(v.expire) * 1000).toLocaleDateString('zh-TW')}`;
+      }
+      $('preview-info').textContent = infoText;
+      $('preview').textContent = previewText;
+    } catch (e) {
+      $('preview-info').textContent = '抓取失敗：' + e.message;
+    }
+  }
+  $('close-preview').onclick = () => $('preview-card').classList.add('hidden');
+  $('download-btn').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([previewText], { type: 'text/yaml' }));
+    a.download = (previewName || 'config') + '.yaml';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  $('copy-script').onclick = (e) => copy($('script-url').textContent, e.target);
+
+  if (workerUrl && password) login();
+})();
+</script>
+</body>
+</html>

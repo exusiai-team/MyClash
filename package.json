@@ -1,0 +1,29 @@
+{
+  "name": "myclash-sub-merge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "多機場訂閱合併（節點聯集）Cloudflare Worker + GitHub Pages 管理頁",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "cloudflare": {
+    "label": "MyClash 訂閱合併",
+    "bindings": {
+      "ADMIN_PASSWORD": {
+        "description": "管理密碼：登入 GitHub Pages 管理頁時要輸入，請自己設定一組夠長的密碼"
+      },
+      "SUBS": {
+        "description": "存放訂閱組的 KV，會自動建立"
+      }
+    }
+  }
+}
