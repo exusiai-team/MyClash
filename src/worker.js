@@ -1,4 +1,5 @@
 import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig, detectAirportName } from './parse.js';
+import { cacheKey } from './cache.js';
 
 const KEY_PREFIX = 'sub:';
 const FETCH_TIMEOUT_MS = 15000;
@@ -35,7 +36,7 @@ async function serveSubscription(env, token) {
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
   const mode = record.prefixMode ?? 'index';
-  const results = await Promise.all(record.sources.map((source, i) => fetchSource(source, i, mode)));
+  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode)));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) return text('所有机场订阅都抓取失败或没有节点，请稍后再试', 502);
 
@@ -45,7 +46,8 @@ async function serveSubscription(env, token) {
     `更新时间：${new Date().toISOString()}`,
     ...results.map((r) =>
       r.parsed
-        ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}`
+        ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
+          (r.cachedAt ? `（直连失败：${r.directError}，使用 ${cacheAge(r.cachedAt)}的缓存）` : '')
         : `[${r.label}] 失败：${r.error}`,
     ),
   ];
@@ -62,30 +64,47 @@ async function serveSubscription(env, token) {
   return new Response(dumpConfig(config, comments), { headers });
 }
 
-async function fetchSource(source, index, mode) {
+async function fetchSource(env, source, index, mode) {
   const fallback = source.name || `S${index + 1}`;
   let label = fallback;
   let prefix = mode === 'none' ? '' : fallback;
+  let got = await fetchUpstream(source.url);
+  if (got.error) {
+    // 直连失败就改用 GitHub Actions 代抓的缓存
+    const cached = await env.SUB_STORE.get(await cacheKey(source.url), 'json').catch(() => null);
+    if (cached?.body) got = { ...cached, cachedAt: cached.fetchedAt, directError: got.error };
+  }
+  if (!source.name) {
+    const detected = detectAirportName(got.disposition, source.url);
+    if (detected) {
+      label = detected;
+      if (mode === 'name') prefix = detected;
+    }
+  }
+  if (got.error) return { label, prefix, error: got.error };
+  const parsed = parseSubscription(got.body);
+  if (parsed.proxies.length === 0) return { label, prefix, parsed, error: '没有可用节点' };
+  return { label, prefix, parsed, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
+}
+
+async function fetchUpstream(url) {
   try {
-    const res = await fetch(source.url, {
+    const res = await fetch(url, {
       headers: { 'User-Agent': FETCH_UA },
       redirect: 'follow',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
-    if (!source.name) {
-      const detected = detectAirportName(res.headers.get('content-disposition'), source.url);
-      if (detected) {
-        label = detected;
-        if (mode === 'name') prefix = detected;
-      }
-    }
-    if (!res.ok) return { label, prefix, error: `HTTP ${res.status}` };
-    const parsed = parseSubscription(await res.text());
-    if (parsed.proxies.length === 0) return { label, prefix, parsed, error: '没有可用节点' };
-    return { label, prefix, parsed, userinfo: res.headers.get('subscription-userinfo') };
+    const disposition = res.headers.get('content-disposition');
+    if (!res.ok) return { disposition, error: `HTTP ${res.status}` };
+    return { disposition, userinfo: res.headers.get('subscription-userinfo'), body: await res.text() };
   } catch (err) {
-    return { label, prefix, error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
+    return { error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
   }
+}
+
+function cacheAge(ms) {
+  const minutes = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  return minutes < 60 ? `${minutes} 分钟前` : `${Math.round(minutes / 60)} 小时前`;
 }
 
 // --- 管理 API ---

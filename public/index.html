@@ -8,12 +8,12 @@
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
-    --accent: #2f6fed; --accent-text: #ffffff; --danger: #d92d20; --ok: #12805c; --code: #f1f3f6;
+    --accent: #2f6fed; --accent-text: #ffffff; --danger: #d92d20; --ok: #12805c; --warn: #b54708; --code: #f1f3f6;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #12141a; --card: #1b1e26; --text: #e6e8ee; --muted: #9aa3b2; --border: #2c313c;
-      --accent: #5b8cff; --accent-text: #0d1220; --danger: #ff6b5e; --ok: #45c48f; --code: #232733;
+      --accent: #5b8cff; --accent-text: #0d1220; --danger: #ff6b5e; --ok: #45c48f; --warn: #d9822b; --code: #232733;
     }
   }
   * { box-sizing: border-box; }
@@ -53,6 +53,10 @@
   details summary { cursor: pointer; color: var(--muted); }
   ol { padding-left: 20px; margin: 6px 0; }
   a { color: var(--accent); }
+  .status { list-style: none; padding: 0; margin: 10px 0; font-size: 14px; }
+  .status li { padding: 3px 0; }
+  .status .tag { display: inline-block; min-width: 44px; padding: 0 6px; margin-right: 6px; border-radius: 6px; font-size: 12px; text-align: center; color: #fff; }
+  .tag.ok { background: var(--ok); } .tag.cache { background: var(--warn); } .tag.fail { background: var(--danger); }
 </style>
 </head>
 <body>
@@ -111,6 +115,9 @@
       <div class="row"><button id="download-btn">下载 YAML</button><button id="close-preview">关闭</button></div>
     </div>
     <div class="muted" id="preview-info"></div>
+    <ul class="status" id="preview-status"></ul>
+    <p class="muted hidden" id="preview-hint">「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每 3 小时代抓的副本；
+      「失败」的机场如果一直失败，请确认已按 README 设置 <code>CLOUDFLARE_API_TOKEN</code>，或到 GitHub 的 Actions 页手动执行「代抓订阅缓存」。</p>
     <pre id="preview"></pre>
   </section>
 
@@ -326,6 +333,8 @@
     $('preview-title').textContent = `预览：${name}`;
     $('preview-info').textContent = '抓取中…（会即时抓取所有机场，可能要几秒）';
     $('preview').textContent = '';
+    $('preview-status').innerHTML = '';
+    $('preview-hint').classList.add('hidden');
     $('preview-card').scrollIntoView({ behavior: 'smooth' });
     try {
       const res = await fetch(subUrl(token), { cache: 'no-store' });
@@ -342,9 +351,21 @@
       }
       $('preview-info').textContent = infoText;
       $('preview').textContent = previewText;
+      renderStatus(previewText);
     } catch (e) {
       $('preview-info').textContent = '抓取失败：' + e.message;
     }
+  }
+  // 每个机场的抓取结果写在配置文件开头的注释里：「# [名称] 46 个节点」「# [名称] 失败：HTTP 403」
+  function renderStatus(text) {
+    const rows = [...text.matchAll(/^# \[(.+?)\] (.+)$/gm)].map(([, label, detail]) => {
+      const kind = /^失败/.test(detail) ? 'fail' : /缓存/.test(detail) ? 'cache' : 'ok';
+      return { label, detail, kind };
+    });
+    const tags = { ok: '直连', cache: '缓存', fail: '失败' };
+    $('preview-status').innerHTML = rows.map((r) =>
+      `<li><span class="tag ${r.kind}">${tags[r.kind]}</span><b>${escapeHtml(r.label)}</b> <span class="muted">${escapeHtml(r.detail)}</span></li>`).join('');
+    $('preview-hint').classList.toggle('hidden', !rows.some((r) => r.kind !== 'ok'));
   }
   $('close-preview').onclick = () => $('preview-card').classList.add('hidden');
   $('download-btn').onclick = () => {
