@@ -43,6 +43,9 @@ function startUpstream() {
           ],
         }),
       );
+    } else if (req.url === '/named') {
+      res.setHeader('content-disposition', "attachment; filename*=UTF-8''%E9%A3%9E%E4%BA%91%E6%9C%BA%E5%9C%BA");
+      res.end(yaml.dump({ proxies: [{ name: '新加坡 01', type: 'ss', server: 'sg.node', port: 1, cipher: 'aes-128-gcm', password: 'x' }] }));
     } else if (req.url === '/b64') {
       res.setHeader('subscription-userinfo', 'upload=10; download=20; total=50; expire=1900000000');
       res.end(b64(['trojan://pw@us.node:443#美国 01', 'trojan://pw@hk2.node:443#香港 01'].join('\n')));
@@ -124,4 +127,34 @@ test('/sub/<TOKEN>：合并多个订阅，失败的跳过', async (t) => {
 
   await call(env, 'PUT', `/api/subs/${token}`, { body: { name: '全部', sources: [{ url: `${base}/fail` }] } });
   assert.equal((await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).status, 502);
+});
+
+test('节点前缀三种模式：机场名称 / S1S2 / 不加', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const names = async (prefixMode) => {
+    const { token } = await (
+      await call(env, 'POST', '/api/subs', {
+        body: { name: 'x', prefixMode, sources: [{ url: `${base}/named` }, { url: `${base}/b64` }, { name: '自定', url: `${base}/b64` }] },
+      })
+    ).json();
+    const body = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+    return { body, names: yaml.load(body).proxies.map((p) => p.name) };
+  };
+
+  const byName = await names('name');
+  assert.deepEqual(byName.names, ['飞云 | 新加坡 01', 'S2 | 美国 01', 'S2 | 香港 01', '自定 | 美国 01', '自定 | 香港 01']);
+  assert.match(byName.body, /\[飞云\] 1 个节点/);
+
+  const byIndex = await names('index');
+  assert.deepEqual(byIndex.names, ['S1 | 新加坡 01', 'S2 | 美国 01', 'S2 | 香港 01', '自定 | 美国 01', '自定 | 香港 01']);
+
+  const none = await names('none');
+  assert.deepEqual(none.names, ['新加坡 01', '美国 01', '香港 01', '美国 01 2', '香港 01 2']);
+  assert.match(none.body, /\[飞云\] 1 个节点/);
+
+  const bad = await (await call(env, 'POST', '/api/subs', { body: { name: 'y', prefixMode: '??', sources: [{ url: base }] } })).json();
+  assert.equal(bad.prefixMode, 'name');
 });
