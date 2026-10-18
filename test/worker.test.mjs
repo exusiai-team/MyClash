@@ -195,6 +195,34 @@ test('直连失败时改用 GitHub Actions 代抓的缓存', async (t) => {
   assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['吹雪 | 台湾 01']);
 });
 
+test('立即刷新缓存：触发 GitHub Actions，1 分钟内只能按一次', async (t) => {
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ url: 'https://a.test' }] } })).json();
+
+  const noToken = await call(env, 'POST', `/api/subs/${token}/refresh`);
+  assert.equal(noToken.status, 501);
+  assert.match((await noToken.json()).error, /GITHUB_TOKEN/);
+
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(null, { status: 204 });
+  };
+  t.after(() => (globalThis.fetch = realFetch));
+
+  Object.assign(env, { GITHUB_TOKEN: 'ghp_x', GITHUB_REPO: 'me/repo' });
+  assert.equal((await call(env, 'POST', '/api/subs/' + '0'.repeat(32) + '/refresh')).status, 404);
+  assert.equal((await call(env, 'POST', `/api/subs/${token}/refresh`)).status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.github.com/repos/me/repo/actions/workflows/refresh-cache.yml/dispatches');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer ghp_x');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { ref: 'main' });
+
+  assert.equal((await call(env, 'POST', `/api/subs/${token}/refresh`)).status, 429);
+  assert.equal(calls.length, 1);
+});
+
 test('缓存键名是链接的 SHA-256，不含链接本身', async () => {
   const key = await cacheKey('https://a.test/sub?token=secret');
   assert.match(key, /^cache:[a-f0-9]{64}$/);

@@ -105,6 +105,7 @@
     <div class="row" style="margin-top:12px">
       <button class="primary" id="save-btn">保存并生成链接</button>
       <button id="cancel-btn">取消</button>
+      <button id="refresh-btn" class="hidden" title="让 GitHub Actions 立刻重抓所有机场，更新被屏蔽机场的缓存">立即刷新缓存</button>
     </div>
     <div class="msg" id="edit-msg"></div>
   </section>
@@ -116,7 +117,7 @@
     </div>
     <div class="muted" id="preview-info"></div>
     <ul class="status" id="preview-status"></ul>
-    <p class="muted hidden" id="preview-hint">「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每 3 小时代抓的副本；
+    <p class="muted hidden" id="preview-hint">「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每天代抓的副本（编辑页可按「立即刷新缓存」）；
       「失败」的机场如果一直失败，请确认已按 README 设置 <code>CLOUDFLARE_API_TOKEN</code>，或到 GitHub 的 Actions 页手动执行「代抓订阅缓存」。</p>
     <pre id="preview"></pre>
   </section>
@@ -274,6 +275,7 @@
     (record ? record.sources : [{}, {}]).forEach(addSourceRow);
     $('edit-msg').textContent = '';
     $('bulk-box').classList.add('hidden');
+    $('refresh-btn').classList.toggle('hidden', !record);
     $('edit-card').classList.remove('hidden');
     $('edit-card').scrollIntoView({ behavior: 'smooth' });
   }
@@ -325,6 +327,15 @@
       if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('.link').style.outline = '2px solid var(--accent)'; }
     } catch (e) { showMsg($('edit-msg'), e.message); }
     finally { $('save-btn').disabled = false; }
+  };
+
+  $('refresh-btn').onclick = async () => {
+    $('refresh-btn').disabled = true;
+    try {
+      await api('POST', `/subs/${editingToken}/refresh`);
+      showMsg($('edit-msg'), '已开始刷新缓存，约 1 分钟后完成；之后按「预览」就能看到最新节点', true);
+    } catch (e) { showMsg($('edit-msg'), e.message); }
+    finally { setTimeout(() => ($('refresh-btn').disabled = false), 5000); }
   };
 
   // --- 预览 ---

@@ -5,6 +5,10 @@ const KEY_PREFIX = 'sub:';
 const FETCH_TIMEOUT_MS = 15000;
 const FETCH_UA = 'clash.meta';
 const MAX_SOURCES = 30;
+// 管理页「立即刷新缓存」：触发 GitHub Actions 的代抓 workflow
+const REFRESH_WORKFLOW = 'refresh-cache.yml';
+const REFRESH_COOLDOWN_KEY = 'refresh:cooldown';
+const REFRESH_COOLDOWN_SECONDS = 60;
 // 节点前缀：name = 机场名称（自定义 > 自动识别），index = S1、S2…（自定义 > 序号），none = 不加
 const PREFIX_MODES = ['name', 'index', 'none'];
 
@@ -150,6 +154,8 @@ async function api(request, env, parts) {
     }
   }
 
+  if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') return triggerRefresh(env);
+
   if (parts.length === 3 && parts[2] === 'rotate' && method === 'POST') {
     const next = newToken();
     const updated = { ...record, updatedAt: Date.now() };
@@ -159,6 +165,25 @@ async function api(request, env, parts) {
   }
 
   throw new HttpError(405, '不支持的操作');
+}
+
+async function triggerRefresh(env) {
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+    throw new HttpError(501, '还没设置 GITHUB_TOKEN，无法从管理页刷新缓存（设置方法见 README）');
+  }
+  if (await env.SUB_STORE.get(REFRESH_COOLDOWN_KEY)) throw new HttpError(429, '刚刷新过，请 1 分钟后再试');
+  const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${REFRESH_WORKFLOW}/dispatches`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'myclash-worker',
+    },
+    body: JSON.stringify({ ref: 'main' }),
+  });
+  if (!res.ok) throw new HttpError(502, `触发 GitHub Actions 失败：HTTP ${res.status}（检查 GITHUB_TOKEN 的权限）`);
+  await env.SUB_STORE.put(REFRESH_COOLDOWN_KEY, '1', { expirationTtl: REFRESH_COOLDOWN_SECONDS });
+  return json({ ok: true });
 }
 
 function putRecord(env, token, record) {
