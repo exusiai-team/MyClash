@@ -18,9 +18,6 @@
   "cloudflare": {
     "label": "MyClash 訂閱合併",
     "bindings": {
-      "ADMIN_PASSWORD": {
-        "description": "管理密碼：登入 GitHub Pages 管理頁時要輸入，請自己設定一組夠長的密碼"
-      },
       "SUB_STORE": {
         "description": "存放訂閱組的 KV，會自動建立"
       }
