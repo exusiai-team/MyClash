@@ -1,10 +1,10 @@
 name: 代抓订阅缓存
 
-# 每 3 小时从 GitHub 的机器抓一次所有机场订阅，写进 Worker 的 KV；
+# 每天从 GitHub 的机器抓一次所有机场订阅（管理页也可以按「立即刷新缓存」手动触发），写进 Worker 的 KV；
 # 机场屏蔽 Cloudflare 时，Worker 改用这份缓存
 on:
   schedule:
-    - cron: '17 */3 * * *'
+    - cron: '17 19 * * *' # 每天 UTC 19:17（台湾时间 03:17）
   workflow_dispatch:
 
 concurrency: refresh-cache
