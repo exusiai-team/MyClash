@@ -40,7 +40,7 @@ async function route(request, env) {
 // --- 訂閱輸出 ---
 
 async function serveSubscription(env, token) {
-  const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUBS.get(KEY_PREFIX + token, 'json') : null;
+  const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
   if (!record) return text('找不到這個 TOKEN（可能已刪除或已更換）', 404);
 
   const results = await Promise.all(record.sources.map((source, i) => fetchSource(source, i)));
@@ -139,7 +139,7 @@ async function api(request, env, parts) {
 
   const token = parts[1];
   if (!/^[a-f0-9]{32}$/.test(token ?? '')) throw new HttpError(404, '找不到這個 TOKEN');
-  const record = await env.SUBS.get(KEY_PREFIX + token, 'json');
+  const record = await env.SUB_STORE.get(KEY_PREFIX + token, 'json');
   if (!record) throw new HttpError(404, '找不到這個 TOKEN');
 
   if (parts.length === 2) {
@@ -150,7 +150,7 @@ async function api(request, env, parts) {
       return json({ token, ...updated });
     }
     if (method === 'DELETE') {
-      await env.SUBS.delete(KEY_PREFIX + token);
+      await env.SUB_STORE.delete(KEY_PREFIX + token);
       return json({ ok: true });
     }
   }
@@ -159,7 +159,7 @@ async function api(request, env, parts) {
     const next = newToken();
     const updated = { ...record, updatedAt: Date.now() };
     await putRecord(env, next, updated);
-    await env.SUBS.delete(KEY_PREFIX + token);
+    await env.SUB_STORE.delete(KEY_PREFIX + token);
     return json({ token: next, ...updated });
   }
 
@@ -170,7 +170,7 @@ async function listRecords(env) {
   const items = [];
   let cursor;
   do {
-    const page = await env.SUBS.list({ prefix: KEY_PREFIX, cursor });
+    const page = await env.SUB_STORE.list({ prefix: KEY_PREFIX, cursor });
     for (const key of page.keys) {
       items.push({ token: key.name.slice(KEY_PREFIX.length), ...(key.metadata ?? {}) });
     }
@@ -186,7 +186,7 @@ function putRecord(env, token, record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
-  return env.SUBS.put(KEY_PREFIX + token, JSON.stringify(record), { metadata });
+  return env.SUB_STORE.put(KEY_PREFIX + token, JSON.stringify(record), { metadata });
 }
 
 async function readJson(request) {
