@@ -16,3 +16,17 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npx wrangler deploy --dry-run --outdir dist
+
+  # Dependabot 的 PR 在测试通过后自动合并
+  automerge:
+    needs: test
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - run: gh pr merge "$PR_URL" --squash --delete-branch
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
