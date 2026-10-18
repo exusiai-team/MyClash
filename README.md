@@ -8,18 +8,31 @@
 - 客戶端每次更新時，都會即時抓所有機場的最新節點，並把各機場的流量加總顯示
 - 支援 mihomo / Clash YAML 訂閱，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2` 連結
 
-## 一鍵部署（只要做一次）
+## 部署（只要做一次）
 
-### 第 1 步：部署 Worker
+### 第 1 步：部署 Worker（直接連本倉庫，不會建立新倉庫）
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/silverwolfxai/MyClash)
+[![前往 Cloudflare 匯入此倉庫](https://img.shields.io/badge/Cloudflare-匯入此倉庫部署_Worker-F38020?logo=cloudflare&logoColor=white)](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create)
 
-1. 點上面的按鈕，登入（或免費註冊）Cloudflare，並依提示連結你的 GitHub
-2. 在 **ADMIN_PASSWORD** 欄位填一組你自己的管理密碼（登入管理頁時要用）
-3. 按 **Deploy**，等一兩分鐘
-4. 完成後記下 Worker 網址，長得像 `https://myclash-sub.你的帳號.workers.dev`
+1. 點上面的按鈕，登入（或免費註冊）Cloudflare，選 **匯入存放庫（Import a repository）**
+2. 選 GitHub 帳號 `silverwolfxai` 和 **`MyClash`** 倉庫
+   （清單裡沒有的話，依提示安裝 Cloudflare 的 GitHub App，並勾選 `MyClash`）
+3. 設定如下，其他維持預設，然後按 **部署**：
 
-> 存訂閱用的 KV 資料庫會自動建立，不用另外設定。
+   | 欄位 | 填寫 |
+   | --- | --- |
+   | 專案名稱 | `myclash-sub` |
+   | 生產分支 | `claude/kind-keller-5wfjpq`（倉庫的預設分支） |
+   | 建置命令 | 留空 |
+   | 部署命令 | `npx wrangler deploy` |
+   | 根目錄 | `/` |
+
+4. 部署完成後，進入這個 Worker 的 **設定 → 變數和機密 → 新增**：類型選 **密鑰（Secret）**，
+   名稱 `ADMIN_PASSWORD`，值填你自己的管理密碼（登入管理頁時要用），儲存
+5. 記下 Worker 網址，長得像 `https://myclash-sub.你的帳號.workers.dev`
+
+> 存訂閱用的 KV 資料庫會在部署時自動建立，不用另外設定。
+> 之後 push 到本倉庫，Cloudflare 會自動重新部署 Worker。
 
 ### 第 2 步：開啟 GitHub Pages 管理頁
 
@@ -55,8 +68,7 @@
   全部失敗時 Worker 會回傳錯誤，客戶端會保留上一次成功的設定。建議優先使用機場提供的 Clash / Meta 訂閱連結。
 - **免費額度**：Cloudflare Workers 免費方案每天 10 萬次請求、KV 每天 1000 次寫入，個人使用綽綽有餘。
 - **管理密碼**：要修改的話，到 Cloudflare 後台 → Workers → `myclash-sub` → 設定 → 變數和機密，修改 `ADMIN_PASSWORD`。
-- **更新 Worker 程式**：一鍵部署會在你的 GitHub 另外建立一個 Worker 專用的 repo，並設定好自動部署。
-  要更新 Worker，請修改那個 repo（push 後 Cloudflare 會自動重新部署）。
+- **更新程式**：Worker 和管理頁都在本倉庫，push 後 Cloudflare 會自動重新部署 Worker、GitHub Actions 會自動部署管理頁。
 
 ## 開發
 
