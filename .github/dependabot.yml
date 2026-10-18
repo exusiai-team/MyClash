@@ -1,18 +1,16 @@
-# 每月 1 号检查所有依赖的新版本（包括大版本），全部合并成一个 PR；
+# 每月 1 号检查所有依赖的新版本（npm + GitHub Actions，包括大版本），全部合并成同一个 PR；
 # 测试通过后由「测试」流程自动合并到 main，Cloudflare 再自动重新部署
 version: 2
+multi-ecosystem-groups:
+  all:
+    schedule:
+      interval: monthly
 updates:
   - package-ecosystem: npm
     directory: /
-    schedule:
-      interval: monthly
-    groups:
-      npm:
-        patterns: ['*']
+    patterns: ['*']
+    multi-ecosystem-group: all
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: monthly
-    groups:
-      actions:
-        patterns: ['*']
+    patterns: ['*']
+    multi-ecosystem-group: all
