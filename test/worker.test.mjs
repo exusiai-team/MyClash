@@ -65,10 +65,8 @@ function call(env, method, path, { body } = {}) {
 
 test('没有管理密码也能用，且不提供列出全部订阅的 API', async () => {
   const env = { SUB_STORE: memoryKv() };
-  assert.equal((await call(env, 'GET', '/api/ping')).status, 200);
   assert.equal((await call(env, 'GET', '/api/subs')).status, 404);
   assert.equal((await call(env, 'GET', '/api/subs/' + '0'.repeat(32))).status, 404);
-  assert.equal((await worker.fetch(new Request('https://w.test/api/subs', { method: 'OPTIONS' }), env)).status, 204);
 });
 
 test('管理 API：添加 / 查找 / 编辑 / 换 TOKEN / 删除', async () => {

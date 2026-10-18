@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "多机场订阅合并（节点并集）Cloudflare Worker + GitHub Pages 管理页",
+  "description": "多机场订阅合并（节点并集）Cloudflare Worker，自带管理页",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -14,13 +14,5 @@
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
-  },
-  "cloudflare": {
-    "label": "MyClash 订阅合并",
-    "bindings": {
-      "SUB_STORE": {
-        "description": "存放订阅组的 KV，会自动创建"
-      }
-    }
   }
 }

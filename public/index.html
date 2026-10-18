@@ -59,17 +59,7 @@
   <h1>MyClash 订阅合并</h1>
   <p class="sub">把多个机场订阅合并成一个订阅链接（节点并集），再自己在客户端套用 MyClash 覆写脚本。</p>
 
-  <section class="card hidden" id="login-card">
-    <h2>连接设置</h2>
-    <label for="worker-url">Worker 地址（例如 https://myclash.xxx.workers.dev）</label>
-    <input type="url" id="worker-url" placeholder="https://myclash.你的账号.workers.dev" autocomplete="off">
-    <div class="row" style="margin-top:12px">
-      <button class="primary" id="login-btn">连接</button>
-    </div>
-    <div class="msg" id="login-msg"></div>
-  </section>
-
-  <section class="card hidden" id="list-card">
+  <section class="card" id="list-card">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
       <h2 style="margin:0">我的合并订阅</h2>
       <button class="primary" id="new-btn">＋ 生成新的订阅</button>
@@ -136,27 +126,23 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const store = {
-    get(k, persistent) { try { return (persistent ? localStorage : sessionStorage).getItem(k) || ''; } catch { return ''; } },
-    set(k, v, persistent) { try { (persistent ? localStorage : sessionStorage).setItem(k, v); } catch {} },
-    del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch {} },
+    get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
 
-  // 由 Worker 本身提供这个页面时，API 就在同一个地址，不用另外填
-  const onWorker = /^https?:$/.test(location.protocol) && !location.hostname.endsWith('github.io');
-  let workerUrl = onWorker ? location.origin : store.get('workerUrl', true);
+  // 管理页由 Worker 提供，API 与订阅链接都在同一个地址
+  const workerUrl = location.origin;
   let editingToken = null;
   let previewText = '';
   let previewName = '';
 
   // 这个浏览器生成或导入过的 TOKEN
   function getTokens() {
-    try { return JSON.parse(store.get('tokens', true) || '[]'); } catch { return []; }
+    try { return JSON.parse(store.get('tokens') || '[]'); } catch { return []; }
   }
-  function saveTokens(list) { store.set('tokens', JSON.stringify([...new Set(list)]), true); }
+  function saveTokens(list) { store.set('tokens', JSON.stringify([...new Set(list)])); }
   function addToken(t) { saveTokens([t, ...getTokens()]); }
   function removeToken(t) { saveTokens(getTokens().filter((x) => x !== t)); }
-
-  $('worker-url').value = workerUrl;
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -184,26 +170,6 @@
     }
     const old = btn.textContent; btn.textContent = '已复制 ✓'; setTimeout(() => (btn.textContent = old), 1500);
   }
-
-  // --- 连接（只有 GitHub Pages 版需要） ---
-  async function connect() {
-    if (!onWorker) workerUrl = $('worker-url').value.trim().replace(/\/+$/, '');
-    if (!/^https?:\/\//.test(workerUrl)) return showMsg($('login-msg'), '请填入完整的 Worker 地址（https:// 开头）');
-    $('login-btn').disabled = true;
-    try {
-      await api('GET', '/ping');
-      if (!onWorker) {
-        store.set('workerUrl', workerUrl, true);
-        showMsg($('login-msg'), '已连接', true);
-      }
-      $('list-card').classList.remove('hidden');
-      await loadList();
-    } catch (e) {
-      showMsg($('login-msg'), e.message === 'Failed to fetch' ? '连不到 Worker，请确认地址正确且已部署完成' : e.message);
-    } finally { $('login-btn').disabled = false; }
-  }
-  $('login-btn').onclick = connect;
-  $('worker-url').addEventListener('keydown', (e) => e.key === 'Enter' && connect());
 
   // --- 列表 ---
   async function loadList() {
@@ -369,11 +335,7 @@
   };
   $('copy-script').onclick = (e) => copy($('script-url').textContent, e.target);
 
-  if (onWorker) connect();
-  else {
-    $('login-card').classList.remove('hidden');
-    if (workerUrl) connect();
-  }
+  loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; });
 })();
 </script>
 </body>
