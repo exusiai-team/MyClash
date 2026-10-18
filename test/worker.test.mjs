@@ -66,18 +66,18 @@ function call(env, method, path, { body, password = PASSWORD } = {}) {
 }
 
 test('管理 API：權限檢查', async () => {
-  const env = { SUBS: memoryKv(), ADMIN_PASSWORD: PASSWORD };
+  const env = { SUB_STORE: memoryKv(), ADMIN_PASSWORD: PASSWORD };
   assert.equal((await call(env, 'GET', '/api/ping', { password: 'wrong' })).status, 401);
   assert.equal((await call(env, 'GET', '/api/ping', { password: null })).status, 401);
   assert.equal((await call(env, 'GET', '/api/ping')).status, 200);
-  const unset = await call({ SUBS: memoryKv() }, 'GET', '/api/ping');
+  const unset = await call({ SUB_STORE: memoryKv() }, 'GET', '/api/ping');
   assert.equal(unset.status, 503);
   assert.match((await unset.json()).error, /ADMIN_PASSWORD/);
   assert.equal((await worker.fetch(new Request('https://w.test/api/subs', { method: 'OPTIONS' }), env)).status, 204);
 });
 
 test('管理 API：新增 / 列表 / 編輯 / 換 TOKEN / 刪除', async () => {
-  const env = { SUBS: memoryKv(), ADMIN_PASSWORD: PASSWORD };
+  const env = { SUB_STORE: memoryKv(), ADMIN_PASSWORD: PASSWORD };
   const bad = await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ url: 'ftp://a' }] } });
   assert.equal(bad.status, 400);
 
@@ -99,14 +99,14 @@ test('管理 API：新增 / 列表 / 編輯 / 換 TOKEN / 刪除', async () => {
   assert.equal((await call(env, 'GET', `/api/subs/${rotated.token}`)).status, 200);
 
   assert.equal((await call(env, 'DELETE', `/api/subs/${rotated.token}`)).status, 200);
-  assert.equal(env.SUBS.store.size, 0);
+  assert.equal(env.SUB_STORE.store.size, 0);
 });
 
 test('/sub/<TOKEN>：合併多個訂閱，失敗的跳過', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
-  const env = { SUBS: memoryKv(), ADMIN_PASSWORD: PASSWORD };
+  const env = { SUB_STORE: memoryKv(), ADMIN_PASSWORD: PASSWORD };
 
   const { token } = await (
     await call(env, 'POST', '/api/subs', {
