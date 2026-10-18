@@ -1,4 +1,4 @@
-name: 部署管理頁到 GitHub Pages
+name: 部署管理页到 GitHub Pages
 
 on:
   push:

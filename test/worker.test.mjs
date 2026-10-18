@@ -4,7 +4,7 @@ import http from 'node:http';
 import yaml from 'js-yaml';
 import worker from '../src/worker.js';
 
-// 記憶體版 KV，只實作 worker 用到的方法
+// 内存版 KV，只实作 worker 用到的方法
 function memoryKv() {
   const store = new Map();
   return {
@@ -45,7 +45,7 @@ function startUpstream() {
       );
     } else if (req.url === '/b64') {
       res.setHeader('subscription-userinfo', 'upload=10; download=20; total=50; expire=1900000000');
-      res.end(b64(['trojan://pw@us.node:443#美國 01', 'trojan://pw@hk2.node:443#香港 01'].join('\n')));
+      res.end(b64(['trojan://pw@us.node:443#美国 01', 'trojan://pw@hk2.node:443#香港 01'].join('\n')));
     } else {
       res.statusCode = 500;
       res.end('boom');
@@ -63,7 +63,7 @@ function call(env, method, path, { body } = {}) {
   );
 }
 
-test('沒有管理密碼也能用，且不提供列出全部訂閱的 API', async () => {
+test('没有管理密码也能用，且不提供列出全部订阅的 API', async () => {
   const env = { SUB_STORE: memoryKv() };
   assert.equal((await call(env, 'GET', '/api/ping')).status, 200);
   assert.equal((await call(env, 'GET', '/api/subs')).status, 404);
@@ -71,20 +71,20 @@ test('沒有管理密碼也能用，且不提供列出全部訂閱的 API', asyn
   assert.equal((await worker.fetch(new Request('https://w.test/api/subs', { method: 'OPTIONS' }), env)).status, 204);
 });
 
-test('管理 API：新增 / 查詢 / 編輯 / 換 TOKEN / 刪除', async () => {
+test('管理 API：添加 / 查找 / 编辑 / 换 TOKEN / 删除', async () => {
   const env = { SUB_STORE: memoryKv() };
   const bad = await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ url: 'ftp://a' }] } });
   assert.equal(bad.status, 400);
 
-  const created = await (await call(env, 'POST', '/api/subs', { body: { name: '手機', sources: [{ name: 'A', url: 'https://a.test/s' }] } })).json();
+  const created = await (await call(env, 'POST', '/api/subs', { body: { name: '手机', sources: [{ name: 'A', url: 'https://a.test/s' }] } })).json();
   assert.match(created.token, /^[a-f0-9]{32}$/);
 
   const got = await (await call(env, 'GET', `/api/subs/${created.token}`)).json();
-  assert.equal(got.name, '手機');
+  assert.equal(got.name, '手机');
   assert.equal(got.sources.length, 1);
 
-  const edited = await (await call(env, 'PUT', `/api/subs/${created.token}`, { body: { name: '電腦', sources: [{ url: 'https://b.test' }, { url: 'https://c.test' }] } })).json();
-  assert.equal(edited.name, '電腦');
+  const edited = await (await call(env, 'PUT', `/api/subs/${created.token}`, { body: { name: '电脑', sources: [{ url: 'https://b.test' }, { url: 'https://c.test' }] } })).json();
+  assert.equal(edited.name, '电脑');
   assert.equal(edited.sources.length, 2);
 
   const rotated = await (await call(env, 'POST', `/api/subs/${created.token}/rotate`)).json();
@@ -96,7 +96,7 @@ test('管理 API：新增 / 查詢 / 編輯 / 換 TOKEN / 刪除', async () => {
   assert.equal(env.SUB_STORE.store.size, 0);
 });
 
-test('/sub/<TOKEN>：合併多個訂閱，失敗的跳過', async (t) => {
+test('/sub/<TOKEN>：合并多个订阅，失败的跳过', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
@@ -104,7 +104,7 @@ test('/sub/<TOKEN>：合併多個訂閱，失敗的跳過', async (t) => {
 
   const { token } = await (
     await call(env, 'POST', '/api/subs', {
-      body: { name: '全部', sources: [{ name: 'A', url: `${base}/yaml` }, { url: `${base}/b64` }, { name: '壞掉', url: `${base}/fail` }] },
+      body: { name: '全部', sources: [{ name: 'A', url: `${base}/yaml` }, { url: `${base}/b64` }, { name: '坏掉', url: `${base}/fail` }] },
     })
   ).json();
 
@@ -112,15 +112,15 @@ test('/sub/<TOKEN>：合併多個訂閱，失敗的跳過', async (t) => {
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=11; download=22; total=150; expire=1900000000');
   const body = await res.text();
-  assert.match(body, /\[壞掉\] 失敗：HTTP 500/);
+  assert.match(body, /\[坏掉\] 失败：HTTP 500/);
   const config = yaml.load(body);
   assert.deepEqual(
     config.proxies.map((p) => p.name),
-    ['A | 🇭🇰 香港 01', 'A | 🇯🇵 日本 01', 'S2 | 美國 01', 'S2 | 香港 01'],
+    ['A | 🇭🇰 香港 01', 'A | 🇯🇵 日本 01', 'S2 | 美国 01', 'S2 | 香港 01'],
   );
   assert.deepEqual(config.hosts, { 'hk.node': '10.0.0.1' });
   assert.ok(config.dns['proxy-server-nameserver']);
-  assert.ok(!body.includes(base), '不可回顯訂閱網址');
+  assert.ok(!body.includes(base), '不可回显订阅链接');
 
   assert.equal((await worker.fetch(new Request('https://w.test/sub/nope'), env)).status, 404);
 

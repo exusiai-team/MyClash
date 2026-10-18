@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="zh-Hant-TW">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>MyClash 訂閱合併</title>
+<title>MyClash 订阅合并</title>
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
@@ -56,52 +56,52 @@
 </head>
 <body>
 <main>
-  <h1>MyClash 訂閱合併</h1>
-  <p class="sub">把多個機場訂閱合併成一個訂閱網址（節點聯集），再自己在客戶端套用 MyClash 覆寫腳本。</p>
+  <h1>MyClash 订阅合并</h1>
+  <p class="sub">把多个机场订阅合并成一个订阅链接（节点并集），再自己在客户端套用 MyClash 覆写脚本。</p>
 
   <section class="card hidden" id="login-card">
-    <h2>連線設定</h2>
-    <label for="worker-url">Worker 網址（例如 https://myclash.xxx.workers.dev）</label>
-    <input type="url" id="worker-url" placeholder="https://myclash.你的帳號.workers.dev" autocomplete="off">
+    <h2>连接设置</h2>
+    <label for="worker-url">Worker 地址（例如 https://myclash.xxx.workers.dev）</label>
+    <input type="url" id="worker-url" placeholder="https://myclash.你的账号.workers.dev" autocomplete="off">
     <div class="row" style="margin-top:12px">
-      <button class="primary" id="login-btn">連線</button>
+      <button class="primary" id="login-btn">连接</button>
     </div>
     <div class="msg" id="login-msg"></div>
   </section>
 
   <section class="card hidden" id="list-card">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <h2 style="margin:0">我的合併訂閱</h2>
-      <button class="primary" id="new-btn">＋ 產生新的訂閱</button>
+      <h2 style="margin:0">我的合并订阅</h2>
+      <button class="primary" id="new-btn">＋ 生成新的订阅</button>
     </div>
     <div id="list"></div>
-    <details style="margin-top:14px"><summary>在別的裝置產生過？匯入 TOKEN</summary>
+    <details style="margin-top:14px"><summary>在别的设备生成过？导入 TOKEN</summary>
       <div class="row" style="margin-top:8px">
-        <input type="text" id="import-input" class="grow" placeholder="貼上 TOKEN 或完整的訂閱網址">
-        <button id="import-btn">匯入</button>
+        <input type="text" id="import-input" class="grow" placeholder="粘贴 TOKEN 或完整的订阅链接">
+        <button id="import-btn">导入</button>
       </div>
       <div class="msg" id="import-msg"></div>
     </details>
-    <p class="muted" style="margin-bottom:0">清單只記在這個瀏覽器裡；清除瀏覽器資料後，訂閱網址仍然有效，用「匯入 TOKEN」就能找回來。</p>
+    <p class="muted" style="margin-bottom:0">清单只记在这个浏览器里；清除浏览器数据后，订阅链接仍然有效，用「导入 TOKEN」就能找回来。</p>
   </section>
 
   <section class="card hidden" id="edit-card">
-    <h2 id="edit-title">產生新的訂閱</h2>
-    <label for="edit-name">名稱（顯示在客戶端的設定檔名稱）</label>
-    <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手機">
-    <label>機場訂閱（前綴名稱可留空，會自動用 S1、S2…）</label>
+    <h2 id="edit-title">生成新的订阅</h2>
+    <label for="edit-name">名称（显示在客户端的配置文件名称）</label>
+    <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手机">
+    <label>机场订阅（前缀名称可留空，会自动用 S1、S2…）</label>
     <div id="sources"></div>
     <div class="row">
-      <button id="add-src">＋ 新增一列</button>
-      <button id="bulk-btn">批次貼上</button>
+      <button id="add-src">＋ 添加一列</button>
+      <button id="bulk-btn">批量粘贴</button>
     </div>
     <div id="bulk-box" class="hidden" style="margin-top:8px">
-      <textarea id="bulk-text" placeholder="一行一個訂閱網址，或「名稱 網址」"></textarea>
+      <textarea id="bulk-text" placeholder="一行一个订阅链接，或「名称 链接」"></textarea>
       <div class="row" style="margin-top:6px"><button id="bulk-apply">加入</button></div>
     </div>
-    <p class="muted">前綴名稱請避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字樣，否則會影響 MyClash 腳本的地區分組與節點過濾。</p>
+    <p class="muted">前缀名称请避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字样，否则会影响 MyClash 脚本的地区分组与节点过滤。</p>
     <div class="row" style="margin-top:12px">
-      <button class="primary" id="save-btn">儲存並產生連結</button>
+      <button class="primary" id="save-btn">保存并生成链接</button>
       <button id="cancel-btn">取消</button>
     </div>
     <div class="msg" id="edit-msg"></div>
@@ -109,25 +109,25 @@
 
   <section class="card hidden" id="preview-card">
     <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0" id="preview-title">預覽</h2>
-      <div class="row"><button id="download-btn">下載 YAML</button><button id="close-preview">關閉</button></div>
+      <h2 style="margin:0" id="preview-title">预览</h2>
+      <div class="row"><button id="download-btn">下载 YAML</button><button id="close-preview">关闭</button></div>
     </div>
     <div class="muted" id="preview-info"></div>
     <pre id="preview"></pre>
   </section>
 
   <section class="card">
-    <h2>客戶端怎麼用</h2>
+    <h2>客户端怎么用</h2>
     <ol>
-      <li>按「複製連結」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客戶端新增<b>遠端訂閱</b>，並開啟自動更新。</li>
-      <li>對這個訂閱新增<b>腳本覆寫</b>，填入：
+      <li>按「复制链接」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。</li>
+      <li>对这个订阅添加<b>脚本覆写</b>，填入：
         <div class="link" id="script-url">https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js</div>
-        <button id="copy-script">複製腳本連結</button>
+        <button id="copy-script">复制脚本链接</button>
       </li>
-      <li><b>關閉客戶端的 DNS 覆寫</b>（MyClash 腳本要求）。</li>
+      <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
     </ol>
     <details><summary>安全提醒</summary>
-      <p class="muted">每個訂閱網址裡的 TOKEN 都等同密碼，拿到的人就能用你的節點，也能編輯或刪除這個訂閱。如果外流了，按「換 TOKEN」，舊網址會立刻失效，再把新網址貼回客戶端就好。</p>
+      <p class="muted">每个订阅链接里的 TOKEN 都等同密码，拿到的人就能用你的节点，也能编辑或删除这个订阅。如果外流了，按「换 TOKEN」，旧链接会立刻失效，再把新链接贴回客户端就好。</p>
     </details>
   </section>
 </main>
@@ -141,14 +141,14 @@
     del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch {} },
   };
 
-  // 由 Worker 本身提供這個頁面時，API 就在同一個網址，不用另外填
+  // 由 Worker 本身提供这个页面时，API 就在同一个地址，不用另外填
   const onWorker = /^https?:$/.test(location.protocol) && !location.hostname.endsWith('github.io');
   let workerUrl = onWorker ? location.origin : store.get('workerUrl', true);
   let editingToken = null;
   let previewText = '';
   let previewName = '';
 
-  // 這個瀏覽器產生或匯入過的 TOKEN
+  // 这个浏览器生成或导入过的 TOKEN
   function getTokens() {
     try { return JSON.parse(store.get('tokens', true) || '[]'); } catch { return []; }
   }
@@ -163,7 +163,7 @@
   }
   function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
   function subUrl(token) { return `${workerUrl}/sub/${token}`; }
-  function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-TW', { hour12: false }) : ''; }
+  function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : ''; }
 
   async function api(method, path, body) {
     const res = await fetch(workerUrl + '/api' + path, {
@@ -173,7 +173,7 @@
     });
     let data = {};
     try { data = await res.json(); } catch {}
-    if (!res.ok) throw new Error(data.error || `錯誤 ${res.status}`);
+    if (!res.ok) throw new Error(data.error || `错误 ${res.status}`);
     return data;
   }
 
@@ -182,24 +182,24 @@
       const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
       document.execCommand('copy'); t.remove();
     }
-    const old = btn.textContent; btn.textContent = '已複製 ✓'; setTimeout(() => (btn.textContent = old), 1500);
+    const old = btn.textContent; btn.textContent = '已复制 ✓'; setTimeout(() => (btn.textContent = old), 1500);
   }
 
-  // --- 連線（只有 GitHub Pages 版需要） ---
+  // --- 连接（只有 GitHub Pages 版需要） ---
   async function connect() {
     if (!onWorker) workerUrl = $('worker-url').value.trim().replace(/\/+$/, '');
-    if (!/^https?:\/\//.test(workerUrl)) return showMsg($('login-msg'), '請填入完整的 Worker 網址（https:// 開頭）');
+    if (!/^https?:\/\//.test(workerUrl)) return showMsg($('login-msg'), '请填入完整的 Worker 地址（https:// 开头）');
     $('login-btn').disabled = true;
     try {
       await api('GET', '/ping');
       if (!onWorker) {
         store.set('workerUrl', workerUrl, true);
-        showMsg($('login-msg'), '已連線', true);
+        showMsg($('login-msg'), '已连接', true);
       }
       $('list-card').classList.remove('hidden');
       await loadList();
     } catch (e) {
-      showMsg($('login-msg'), e.message === 'Failed to fetch' ? '連不到 Worker，請確認網址正確且已部署完成' : e.message);
+      showMsg($('login-msg'), e.message === 'Failed to fetch' ? '连不到 Worker，请确认地址正确且已部署完成' : e.message);
     } finally { $('login-btn').disabled = false; }
   }
   $('login-btn').onclick = connect;
@@ -213,31 +213,31 @@
       api('GET', '/subs/' + t).catch((e) => (/找不到/.test(e.message) ? null : { token: t, error: e.message }))));
     const items = results.filter(Boolean);
     saveTokens(items.map((it) => it.token));
-    if (!items.length) { list.innerHTML = '<p class="muted">還沒有任何合併訂閱，按右上角「產生新的訂閱」開始。</p>'; return; }
+    if (!items.length) { list.innerHTML = '<p class="muted">还没有任何合并订阅，按右上角「生成新的订阅」开始。</p>'; return; }
     list.innerHTML = items.map((it) => `
       <div class="item" data-token="${escapeHtml(it.token)}" data-name="${escapeHtml(it.name || '')}">
-        <div class="item-title">${it.error ? '<span class="muted">讀取失敗：' + escapeHtml(it.error) + '</span>'
-          : escapeHtml(it.name) + ' <span class="muted">· ' + it.sources.length + ' 個機場 · 更新於 ' + fmtTime(it.updatedAt) + '</span>'}</div>
+        <div class="item-title">${it.error ? '<span class="muted">读取失败：' + escapeHtml(it.error) + '</span>'
+          : escapeHtml(it.name) + ' <span class="muted">· ' + it.sources.length + ' 个机场 · 更新于 ' + fmtTime(it.updatedAt) + '</span>'}</div>
         <div class="link">${escapeHtml(subUrl(it.token))}</div>
         <div class="row">
-          <button data-act="copy" class="primary">複製連結</button>
-          <button data-act="import">一鍵匯入 Clash</button>
-          <button data-act="preview">預覽</button>
-          <button data-act="edit">編輯</button>
-          <button data-act="rotate">換 TOKEN</button>
-          <button data-act="delete" class="danger">刪除</button>
+          <button data-act="copy" class="primary">复制链接</button>
+          <button data-act="import">一键导入 Clash</button>
+          <button data-act="preview">预览</button>
+          <button data-act="edit">编辑</button>
+          <button data-act="rotate">换 TOKEN</button>
+          <button data-act="delete" class="danger">删除</button>
         </div>
       </div>`).join('');
   }
 
   $('import-btn').onclick = async () => {
     const m = $('import-input').value.match(/[a-f0-9]{32}/);
-    if (!m) return showMsg($('import-msg'), '找不到 TOKEN，請貼上 32 碼的 TOKEN 或完整訂閱網址');
+    if (!m) return showMsg($('import-msg'), '找不到 TOKEN，请粘贴 32 位的 TOKEN 或完整订阅链接');
     try {
       await api('GET', '/subs/' + m[0]);
       addToken(m[0]);
       $('import-input').value = '';
-      showMsg($('import-msg'), '已匯入', true);
+      showMsg($('import-msg'), '已导入', true);
       await loadList();
     } catch (e) { showMsg($('import-msg'), e.message); }
   };
@@ -256,14 +256,14 @@
         case 'preview': return preview(token, name);
         case 'edit': return openEditor(await api('GET', '/subs/' + token));
         case 'rotate':
-          if (!confirm(`「${name}」換新 TOKEN 後，舊的訂閱網址會立刻失效，要繼續嗎？`)) return;
+          if (!confirm(`「${name}」换新 TOKEN 后，旧的订阅链接会立刻失效，要继续吗？`)) return;
           {
             const { token: next } = await api('POST', `/subs/${token}/rotate`);
             saveTokens(getTokens().map((t) => (t === token ? next : t)));
           }
           return loadList();
         case 'delete':
-          if (!confirm(`確定刪除「${name}」？使用這個網址的客戶端將無法再更新。`)) return;
+          if (!confirm(`确定删除「${name}」？使用这个链接的客户端将无法再更新。`)) return;
           await api('DELETE', '/subs/' + token);
           removeToken(token);
           return loadList();
@@ -271,12 +271,12 @@
     } catch (err) { alert(err.message); }
   });
 
-  // --- 編輯 ---
+  // --- 编辑 ---
   function addSourceRow(src = {}) {
     const row = document.createElement('div');
     row.className = 'src-row';
-    row.innerHTML = `<input type="text" placeholder="前綴（選填）" maxlength="20">
-      <input type="url" placeholder="https://機場訂閱網址">
+    row.innerHTML = `<input type="text" placeholder="前缀（选填）" maxlength="20">
+      <input type="url" placeholder="https://机场订阅链接">
       <button class="danger" title="移除">✕</button>`;
     row.children[0].value = src.name || '';
     row.children[1].value = src.url || '';
@@ -286,7 +286,7 @@
 
   function openEditor(record) {
     editingToken = record ? record.token : null;
-    $('edit-title').textContent = record ? `編輯「${record.name}」` : '產生新的訂閱';
+    $('edit-title').textContent = record ? `编辑「${record.name}」` : '生成新的订阅';
     $('edit-name').value = record ? record.name : '';
     $('sources').innerHTML = '';
     (record ? record.sources : [{}, {}]).forEach(addSourceRow);
@@ -317,8 +317,8 @@
     const sources = [...$('sources').children]
       .map((r) => ({ name: r.children[0].value.trim(), url: r.children[1].value.trim() }))
       .filter((s) => s.url);
-    if (!name) return showMsg($('edit-msg'), '請填名稱');
-    if (!sources.length) return showMsg($('edit-msg'), '至少要填一個機場訂閱網址');
+    if (!name) return showMsg($('edit-msg'), '请填名称');
+    if (!sources.length) return showMsg($('edit-msg'), '至少要填一个机场订阅链接');
     $('save-btn').disabled = true;
     try {
       const saved = editingToken
@@ -333,11 +333,11 @@
     finally { $('save-btn').disabled = false; }
   };
 
-  // --- 預覽 ---
+  // --- 预览 ---
   async function preview(token, name) {
     $('preview-card').classList.remove('hidden');
-    $('preview-title').textContent = `預覽：${name}`;
-    $('preview-info').textContent = '抓取中…（會即時抓取所有機場，可能要幾秒）';
+    $('preview-title').textContent = `预览：${name}`;
+    $('preview-info').textContent = '抓取中…（会即时抓取所有机场，可能要几秒）';
     $('preview').textContent = '';
     $('preview-card').scrollIntoView({ behavior: 'smooth' });
     try {
@@ -345,18 +345,18 @@
       previewText = await res.text();
       previewName = name;
       const info = res.headers.get('subscription-userinfo');
-      const count = [...previewText.matchAll(/\] (\d+) 個節點/g)].reduce((n, m) => n + Number(m[1]), 0);
-      let infoText = res.ok ? `節點數：${count}` : `錯誤 ${res.status}`;
+      const count = [...previewText.matchAll(/\] (\d+) 个节点/g)].reduce((n, m) => n + Number(m[1]), 0);
+      let infoText = res.ok ? `节点数：${count}` : `错误 ${res.status}`;
       if (info) {
         const v = Object.fromEntries(info.split(';').map((p) => p.trim().split('=')));
         const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1) + ' GB';
-        infoText += `　已用 ${gb(Number(v.upload) + Number(v.download))} / 總共 ${gb(v.total)}`;
-        if (Number(v.expire)) infoText += `　最早到期 ${new Date(Number(v.expire) * 1000).toLocaleDateString('zh-TW')}`;
+        infoText += `　已用 ${gb(Number(v.upload) + Number(v.download))} / 总共 ${gb(v.total)}`;
+        if (Number(v.expire)) infoText += `　最早到期 ${new Date(Number(v.expire) * 1000).toLocaleDateString('zh-CN')}`;
       }
       $('preview-info').textContent = infoText;
       $('preview').textContent = previewText;
     } catch (e) {
-      $('preview-info').textContent = '抓取失敗：' + e.message;
+      $('preview-info').textContent = '抓取失败：' + e.message;
     }
   }
   $('close-preview').onclick = () => $('preview-card').classList.add('hidden');

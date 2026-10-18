@@ -4,7 +4,7 @@ import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, GROUP_NAM
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
-test('YAML 訂閱：取出 proxies / dns / hosts', () => {
+test('YAML 订阅：取出 proxies / dns / hosts', () => {
   const r = parseSubscription(`
 dns:
   proxy-server-nameserver: [https://1.1.1.1/dns-query]
@@ -20,7 +20,7 @@ proxies:
   assert.ok(r.dns['proxy-server-nameserver']);
 });
 
-test('base64 URI 列表：各協定解析', () => {
+test('base64 URI 列表：各协定解析', () => {
   const vmess = 'vmess://' + b64(JSON.stringify({ ps: '日本 01', add: 'v.com', port: '443', id: 'uuid-1', aid: '0', net: 'ws', path: '/ws', host: 'h.com', tls: 'tls', sni: 's.com' }));
   const list = [
     'ss://' + b64('aes-256-gcm:pass') + '@ss.com:8388#%E9%A6%99%E6%B8%AF%2001',
@@ -47,7 +47,7 @@ test('base64 URI 列表：各協定解析', () => {
   assert.equal(hy['obfs-password'], 'op');
 });
 
-test('ss SIP002 舊格式（整段 base64）與 obfs 外掛', () => {
+test('ss SIP002 旧格式（整段 base64）与 obfs 插件', () => {
   const old = parseUri('ss://' + b64('chacha20-ietf-poly1305:p@1.2.3.4:443') + '#n');
   assert.equal(old.server, '1.2.3.4');
   assert.equal(old.password, 'p');
@@ -55,7 +55,7 @@ test('ss SIP002 舊格式（整段 base64）與 obfs 外掛', () => {
   assert.deepEqual(obfs['plugin-opts'], { mode: 'http', host: 'x.com' });
 });
 
-test('合併：前綴、去重、dialer-proxy 改名、dns/hosts 合併', () => {
+test('合并：前缀、去重、dialer-proxy 改名、dns/hosts 合并', () => {
   const a = { proxies: [{ name: 'HK', type: 'ss' }, { name: 'HK', type: 'ss' }, { name: 'chain', type: 'ss', 'dialer-proxy': 'HK' }], dns: { 'proxy-server-nameserver': ['1.1.1.1'], 'nameserver-policy': { a: 'x' } }, hosts: { a: '1' }, skipped: 0 };
   const b = { proxies: [{ name: 'HK', type: 'ss' }], dns: { 'proxy-server-nameserver': ['8.8.8.8'], 'nameserver-policy': { b: 'y' } }, hosts: { b: '2' }, skipped: 0 };
   const c = mergeSubscriptions([{ prefix: 'S1', parsed: a }, { prefix: 'S2', parsed: b }]);
@@ -69,7 +69,7 @@ test('合併：前綴、去重、dialer-proxy 改名、dns/hosts 合併', () => 
   assert.ok(!('proxy-providers' in c));
 });
 
-test('subscription-userinfo 加總', () => {
+test('subscription-userinfo 加总', () => {
   assert.equal(
     sumUserinfo(['upload=1; download=2; total=10; expire=200', null, 'upload=3; download=4; total=20; expire=100', 'upload=0; download=0; total=5; expire=0']),
     'upload=4; download=6; total=35; expire=100',
