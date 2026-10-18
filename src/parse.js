@@ -380,3 +380,45 @@ export function dumpConfig(config, comments = []) {
   const body = yaml.dump(config, { lineWidth: -1, noRefs: true });
   return header ? `${header}\n${body}` : body;
 }
+
+// 机场名称里这些字会被 MyClash 脚本当成「信息节点」过滤掉，所以去掉
+const NAME_NOISE = /机场|機場|订阅|訂閱|官网|官網/g;
+
+/**
+ * 从订阅响应识别机场名称：先看 Content-Disposition 的文件名，没有就用订阅域名
+ * @param {string | null} contentDisposition
+ * @param {string} url
+ */
+export function detectAirportName(contentDisposition, url) {
+  return cleanName(fileNameFrom(contentDisposition)) || cleanName(domainLabel(url)) || '';
+}
+
+function fileNameFrom(cd) {
+  if (!cd) return '';
+  const star = cd.match(/filename\*\s*=\s*(?:[\w-]+)?'[^']*'([^;]+)/i);
+  if (star) return safeDecode(star[1].trim().replace(/^"|"$/g, ''));
+  const plain = cd.match(/filename\s*=\s*("([^"]*)"|[^;]+)/i);
+  return plain ? safeDecode((plain[2] ?? plain[1]).trim()) : '';
+}
+
+function domainLabel(url) {
+  try {
+    const labels = new URL(url).hostname.split('.').filter(Boolean);
+    if (labels.length === 0 || /^\d+$/.test(labels[labels.length - 1])) return ''; // IP 不当名称
+    // 取主域名，例如 sub.example.co.uk → example、api.foo.com → foo
+    const tail = labels.length >= 3 && /^(com|net|org|co|ac|gov|edu)$/.test(labels[labels.length - 2]) ? 3 : 2;
+    return labels[labels.length - tail] ?? labels[0];
+  } catch {
+    return '';
+  }
+}
+
+function cleanName(name) {
+  return String(name ?? '')
+    .replace(/\.(ya?ml|txt|conf)$/i, '')
+    .replace(NAME_NOISE, '')
+    .replace(/[|\r\n]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 20);
+}

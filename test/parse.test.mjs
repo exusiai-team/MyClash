@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, GROUP_NAME } from '../src/parse.js';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
@@ -75,4 +75,14 @@ test('subscription-userinfo 加总', () => {
     'upload=4; download=6; total=35; expire=100',
   );
   assert.equal(sumUserinfo([null, undefined]), null);
+});
+
+test('识别机场名称：Content-Disposition 优先，其次域名', () => {
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''%E9%AD%94%E6%B3%95%E6%9C%BA%E5%9C%BA.yaml", 'https://x.com'), '魔法');
+  assert.equal(detectAirportName('attachment; filename="FlyCloud"', 'https://x.com'), 'FlyCloud');
+  assert.equal(detectAirportName('attachment; filename=Speed%20Net.yml', 'https://x.com'), 'Speed Net');
+  assert.equal(detectAirportName(null, 'https://sub.abc-cloud.com/api/v1/client?token=1'), 'abc-cloud');
+  assert.equal(detectAirportName(null, 'https://api.foo.co.uk/s'), 'foo');
+  assert.equal(detectAirportName('attachment', 'http://1.2.3.4:8080/s'), '');
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''A%7CB", 'https://x.com'), 'A B');
 });

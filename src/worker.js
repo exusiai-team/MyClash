@@ -1,9 +1,11 @@
-import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig } from './parse.js';
+import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig, detectAirportName } from './parse.js';
 
 const KEY_PREFIX = 'sub:';
 const FETCH_TIMEOUT_MS = 15000;
 const FETCH_UA = 'clash.meta';
 const MAX_SOURCES = 30;
+// 节点前缀：name = 机场名称（自定义 > 自动识别），index = S1、S2…（自定义 > 序号），none = 不加
+const PREFIX_MODES = ['name', 'index', 'none'];
 
 export default {
   async fetch(request, env) {
@@ -31,7 +33,8 @@ async function serveSubscription(env, token) {
   const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
-  const results = await Promise.all(record.sources.map((source, i) => fetchSource(source, i)));
+  const mode = record.prefixMode ?? 'index';
+  const results = await Promise.all(record.sources.map((source, i) => fetchSource(source, i, mode)));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) return text('所有机场订阅都抓取失败或没有节点，请稍后再试', 502);
 
@@ -41,8 +44,8 @@ async function serveSubscription(env, token) {
     `更新时间：${new Date().toISOString()}`,
     ...results.map((r) =>
       r.parsed
-        ? `[${r.prefix}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}`
-        : `[${r.prefix}] 失败：${r.error}`,
+        ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}`
+        : `[${r.label}] 失败：${r.error}`,
     ),
   ];
 
@@ -58,20 +61,29 @@ async function serveSubscription(env, token) {
   return new Response(dumpConfig(config, comments), { headers });
 }
 
-async function fetchSource(source, index) {
-  const prefix = source.name || `S${index + 1}`;
+async function fetchSource(source, index, mode) {
+  const fallback = source.name || `S${index + 1}`;
+  let label = fallback;
+  let prefix = mode === 'none' ? '' : fallback;
   try {
     const res = await fetch(source.url, {
       headers: { 'User-Agent': FETCH_UA },
       redirect: 'follow',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return { prefix, error: `HTTP ${res.status}` };
+    if (!source.name) {
+      const detected = detectAirportName(res.headers.get('content-disposition'), source.url);
+      if (detected) {
+        label = detected;
+        if (mode === 'name') prefix = detected;
+      }
+    }
+    if (!res.ok) return { label, prefix, error: `HTTP ${res.status}` };
     const parsed = parseSubscription(await res.text());
-    if (parsed.proxies.length === 0) return { prefix, parsed, error: '没有可用节点' };
-    return { prefix, parsed, userinfo: res.headers.get('subscription-userinfo') };
+    if (parsed.proxies.length === 0) return { label, prefix, parsed, error: '没有可用节点' };
+    return { label, prefix, parsed, userinfo: res.headers.get('subscription-userinfo') };
   } catch (err) {
-    return { prefix, error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
+    return { label, prefix, error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
   }
 }
 
@@ -163,7 +175,8 @@ function validate(input) {
     const sourceName = String(s?.name ?? '').trim().slice(0, 20);
     return { name: sourceName, url };
   });
-  return { name, sources };
+  const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
+  return { name, prefixMode, sources };
 }
 
 function newToken() {
