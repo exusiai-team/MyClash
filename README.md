@@ -38,6 +38,23 @@
 2. 按「生成新的订阅」，填名称并粘贴各机场的订阅链接（可用「批量粘贴」，一行一个）
 3. 按「保存并生成链接」，再按「复制链接」或「一键导入 Clash」
 
+### 第 3 步（选做）：代抓缓存，解决机场屏蔽 Cloudflare
+
+有些机场会屏蔽 Cloudflare Workers，Worker 抓它们时会得到 `HTTP 403`。
+GitHub Actions 每 3 小时会从 GitHub 的机器（不是 Cloudflare 的 IP）把所有机场订阅抓一次，存进 Worker 的 KV；
+Worker 直连失败时就改用这份缓存（最多保留 3 天）。只要设置一次：
+
+1. 到 Cloudflare 的 [API 令牌](https://dash.cloudflare.com/profile/api-tokens) → **创建令牌** → **创建自定义令牌**
+   - 权限：`账户` / `Workers KV 存储` / `编辑`
+   - 账户资源：包括你的账户
+2. 复制令牌，到本仓库 **Settings → Secrets and variables → Actions → New repository secret**，
+   名称填 `CLOUDFLARE_API_TOKEN`，值贴上令牌
+3. 到 **Actions → 代抓订阅缓存 → Run workflow** 手动执行一次，之后就会每 3 小时自动执行
+
+> 一般不用再填其他东西：账号与 KV 会自动找。若执行失败并提示「请在 Secrets 里直接指定」，
+> 再加上 `CLOUDFLARE_ACCOUNT_ID`（Cloudflare 首页右侧的账户 ID）与 `KV_NAMESPACE_ID`（存储和数据库 → KV 里 `myclash-sub-store` 的 ID）。
+> 日志只会印出数量，不会印出订阅链接或节点内容。
+
 ## 客户端设置
 
 1. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端，把合并订阅链接加成**远程订阅**，并打开自动更新
@@ -62,10 +79,13 @@
 
   也可以给单个机场填自定义前缀（「不加前缀」时不生效）。自定义前缀请避免
   「香港、日本、美国、HK、US、JP、机场、订阅」等字样，否则会影响 MyClash 脚本的地区分组和节点过滤。
-- **抓取失败**：少数机场会屏蔽 Cloudflare 的 IP，或返回不支持的格式。失败的机场会被跳过，并在配置文件开头用注释标明；
+- **抓取失败**：少数机场会屏蔽 Cloudflare 的 IP（显示 `HTTP 403`），或返回不支持的格式。设置好下面的「代抓缓存」后，
+  被屏蔽的机场会改用 GitHub Actions 代抓的缓存；仍然失败的机场会被跳过，并在配置文件开头用注释标明。
+  管理页按「预览」可以看到每个机场是「直连」「缓存」还是「失败」。
   全部失败时 Worker 会返回错误，客户端会保留上一次成功的配置。建议优先使用机场提供的 Clash / Meta 订阅链接。
 - **免费额度**：Cloudflare Workers 免费方案每天 10 万次请求、KV 每天 1000 次写入，个人使用绰绰有余。
 - **更新程序**：Worker 和管理页都在本仓库，push 后 Cloudflare 会自动重新部署。
+- **依赖自动更新**：Dependabot 每月 1 号检查所有 npm 依赖和 GitHub Actions 的新版本，开一个 PR（CI 每次都用最新的 Node 版本）；测试通过后自动合并到 `main`，Cloudflare 随即重新部署。
 
 ## 开发
 

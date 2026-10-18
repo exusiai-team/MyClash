@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import yaml from 'js-yaml';
 import worker from '../src/worker.js';
+import { cacheKey } from '../src/cache.js';
 
 // 内存版 KV，只实作 worker 用到的方法
 function memoryKv() {
@@ -49,6 +50,9 @@ function startUpstream() {
     } else if (req.url === '/b64') {
       res.setHeader('subscription-userinfo', 'upload=10; download=20; total=50; expire=1900000000');
       res.end(b64(['trojan://pw@us.node:443#美国 01', 'trojan://pw@hk2.node:443#香港 01'].join('\n')));
+    } else if (req.url === '/blocked') {
+      res.statusCode = 403;
+      res.end('blocked');
     } else {
       res.statusCode = 500;
       res.end('boom');
@@ -157,6 +161,44 @@ test('节点前缀三种模式：机场名称 / S1S2 / 不加', async (t) => {
 
   const bad = await (await call(env, 'POST', '/api/subs', { body: { name: 'y', prefixMode: '??', sources: [{ url: base }] } })).json();
   assert.equal(bad.prefixMode, 'name');
+});
+
+test('直连失败时改用 GitHub Actions 代抓的缓存', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', {
+      body: { name: 'x', sources: [{ url: `${base}/blocked` }, { name: '没缓存', url: `${base}/fail` }] },
+    })
+  ).json();
+
+  // 没有缓存：全部失败
+  assert.equal((await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).status, 502);
+
+  await env.SUB_STORE.put(
+    await cacheKey(`${base}/blocked`),
+    JSON.stringify({
+      body: yaml.dump({ proxies: [{ name: '台湾 01', type: 'ss', server: 'tw.node', port: 1, cipher: 'aes-128-gcm', password: 'x' }] }),
+      disposition: "attachment; filename*=UTF-8''%E5%90%B9%E9%9B%AA",
+      userinfo: 'upload=1; download=1; total=10; expire=0',
+      fetchedAt: Date.now() - 2 * 3600 * 1000,
+    }),
+  );
+  const res = await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('subscription-userinfo'), 'upload=1; download=1; total=10; expire=0');
+  const body = await res.text();
+  assert.match(body, /\[吹雪\] 1 个节点（直连失败：HTTP 403，使用 2 小时前的缓存）/);
+  assert.match(body, /\[没缓存\] 失败：HTTP 500/);
+  assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['吹雪 | 台湾 01']);
+});
+
+test('缓存键名是链接的 SHA-256，不含链接本身', async () => {
+  const key = await cacheKey('https://a.test/sub?token=secret');
+  assert.match(key, /^cache:[a-f0-9]{64}$/);
+  assert.equal(key, await cacheKey('https://a.test/sub?token=secret'));
 });
 
 test('没有绑定 KV（预览版本）时给出明确提示', async () => {
