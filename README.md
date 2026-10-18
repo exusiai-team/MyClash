@@ -21,7 +21,7 @@
 
    | 欄位 | 填寫 |
    | --- | --- |
-   | 專案名稱 | `myclash-sub` |
+   | 專案名稱 | `myclash`（必須和 `wrangler.jsonc` 的 `name` 一致） |
    | 生產分支 | `claude/kind-keller-5wfjpq`（倉庫的預設分支） |
    | 建置命令 | 留空 |
    | 部署命令 | `npx wrangler deploy` |
@@ -29,7 +29,7 @@
 
 4. 部署完成後，進入這個 Worker 的 **設定 → 變數和機密 → 新增**：類型選 **密鑰（Secret）**，
    名稱 `ADMIN_PASSWORD`，值填你自己的管理密碼（登入管理頁時要用），儲存
-5. 打開 Worker 網址（長得像 `https://myclash-sub.你的帳號.workers.dev`），**這就是管理頁**
+5. 打開 Worker 網址（長得像 `https://myclash.你的帳號.workers.dev`），**這就是管理頁**
 
 > 存訂閱用的 KV 資料庫會在部署時自動建立，不用另外設定。
 > 之後 push 到本倉庫，Cloudflare 會自動重新部署 Worker 和管理頁。
@@ -63,7 +63,7 @@
 - **抓取失敗**：少數機場會封鎖 Cloudflare 的 IP，或回傳不支援的格式。失敗的機場會被跳過，並在設定檔開頭用註解標示；
   全部失敗時 Worker 會回傳錯誤，客戶端會保留上一次成功的設定。建議優先使用機場提供的 Clash / Meta 訂閱連結。
 - **免費額度**：Cloudflare Workers 免費方案每天 10 萬次請求、KV 每天 1000 次寫入，個人使用綽綽有餘。
-- **管理密碼**：要修改的話，到 Cloudflare 後台 → Workers → `myclash-sub` → 設定 → 變數和機密，修改 `ADMIN_PASSWORD`。
+- **管理密碼**：要修改的話，到 Cloudflare 後台 → Workers → `myclash` → 設定 → 變數和機密，修改 `ADMIN_PASSWORD`。
 - **更新程式**：Worker 和管理頁都在本倉庫，push 後 Cloudflare 會自動重新部署。
 
 ## 開發
