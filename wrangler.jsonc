@@ -4,10 +4,8 @@
   "main": "src/worker.js",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
-  // 存放訂閱組的 KV；一鍵部署時會自動建立，不用填 id
+  // 存放訂閱組的 KV；部署時會自動建立，不用填 id
   "kv_namespaces": [{ "binding": "SUBS" }],
-  "vars": {
-    // GitHub Pages 管理頁網址（只用來顯示在 Worker 首頁，可留空）
-    "PAGES_URL": "https://silverwolfxai.github.io/MyClash/"
-  }
+  // 管理頁：打開 Worker 網址就是管理頁
+  "assets": { "directory": "./docs" }
 }

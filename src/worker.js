@@ -28,18 +28,13 @@ async function route(request, env) {
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean);
 
-  if (parts.length === 0) return text(homeText(env));
+  if (parts.length === 0) return text('MyClash 訂閱合併 Worker 運作中。合併訂閱網址：/sub/<TOKEN>\n');
   if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1]);
   if (parts[0] === 'api') {
     await requireAdmin(request, env);
     return api(request, env, parts.slice(1));
   }
   return json({ error: '找不到' }, 404);
-}
-
-function homeText(env) {
-  const pages = env.PAGES_URL ? `\n管理頁：${env.PAGES_URL}` : '';
-  return `MyClash 訂閱合併 Worker 運作中。${pages}\n合併訂閱網址：/sub/<TOKEN>\n`;
 }
 
 // --- 訂閱輸出 ---
