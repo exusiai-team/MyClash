@@ -22,21 +22,19 @@
    | 欄位 | 填寫 |
    | --- | --- |
    | 專案名稱 | `myclash`（必須和 `wrangler.jsonc` 的 `name` 一致） |
-   | 生產分支 | `claude/kind-keller-5wfjpq`（倉庫的預設分支） |
+   | 生產分支 | `main` |
    | 建置命令 | 留空 |
    | 部署命令 | `npx wrangler deploy` |
    | 根目錄 | `/` |
 
-4. 部署完成後，進入這個 Worker 的 **設定 → 變數和機密 → 新增**：類型選 **密鑰（Secret）**，
-   名稱 `ADMIN_PASSWORD`，值填你自己的管理密碼（登入管理頁時要用），儲存
-5. 打開 Worker 網址（長得像 `https://myclash.你的帳號.workers.dev`），**這就是管理頁**
+4. 打開 Worker 網址（長得像 `https://myclash.你的帳號.workers.dev`），**這就是管理頁**
 
 > 存訂閱用的 KV 資料庫會在部署時自動建立，不用另外設定。
 > 之後 push 到本倉庫，Cloudflare 會自動重新部署 Worker 和管理頁。
 
 ### 第 2 步：產生合併訂閱
 
-1. 打開 Worker 網址，輸入管理密碼，按「登入」（預設會記住密碼，下次打開自動登入）
+1. 打開 Worker 網址（不用密碼）
 2. 按「產生新的訂閱」，填名稱並貼上各機場的訂閱網址（可用「批次貼上」，一行一個）
 3. 按「儲存並產生連結」，再按「複製連結」或「一鍵匯入 Clash」
 
@@ -57,13 +55,14 @@
 
 ## 注意事項
 
-- **TOKEN 等同密碼**：拿到訂閱網址的人就能用你的節點。外流時在管理頁按「換 TOKEN」，舊網址會立即失效。
+- **TOKEN 等同密碼**：拿到訂閱網址的人就能用你的節點，也能編輯或刪除這個訂閱。外流時在管理頁按「換 TOKEN」，舊網址會立即失效。
+- **不需要管理密碼**：Worker 沒有「列出所有訂閱」的功能，別人打開管理頁只會看到他自己產生的訂閱，看不到你的。
+  管理頁的清單記在你的瀏覽器裡；換裝置或清除瀏覽器資料後，用「匯入 TOKEN」貼上訂閱網址就能找回來。
 - **節點前綴**：每個機場的節點都會加上前綴（例如 `S1 | 香港 01`）避免重名。自訂前綴時，請避免
   「香港、日本、美国、HK、US、JP、机场、订阅」等字樣，否則會影響 MyClash 腳本的地區分組和節點過濾。
 - **抓取失敗**：少數機場會封鎖 Cloudflare 的 IP，或回傳不支援的格式。失敗的機場會被跳過，並在設定檔開頭用註解標示；
   全部失敗時 Worker 會回傳錯誤，客戶端會保留上一次成功的設定。建議優先使用機場提供的 Clash / Meta 訂閱連結。
 - **免費額度**：Cloudflare Workers 免費方案每天 10 萬次請求、KV 每天 1000 次寫入，個人使用綽綽有餘。
-- **管理密碼**：要修改的話，到 Cloudflare 後台 → Workers → `myclash` → 設定 → 變數和機密，修改 `ADMIN_PASSWORD`。
 - **更新程式**：Worker 和管理頁都在本倉庫，push 後 Cloudflare 會自動重新部署。
 
 ## 開發
@@ -71,16 +70,14 @@
 ```bash
 npm install
 npm test                                     # 單元測試
-echo "ADMIN_PASSWORD=test" > .dev.vars
 npx wrangler dev                             # 本機執行 Worker（含本機 KV）
 ```
 
 | 路徑 | 說明 |
 | --- | --- |
 | `GET /sub/<TOKEN>` | 合併後的訂閱（mihomo YAML） |
-| `GET /api/subs` | 列出所有訂閱組（需 `Authorization: Bearer <ADMIN_PASSWORD>`） |
 | `POST /api/subs` | 新增，內容 `{ "name": "...", "sources": [{ "name": "", "url": "https://..." }] }` |
-| `GET` / `PUT` / `DELETE /api/subs/<TOKEN>` | 查詢、編輯、刪除 |
+| `GET` / `PUT` / `DELETE /api/subs/<TOKEN>` | 查詢、編輯、刪除（持有 TOKEN 即可） |
 | `POST /api/subs/<TOKEN>/rotate` | 換新 TOKEN |
 
 ## 致謝

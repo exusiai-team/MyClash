@@ -30,10 +30,7 @@ async function route(request, env) {
 
   if (parts.length === 0) return text('MyClash 訂閱合併 Worker 運作中。合併訂閱網址：/sub/<TOKEN>\n');
   if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1]);
-  if (parts[0] === 'api') {
-    await requireAdmin(request, env);
-    return api(request, env, parts.slice(1));
-  }
+  if (parts[0] === 'api') return api(request, env, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
 
@@ -98,35 +95,12 @@ class HttpError extends Error {
   }
 }
 
-async function requireAdmin(request, env) {
-  if (!env.ADMIN_PASSWORD) {
-    throw new HttpError(503, '尚未設定 ADMIN_PASSWORD，請到 Cloudflare Worker 的「設定 → 變數和機密」新增');
-  }
-  const auth = request.headers.get('Authorization') ?? '';
-  const given = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!(await safeEqual(given, env.ADMIN_PASSWORD))) throw new HttpError(401, '管理密碼錯誤');
-}
-
-async function safeEqual(a, b) {
-  const enc = new TextEncoder();
-  const [ha, hb] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(a)),
-    crypto.subtle.digest('SHA-256', enc.encode(b)),
-  ]);
-  const x = new Uint8Array(ha);
-  const y = new Uint8Array(hb);
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-  return diff === 0;
-}
-
 async function api(request, env, parts) {
   const { method } = request;
   if (parts[0] === 'ping' && parts.length === 1) return json({ ok: true });
   if (parts[0] !== 'subs') throw new HttpError(404, '找不到');
 
   if (parts.length === 1) {
-    if (method === 'GET') return json({ items: await listRecords(env) });
     if (method === 'POST') {
       const input = validate(await readJson(request));
       const now = Date.now();
@@ -166,27 +140,8 @@ async function api(request, env, parts) {
   throw new HttpError(405, '不支援的操作');
 }
 
-async function listRecords(env) {
-  const items = [];
-  let cursor;
-  do {
-    const page = await env.SUB_STORE.list({ prefix: KEY_PREFIX, cursor });
-    for (const key of page.keys) {
-      items.push({ token: key.name.slice(KEY_PREFIX.length), ...(key.metadata ?? {}) });
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  return items.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-}
-
 function putRecord(env, token, record) {
-  const metadata = {
-    name: record.name,
-    count: record.sources.length,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
-  return env.SUB_STORE.put(KEY_PREFIX + token, JSON.stringify(record), { metadata });
+  return env.SUB_STORE.put(KEY_PREFIX + token, JSON.stringify(record));
 }
 
 async function readJson(request) {

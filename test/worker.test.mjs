@@ -27,7 +27,6 @@ function memoryKv() {
   };
 }
 
-const PASSWORD = 'correct-horse';
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
 function startUpstream() {
@@ -55,9 +54,8 @@ function startUpstream() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-function call(env, method, path, { body, password = PASSWORD } = {}) {
+function call(env, method, path, { body } = {}) {
   const headers = {};
-  if (password !== null) headers.Authorization = `Bearer ${password}`;
   if (body) headers['Content-Type'] = 'application/json';
   return worker.fetch(
     new Request(`https://w.test${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }),
@@ -65,29 +63,25 @@ function call(env, method, path, { body, password = PASSWORD } = {}) {
   );
 }
 
-test('管理 API：權限檢查', async () => {
-  const env = { SUB_STORE: memoryKv(), ADMIN_PASSWORD: PASSWORD };
-  assert.equal((await call(env, 'GET', '/api/ping', { password: 'wrong' })).status, 401);
-  assert.equal((await call(env, 'GET', '/api/ping', { password: null })).status, 401);
+test('沒有管理密碼也能用，且不提供列出全部訂閱的 API', async () => {
+  const env = { SUB_STORE: memoryKv() };
   assert.equal((await call(env, 'GET', '/api/ping')).status, 200);
-  const unset = await call({ SUB_STORE: memoryKv() }, 'GET', '/api/ping');
-  assert.equal(unset.status, 503);
-  assert.match((await unset.json()).error, /ADMIN_PASSWORD/);
+  assert.equal((await call(env, 'GET', '/api/subs')).status, 404);
+  assert.equal((await call(env, 'GET', '/api/subs/' + '0'.repeat(32))).status, 404);
   assert.equal((await worker.fetch(new Request('https://w.test/api/subs', { method: 'OPTIONS' }), env)).status, 204);
 });
 
-test('管理 API：新增 / 列表 / 編輯 / 換 TOKEN / 刪除', async () => {
-  const env = { SUB_STORE: memoryKv(), ADMIN_PASSWORD: PASSWORD };
+test('管理 API：新增 / 查詢 / 編輯 / 換 TOKEN / 刪除', async () => {
+  const env = { SUB_STORE: memoryKv() };
   const bad = await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ url: 'ftp://a' }] } });
   assert.equal(bad.status, 400);
 
   const created = await (await call(env, 'POST', '/api/subs', { body: { name: '手機', sources: [{ name: 'A', url: 'https://a.test/s' }] } })).json();
   assert.match(created.token, /^[a-f0-9]{32}$/);
 
-  const list = await (await call(env, 'GET', '/api/subs')).json();
-  assert.equal(list.items.length, 1);
-  assert.equal(list.items[0].name, '手機');
-  assert.equal(list.items[0].count, 1);
+  const got = await (await call(env, 'GET', `/api/subs/${created.token}`)).json();
+  assert.equal(got.name, '手機');
+  assert.equal(got.sources.length, 1);
 
   const edited = await (await call(env, 'PUT', `/api/subs/${created.token}`, { body: { name: '電腦', sources: [{ url: 'https://b.test' }, { url: 'https://c.test' }] } })).json();
   assert.equal(edited.name, '電腦');
@@ -106,7 +100,7 @@ test('/sub/<TOKEN>：合併多個訂閱，失敗的跳過', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
-  const env = { SUB_STORE: memoryKv(), ADMIN_PASSWORD: PASSWORD };
+  const env = { SUB_STORE: memoryKv() };
 
   const { token } = await (
     await call(env, 'POST', '/api/subs', {
