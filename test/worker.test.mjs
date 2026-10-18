@@ -158,3 +158,9 @@ test('节点前缀三种模式：机场名称 / S1S2 / 不加', async (t) => {
   const bad = await (await call(env, 'POST', '/api/subs', { body: { name: 'y', prefixMode: '??', sources: [{ url: base }] } })).json();
   assert.equal(bad.prefixMode, 'name');
 });
+
+test('没有绑定 KV（预览版本）时给出明确提示', async () => {
+  const res = await worker.fetch(new Request('https://w.test/sub/' + '0'.repeat(32)), {});
+  assert.equal(res.status, 503);
+  assert.match(await res.text(), /KV/);
+});
