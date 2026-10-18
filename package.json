@@ -10,7 +10,7 @@
     "test": "node --test \"test/*.test.mjs\""
   },
   "dependencies": {
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^5.4.3"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
