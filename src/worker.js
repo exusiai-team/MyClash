@@ -5,17 +5,8 @@ const FETCH_TIMEOUT_MS = 15000;
 const FETCH_UA = 'clash.meta';
 const MAX_SOURCES = 30;
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-  'Access-Control-Expose-Headers': 'Subscription-Userinfo, Content-Disposition',
-  'Access-Control-Max-Age': '86400',
-};
-
 export default {
   async fetch(request, env) {
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
     try {
       return await route(request, env);
     } catch (err) {
@@ -60,7 +51,6 @@ async function serveSubscription(env, token) {
     'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`,
     'Profile-Update-Interval': '12',
     'Cache-Control': 'no-store',
-    ...CORS_HEADERS,
   };
   const userinfo = sumUserinfo(ok.map((r) => r.userinfo));
   if (userinfo) headers['Subscription-Userinfo'] = userinfo;
@@ -97,7 +87,6 @@ class HttpError extends Error {
 
 async function api(request, env, parts) {
   const { method } = request;
-  if (parts[0] === 'ping' && parts.length === 1) return json({ ok: true });
   if (parts[0] !== 'subs') throw new HttpError(404, '找不到');
 
   if (parts.length === 1) {
@@ -185,13 +174,13 @@ function newToken() {
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CORS_HEADERS },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'},
   });
 }
 
 function text(body, status = 200) {
   return new Response(body, {
     status,
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CORS_HEADERS },
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store'},
   });
 }
