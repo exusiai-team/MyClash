@@ -13,6 +13,10 @@ const REFRESH_COOLDOWN_SECONDS = 60;
 // 节点前缀：name = 机场名称（自定义 > 自动识别），index = S1、S2…（自定义 > 序号），none = 不加
 const PREFIX_MODES = ['name', 'index', 'none'];
 const SCRIPT_CACHE_SECONDS = 3600;
+// 管理页一次查多个 TOKEN 的上限
+const MAX_LOOKUP = 50;
+// 同一个 isolate 内重复使用修补后的脚本，1 小时内不再向 GitHub 抓
+let scriptCache = null;
 
 export default {
   async fetch(request, env) {
@@ -78,22 +82,30 @@ async function serveSubscription(env, token) {
 // --- 覆写脚本（上游 MyClash 脚本 + 本项目的修补） ---
 
 async function serveScript() {
-  let res;
-  try {
-    res = await fetch(UPSTREAM_SCRIPT_URL, {
-      cf: { cacheTtl: SCRIPT_CACHE_SECONDS, cacheEverything: true },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-  } catch {
-    return text('抓取上游 MyClash 脚本失败，请稍后再试', 502);
+  if (!scriptCache || Date.now() - scriptCache.at > SCRIPT_CACHE_SECONDS * 1000) {
+    const body = await fetchScript();
+    if (body) scriptCache = { body, at: Date.now() };
+    // 抓不到时沿用旧的脚本，总比让客户端更新失败好
+    else if (!scriptCache) return text('抓取上游 MyClash 脚本失败，请稍后再试', 502);
   }
-  if (!res.ok) return text(`抓取上游 MyClash 脚本失败：HTTP ${res.status}`, 502);
-  return new Response(patchScript(await res.text()), {
+  return new Response(scriptCache.body, {
     headers: {
       'Content-Type': 'application/javascript; charset=utf-8',
       'Cache-Control': `public, max-age=${SCRIPT_CACHE_SECONDS}`,
     },
   });
+}
+
+async function fetchScript() {
+  try {
+    const res = await fetch(UPSTREAM_SCRIPT_URL, {
+      cf: { cacheTtl: SCRIPT_CACHE_SECONDS, cacheEverything: true },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    return res.ok ? patchScript(await res.text()) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchSource(env, source, index, mode) {
@@ -162,6 +174,16 @@ async function api(request, env, parts) {
       await putRecord(env, token, record);
       return json({ token, ...record }, 201);
     }
+  }
+
+  // 管理页一次查完自己记得的 TOKEN；只查调用者给的，不提供列出全部订阅
+  if (parts.length === 2 && parts[1] === 'lookup' && method === 'POST') {
+    const { tokens } = (await readJson(request)) ?? {};
+    if (!Array.isArray(tokens)) throw new HttpError(400, 'tokens 必须是数组');
+    if (tokens.length > MAX_LOOKUP) throw new HttpError(400, `一次最多查 ${MAX_LOOKUP} 个 TOKEN`);
+    const valid = [...new Set(tokens)].filter((t) => /^[a-f0-9]{32}$/.test(t));
+    const records = await Promise.all(valid.map((t) => env.SUB_STORE.get(KEY_PREFIX + t, 'json')));
+    return json({ items: valid.flatMap((t, i) => (records[i] ? [{ token: t, ...records[i] }] : [])) });
   }
 
   const token = parts[1];

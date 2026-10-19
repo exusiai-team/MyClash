@@ -193,9 +193,8 @@
   async function loadList() {
     const list = $('list');
     const tokens = getTokens();
-    const results = await Promise.all(tokens.map((t) =>
-      api('GET', '/subs/' + t).catch((e) => (/找不到/.test(e.message) ? null : { token: t, error: e.message }))));
-    const items = results.filter(Boolean);
+    // 一次请求查完所有 TOKEN；查不到的（已删除或已更换）从清单移除
+    const items = tokens.length ? (await api('POST', '/subs/lookup', { tokens })).items : [];
     saveTokens(items.map((it) => it.token));
     if (!items.length) { list.innerHTML = '<p class="muted">还没有任何合并订阅，按右上角「生成新的订阅」开始。</p>'; return; }
     list.innerHTML = items.map((it) => `
