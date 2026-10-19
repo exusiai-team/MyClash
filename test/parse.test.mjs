@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, GROUP_NAME } from '../src/parse.js';
-import { patchScript } from '../src/script.js';
+import fs from 'node:fs';
+import { TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import vm from 'node:vm';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
@@ -126,28 +128,35 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
-test('覆写脚本修补：用 huggingface 规则集把 HuggingFace 从 AI 组分出来', () => {
-  const upstream = `function main(config) {
-  return {
-    'proxy-groups': [{ name: '默认代理' }, { name: 'AI' }],
-    'rule-providers': { ai: { type: 'http', format: 'mrs', url: 'https://cdn.example/geo/geosite/category-ai-!cn.mrs', path: './ruleset/ai.mrs', 'path-in-bundle': 'geo/geosite/category-ai-!cn.mrs' } },
-    rules: ['RULE-SET,google,Google', 'RULE-SET,ai,AI', 'MATCH,漏网之鱼'],
-  };
-}`;
-  const out = new Function(`${patchScript(upstream)}; return main({});`)();
-  assert.deepEqual(out.rules, ['RULE-SET,google,Google', 'RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI', 'MATCH,漏网之鱼']);
-  assert.deepEqual(out['rule-providers'].huggingface, {
-    type: 'http',
-    format: 'mrs',
-    url: 'https://cdn.example/geo/geosite/huggingface.mrs',
-    path: './ruleset/huggingface.mrs',
-    'path-in-bundle': 'geo/geosite/huggingface.mrs',
-  });
+function runScript(file) {
+  const ctx = vm.createContext({ console, structuredClone, URL });
+  vm.runInContext(fs.readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'), ctx);
+  const proxies = ['🇺🇸 美国 01', '🇭🇰 香港 01', '🇯🇵 日本 01', '🇸🇬 新加坡 01', '🇹🇼 台湾 01'].map((name, i) => ({
+    name, type: 'ss', server: `n${i}.example`, port: 1, cipher: 'aes-128-gcm', password: 'x',
+  }));
+  return vm.runInContext('main', ctx)({ proxies });
+}
 
-  // AI 组没开时不动
-  const noAi = new Function(`${patchScript("function main() { return { 'proxy-groups': [{ name: '默认代理' }], 'rule-providers': {}, rules: ['MATCH,x'] }; }")}; return main({});`)();
-  assert.deepEqual(noAi.rules, ['MATCH,x']);
-  assert.ok(!('huggingface' in noAi['rule-providers']));
-  // 上游没有 main 时也不会让脚本报错
-  assert.doesNotThrow(() => new Function(patchScript('const x = 1;'))());
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：分流组用 Bettbox 的测速网址，HuggingFace 不走 AI 组`, () => {
+    const out = runScript(file);
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    // 有这个分流组时，测速网址必须是 TEST_URLS 里的
+    for (const [name, url] of Object.entries(TEST_URLS)) {
+      if (groups.has(name)) assert.equal(groups.get(name).url, url, name);
+    }
+    for (const name of ['Google', 'AI', 'Telegram', 'Steam']) assert.ok(groups.has(name), name);
+    // 其他组维持上游的通用测速网址
+    for (const name of ['默认代理', '香港', '漏网之鱼']) {
+      assert.equal(groups.get(name).url, 'https://www.apple.com/library/test/success.html', name);
+    }
+
+    const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
+    assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));
+    assert.match(out['rule-providers'].huggingface.url, /bett-rules@meta\/geo\/geosite\/huggingface\.mrs$/);
+  });
+}
+
+test('sync-scripts：上游改版找不到修改位置时报错', () => {
+  assert.throws(() => patchScript('function main() {}', 'x.js'), /上游脚本可能改版/);
 });

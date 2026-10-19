@@ -1,6 +1,5 @@
 import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey } from './cache.js';
-import { UPSTREAM_SCRIPT_URL, patchScript } from './script.js';
 
 const KEY_PREFIX = 'sub:';
 const FETCH_TIMEOUT_MS = 15000;
@@ -12,11 +11,8 @@ const REFRESH_COOLDOWN_KEY = 'refresh:cooldown';
 const REFRESH_COOLDOWN_SECONDS = 60;
 // 节点前缀：name = 机场名称（自定义 > 自动识别），index = S1、S2…（自定义 > 序号），none = 不加
 const PREFIX_MODES = ['name', 'index', 'none'];
-const SCRIPT_CACHE_SECONDS = 3600;
 // 管理页一次查多个 TOKEN 的上限
 const MAX_LOOKUP = 50;
-// 同一个 isolate 内重复使用修补后的脚本，1 小时内不再向 GitHub 抓
-let scriptCache = null;
 
 export default {
   async fetch(request, env) {
@@ -31,8 +27,6 @@ export default {
 async function route(request, env) {
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean);
-  // 覆写脚本不需要 KV，预览版本也能用
-  if (parts[0] === 'script.js' && parts.length === 1 && request.method === 'GET') return serveScript();
   if (!env.SUB_STORE) return text('这个版本没有绑定 KV（预览版本），请使用正式的 Worker 地址', 503);
 
   if (parts.length === 0) return text('MyClash 订阅合并 Worker 运行中。合并订阅链接：/sub/<TOKEN>\n');
@@ -79,35 +73,6 @@ async function serveSubscription(env, token, origin) {
   if (userinfo) headers['Subscription-Userinfo'] = userinfo;
 
   return new Response(dumpConfig(config, comments), { headers });
-}
-
-// --- 覆写脚本（上游 MyClash 脚本 + 本项目的修补） ---
-
-async function serveScript() {
-  if (!scriptCache || Date.now() - scriptCache.at > SCRIPT_CACHE_SECONDS * 1000) {
-    const body = await fetchScript();
-    if (body) scriptCache = { body, at: Date.now() };
-    // 抓不到时沿用旧的脚本，总比让客户端更新失败好
-    else if (!scriptCache) return text('抓取上游 MyClash 脚本失败，请稍后再试', 502);
-  }
-  return new Response(scriptCache.body, {
-    headers: {
-      'Content-Type': 'application/javascript; charset=utf-8',
-      'Cache-Control': `public, max-age=${SCRIPT_CACHE_SECONDS}`,
-    },
-  });
-}
-
-async function fetchScript() {
-  try {
-    const res = await fetch(UPSTREAM_SCRIPT_URL, {
-      cf: { cacheTtl: SCRIPT_CACHE_SECONDS, cacheEverything: true },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    return res.ok ? patchScript(await res.text()) : null;
-  } catch {
-    return null;
-  }
 }
 
 async function fetchSource(env, source, index, mode) {
