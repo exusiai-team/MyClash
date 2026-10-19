@@ -12,7 +12,7 @@
   // 管理页：打开 Worker 地址就是管理页
   "assets": { "directory": "./public" },
   // 管理页「立即刷新缓存」要触发的 GitHub 仓库；另需在 Cloudflare 把 GITHUB_TOKEN 设为密钥
-  "vars": { "GITHUB_REPO": "silverwolfxai/MyClash" },
+  "vars": { "GITHUB_REPO": "exusiai-team/MyClash" },
   // Cloudflare 的预览构建（wrangler preview）要求有这个区块；预览版本不绑定 KV，只用来确认能正常构建
   "previews": {}
 }
