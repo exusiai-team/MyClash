@@ -91,7 +91,7 @@ test('/script.js：代理上游脚本并插入 HuggingFace 规则', async (t) =>
   t.after(() => (globalThis.fetch = realFetch));
   let upstream = { status: 200, body: "const prefixRules = [\n  'DOMAIN,x.com,直连',\n];" };
   globalThis.fetch = async () => new Response(upstream.body, { status: upstream.status });
-  const env = { SUB_STORE: memoryKv() };
+  const env = {}; // 不需要 KV，预览版本也能用
 
   const res = await worker.fetch(new Request('https://w.test/script.js'), env);
   assert.equal(res.status, 200);
