@@ -1,5 +1,6 @@
 import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey } from './cache.js';
+import { UPSTREAM_SCRIPT_URL, patchScript } from './script.js';
 
 const KEY_PREFIX = 'sub:';
 const FETCH_TIMEOUT_MS = 15000;
@@ -11,6 +12,7 @@ const REFRESH_COOLDOWN_KEY = 'refresh:cooldown';
 const REFRESH_COOLDOWN_SECONDS = 60;
 // 节点前缀：name = 机场名称（自定义 > 自动识别），index = S1、S2…（自定义 > 序号），none = 不加
 const PREFIX_MODES = ['name', 'index', 'none'];
+const SCRIPT_CACHE_SECONDS = 3600;
 
 export default {
   async fetch(request, env) {
@@ -29,6 +31,7 @@ async function route(request, env) {
 
   if (parts.length === 0) return text('MyClash 订阅合并 Worker 运行中。合并订阅链接：/sub/<TOKEN>\n');
   if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1]);
+  if (parts[0] === 'script.js' && parts.length === 1 && request.method === 'GET') return serveScript();
   if (parts[0] === 'api') return api(request, env, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
@@ -44,7 +47,10 @@ async function serveSubscription(env, token) {
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) return text('所有机场订阅都抓取失败或没有节点，请稍后再试', 502);
 
-  const config = mergeSubscriptions(ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })));
+  const config = mergeSubscriptions(
+    ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
+    { rateTag: record.rateTag === true },
+  );
   const comments = [
     `MyClash 合并订阅：${record.name}`,
     `更新时间：${new Date().toISOString()}`,
@@ -66,6 +72,27 @@ async function serveSubscription(env, token) {
   if (userinfo) headers['Subscription-Userinfo'] = userinfo;
 
   return new Response(dumpConfig(config, comments), { headers });
+}
+
+// --- 覆写脚本（上游 MyClash 脚本 + 本项目的修补） ---
+
+async function serveScript() {
+  let res;
+  try {
+    res = await fetch(UPSTREAM_SCRIPT_URL, {
+      cf: { cacheTtl: SCRIPT_CACHE_SECONDS, cacheEverything: true },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch {
+    return text('抓取上游 MyClash 脚本失败，请稍后再试', 502);
+  }
+  if (!res.ok) return text(`抓取上游 MyClash 脚本失败：HTTP ${res.status}`, 502);
+  return new Response(patchScript(await res.text()), {
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': `public, max-age=${SCRIPT_CACHE_SECONDS}`,
+    },
+  });
 }
 
 async function fetchSource(env, source, index, mode) {
@@ -221,7 +248,7 @@ function validate(input) {
     return { name: sourceName, url };
   });
   const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
-  return { name, prefixMode, sources };
+  return { name, prefixMode, rateTag: input.rateTag === true, sources };
 }
 
 function newToken() {

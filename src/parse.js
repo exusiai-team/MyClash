@@ -300,11 +300,49 @@ function parseHysteria2(line) {
 
 // --- 合并 ---
 
+// 倍率写法：2x、2.0X、x2、×1.5、*3、2倍、2倍率、倍率:2，可被 []、()、【】、（） 包住；前后不能紧接字母或数字
+const RATE_RE =
+  /([\s|｜_\-·]*)[\[(【（]?\s*(?:(?<![A-Za-z\d.])(\d+(?:\.\d+)?)\s*(?:[x×✕✖⨯*](?![A-Za-z\d])|倍率?)|(?<![A-Za-z\d])[x×✕✖⨯*]\s*(\d+(?:\.\d+)?)(?![\d.])|倍率\s*[:：]?\s*(\d+(?:\.\d+)?))\s*[\])】）]?([\s|｜_\-·]*)/i;
+
+/**
+ * 从节点名称取出倍率，并返回去掉倍率标记后的名称；「剩余流量」「到期」等信息节点不处理
+ * @returns {{ rate: number | null, rest: string }}
+ */
+export function extractRate(name) {
+  const str = String(name);
+  const m = /剩|期/.test(str) ? null : str.match(RATE_RE);
+  const rate = m ? Number(m[2] ?? m[3] ?? m[4]) : NaN;
+  if (!Number.isFinite(rate)) return { rate: null, rest: str };
+  const before = str.slice(0, m.index);
+  const after = str.slice(m.index + m[0].length);
+  // 倍率夹在中间时保留一个分隔符（优先用后面的），例如「台湾01-1.0x |移联」→「台湾01 |移联」
+  const sep = before && after ? (m[5] || m[1]) : '';
+  return { rate, rest: (before + sep + after).trim() || str };
+}
+
+function formatRate(rate) {
+  return `${Number.isInteger(rate) ? rate.toFixed(1) : rate}x`;
+}
+
+// rateTag 开启时：前缀 | 2.0x | 原名；1 倍只去掉原本的倍率标记，不加标注
+function displayName(prefix, name, rateTag) {
+  const parts = prefix ? [prefix] : [];
+  if (rateTag) {
+    const { rate, rest } = extractRate(name);
+    if (rate !== null && rate !== 1) parts.push(formatRate(rate));
+    parts.push(rest);
+  } else {
+    parts.push(String(name));
+  }
+  return parts.join(' | ');
+}
+
 /**
  * 合并多份订阅为一份可直接被 Script.js 覆写的 mihomo 设置（不含 proxy-providers）
  * @param {{ prefix: string, parsed: ReturnType<typeof parseSubscription> }[]} sources
+ * @param {{ rateTag?: boolean }} [options] rateTag：在节点名称标示倍率
  */
-export function mergeSubscriptions(sources) {
+export function mergeSubscriptions(sources, { rateTag = false } = {}) {
   const proxies = [];
   const names = new Set();
   let dns = null;
@@ -313,7 +351,7 @@ export function mergeSubscriptions(sources) {
   for (const { prefix, parsed } of sources) {
     const renamed = new Map();
     for (const proxy of parsed.proxies) {
-      const base = prefix ? `${prefix} | ${proxy.name}` : String(proxy.name);
+      const base = displayName(prefix, proxy.name, rateTag);
       let unique = base;
       for (let i = 2; names.has(unique); i++) unique = `${base} ${i}`;
       names.add(unique);
