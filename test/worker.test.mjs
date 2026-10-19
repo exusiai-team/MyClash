@@ -83,7 +83,7 @@ test('/sub/<TOKEN>：rateTag 开启时在节点名称标注倍率', async (t) =>
   ).json();
   assert.equal(rateTag, true);
   const config = yaml.load(await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text());
-  assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2.0x | 香港 01', 'A | 日本 01']);
+  assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2x | 香港 01', 'A | 日本 01']);
 });
 
 test('/script.js：代理上游脚本、追加 HuggingFace 分流，并在 isolate 内快取', async (t) => {

@@ -321,10 +321,10 @@ export function extractRate(name) {
 }
 
 function formatRate(rate) {
-  return `${Number.isInteger(rate) ? rate.toFixed(1) : rate}x`;
+  return `${rate}x`;
 }
 
-// rateTag 开启时：前缀 | 2.0x | 原名；1 倍只去掉原本的倍率标记，不加标注
+// rateTag 开启时：前缀 | 2x | 原名；1 倍只去掉原本的倍率标记，不加标注
 function displayName(prefix, name, rateTag) {
   const parts = prefix ? [prefix] : [];
   if (rateTag) {
