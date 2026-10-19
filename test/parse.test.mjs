@@ -120,9 +120,9 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
     skipped: 0,
   };
   const tagged = mergeSubscriptions([{ prefix: '飞云', parsed }], { rateTag: true });
-  assert.deepEqual(tagged.proxies.map((p) => p.name), ['飞云 | 2.0x | 香港 01', '飞云 | 日本 01', '飞云 | 美国 01']);
-  assert.equal(tagged.proxies[2]['dialer-proxy'], '飞云 | 2.0x | 香港 01');
-  assert.equal(mergeSubscriptions([{ prefix: '', parsed }], { rateTag: true }).proxies[0].name, '2.0x | 香港 01');
+  assert.deepEqual(tagged.proxies.map((p) => p.name), ['飞云 | 2x | 香港 01', '飞云 | 日本 01', '飞云 | 美国 01']);
+  assert.equal(tagged.proxies[2]['dialer-proxy'], '飞云 | 2x | 香港 01');
+  assert.equal(mergeSubscriptions([{ prefix: '', parsed }], { rateTag: true }).proxies[0].name, '2x | 香港 01');
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
