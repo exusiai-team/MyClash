@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, GROUP_NAME } from '../src/parse.js';
-import { patchScript } from '../src/script.js';
+import fs from 'node:fs';
+import vm from 'node:vm';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
@@ -126,28 +127,24 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
-test('覆写脚本修补：用 huggingface 规则集把 HuggingFace 从 AI 组分出来', () => {
-  const upstream = `function main(config) {
-  return {
-    'proxy-groups': [{ name: '默认代理' }, { name: 'AI' }],
-    'rule-providers': { ai: { type: 'http', format: 'mrs', url: 'https://cdn.example/geo/geosite/category-ai-!cn.mrs', path: './ruleset/ai.mrs', 'path-in-bundle': 'geo/geosite/category-ai-!cn.mrs' } },
-    rules: ['RULE-SET,google,Google', 'RULE-SET,ai,AI', 'MATCH,漏网之鱼'],
-  };
-}`;
-  const out = new Function(`${patchScript(upstream)}; return main({});`)();
-  assert.deepEqual(out.rules, ['RULE-SET,google,Google', 'RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI', 'MATCH,漏网之鱼']);
-  assert.deepEqual(out['rule-providers'].huggingface, {
-    type: 'http',
-    format: 'mrs',
-    url: 'https://cdn.example/geo/geosite/huggingface.mrs',
-    path: './ruleset/huggingface.mrs',
-    'path-in-bundle': 'geo/geosite/huggingface.mrs',
-  });
+test('覆写脚本 public/script.js：分流组各自的测速网址，HuggingFace 不走 AI 组', () => {
+  const ctx = vm.createContext({ console, structuredClone, URL });
+  vm.runInContext(fs.readFileSync(new URL('../public/script.js', import.meta.url), 'utf8'), ctx);
+  const proxies = ['🇺🇸 美国 01', '🇭🇰 香港 01', '🇯🇵 日本 01', '🇸🇬 新加坡 01', '🇹🇼 台湾 01'].map((name, i) => ({
+    name, type: 'ss', server: `n${i}.example`, port: 1, cipher: 'aes-128-gcm', password: 'x',
+  }));
+  const out = vm.runInContext('main', ctx)({ proxies });
 
-  // AI 组没开时不动
-  const noAi = new Function(`${patchScript("function main() { return { 'proxy-groups': [{ name: '默认代理' }], 'rule-providers': {}, rules: ['MATCH,x'] }; }")}; return main({});`)();
-  assert.deepEqual(noAi.rules, ['MATCH,x']);
-  assert.ok(!('huggingface' in noAi['rule-providers']));
-  // 上游没有 main 时也不会让脚本报错
-  assert.doesNotThrow(() => new Function(patchScript('const x = 1;'))());
+  const url = (name) => out['proxy-groups'].find((g) => g.name === name)?.url;
+  assert.equal(url('Google'), 'https://www.google.com/generate_204');
+  assert.equal(url('AI'), 'https://api.anthropic.com');
+  assert.equal(url('Telegram'), 'https://web.telegram.org');
+  assert.equal(url('Steam'), 'https://store.steampowered.com');
+  // 其他组维持原本的通用测速网址
+  assert.equal(url('默认代理'), 'https://www.apple.com/library/test/success.html');
+  assert.equal(url('香港'), 'https://www.apple.com/library/test/success.html');
+
+  const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
+  assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));
+  assert.match(out['rule-providers'].huggingface.url, /bett-rules@meta\/geo\/geosite\/huggingface\.mrs$/);
 });

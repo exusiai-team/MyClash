@@ -6,7 +6,7 @@
 - **即时节点**：客户端每次更新时即时抓各机场最新节点
 - **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时改用 GitHub Actions 代抓的缓存
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
-- **覆写脚本代理**：`/script.js` 跟上游同步，并让 HuggingFace 不走「AI」组
+- **覆写脚本**：`/script.js` 为修改版 MyClash 脚本，分流组按服务测速，HuggingFace 不走「AI」组
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
 ```mermaid
@@ -43,9 +43,12 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 3. 添加**脚本覆写** `https://<Worker 地址>/script.js`（管理页可复制）
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
-**覆写脚本**：`/script.js` 代理上游 [Script.js](https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js)（缓存 1 小时），
-并用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集（与「AI」同源、每天更新）把 HuggingFace 分出来，
-插在「AI」规则前、改走「默认代理」。只加工上游 `main()` 的输出，不依赖上游源码排版；AI 组没开时不做任何改动。
+**覆写脚本**：`/script.js` 是本仓库维护的 [AIsouler/MyClash 脚本](https://github.com/AIsouler/MyClash) 修改版（`public/script.js`，静态文件，不占 Worker 请求），相对原版：
+- 分流组用各自服务的测速网址：Google → `https://www.google.com/generate_204`、AI → `https://api.anthropic.com`、
+  Telegram → `https://web.telegram.org`、Steam → `https://store.steampowered.com`；其他组维持原版的 Apple 测速网址
+- 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
+
+上游更新不会自动同步，需要时把新版覆盖到 `public/script.js` 后重新套用上述改动（文件开头有改动清单）。
 
 **节点前缀**：区分不同机场。
 
@@ -87,7 +90,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | 路径 | 说明 |
 | --- | --- |
 | `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML） |
-| `GET /script.js` | 修补后的 MyClash 覆写脚本 |
+| `GET /script.js` | 修改版 MyClash 覆写脚本（静态文件） |
 | `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, sources: [{ name, url }] }` |
 | `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
 | `GET` / `PUT` / `DELETE /api/subs/<TOKEN>` | 查找、编辑、删除 |
@@ -98,10 +101,10 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | --- | --- |
 | `src/worker.js` | 路由、订阅输出、管理 API |
 | `src/parse.js` | 订阅解析、倍率提取、合并、YAML 输出 |
-| `src/script.js` | 覆写脚本修补 |
 | `src/cache.js` | 代抓缓存的 KV 键名 |
 | `scripts/refresh-cache.mjs` | GitHub Actions 代抓脚本 |
 | `public/index.html` | 管理页 |
+| `public/script.js` | 修改版 MyClash 覆写脚本 |
 
 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)。
 
