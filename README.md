@@ -9,13 +9,13 @@
 - **覆写脚本代理**：`/script.js` 跟上游同步，并让 HuggingFace 不走「AI」组
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
-```text
-             每次更新订阅                      直连抓取
-Clash 客户端 ───────────▶ Cloudflare Worker ───────────▶ 各机场订阅
-                               │    ▲
-                直连失败时读取 │    │ 每天 / 管理页「立即刷新缓存」写入
-                               ▼    │
-                             KV 缓存 ◀──── GitHub Actions（非 Cloudflare IP 代抓）
+```mermaid
+flowchart LR
+  C[Clash 客户端] -- 每次更新订阅 --> W[Cloudflare Worker]
+  W -- 直连抓取 --> A[各机场订阅]
+  W -. 直连失败时读取 .-> K[(KV 缓存)]
+  G[GitHub Actions<br/>非 Cloudflare IP 代抓] -- 每天 / 管理页「立即刷新缓存」写入 --> K
+  G -- 代抓 --> A
 ```
 
 ## 部署
