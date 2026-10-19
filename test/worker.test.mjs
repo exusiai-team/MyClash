@@ -175,6 +175,7 @@ test('/sub/<TOKEN>：合并多个订阅，失败的跳过', async (t) => {
   const res = await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=11; download=22; total=150; expire=1900000000');
+  assert.equal(res.headers.get('profile-web-page-url'), 'https://w.test/');
   const body = await res.text();
   assert.match(body, /\[坏掉\] 失败：HTTP 500/);
   const config = yaml.load(body);
