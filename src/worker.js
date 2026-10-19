@@ -36,14 +36,14 @@ async function route(request, env) {
   if (!env.SUB_STORE) return text('这个版本没有绑定 KV（预览版本），请使用正式的 Worker 地址', 503);
 
   if (parts.length === 0) return text('MyClash 订阅合并 Worker 运行中。合并订阅链接：/sub/<TOKEN>\n');
-  if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1]);
+  if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1], url.origin);
   if (parts[0] === 'api') return api(request, env, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
 
 // --- 订阅输出 ---
 
-async function serveSubscription(env, token) {
+async function serveSubscription(env, token, origin) {
   const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
@@ -71,6 +71,8 @@ async function serveSubscription(env, token) {
     'Content-Type': 'text/yaml; charset=utf-8',
     'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`,
     'Profile-Update-Interval': '12',
+    // 客户端订阅卡片上的「首页」按钮，指向这个 Worker 的管理页
+    'Profile-Web-Page-Url': `${origin}/`,
     'Cache-Control': 'no-store',
   };
   const userinfo = sumUserinfo(ok.map((r) => r.userinfo));

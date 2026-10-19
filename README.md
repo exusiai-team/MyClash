@@ -39,7 +39,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 ## 使用
 
 1. 管理页按「生成新的订阅」，粘贴各机场订阅（可批量粘贴），保存后「复制链接」或「一键导入 Clash」
-2. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新
+2. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新（订阅卡片上的「首页」按钮会打开管理页）
 3. 添加**脚本覆写** `https://<Worker 地址>/script.js`（管理页可复制）
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
