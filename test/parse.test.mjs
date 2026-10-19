@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, GROUP_NAME } from '../src/parse.js';
-import { patchScript, EXTRA_RULES } from '../src/script.js';
+import { patchScript } from '../src/script.js';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
@@ -126,9 +126,28 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
-test('覆写脚本修补：HuggingFace 规则插在 prefixRules 开头', () => {
-  const patched = patchScript("const a = 1;\nconst prefixRules = [\n  'DOMAIN,x.com,直连',\n];\n");
-  const rules = new Function(`${patched}; return prefixRules;`)();
-  assert.deepEqual(rules, [...EXTRA_RULES, 'DOMAIN,x.com,直连']);
-  assert.match(patchScript('function main(c) { return c; }'), /^\/\/ MyClash：.*修补失败/);
+test('覆写脚本修补：用 huggingface 规则集把 HuggingFace 从 AI 组分出来', () => {
+  const upstream = `function main(config) {
+  return {
+    'proxy-groups': [{ name: '默认代理' }, { name: 'AI' }],
+    'rule-providers': { ai: { type: 'http', format: 'mrs', url: 'https://cdn.example/geo/geosite/category-ai-!cn.mrs', path: './ruleset/ai.mrs', 'path-in-bundle': 'geo/geosite/category-ai-!cn.mrs' } },
+    rules: ['RULE-SET,google,Google', 'RULE-SET,ai,AI', 'MATCH,漏网之鱼'],
+  };
+}`;
+  const out = new Function(`${patchScript(upstream)}; return main({});`)();
+  assert.deepEqual(out.rules, ['RULE-SET,google,Google', 'RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI', 'MATCH,漏网之鱼']);
+  assert.deepEqual(out['rule-providers'].huggingface, {
+    type: 'http',
+    format: 'mrs',
+    url: 'https://cdn.example/geo/geosite/huggingface.mrs',
+    path: './ruleset/huggingface.mrs',
+    'path-in-bundle': 'geo/geosite/huggingface.mrs',
+  });
+
+  // AI 组没开时不动
+  const noAi = new Function(`${patchScript("function main() { return { 'proxy-groups': [{ name: '默认代理' }], 'rule-providers': {}, rules: ['MATCH,x'] }; }")}; return main({});`)();
+  assert.deepEqual(noAi.rules, ['MATCH,x']);
+  assert.ok(!('huggingface' in noAi['rule-providers']));
+  // 上游没有 main 时也不会让脚本报错
+  assert.doesNotThrow(() => new Function(patchScript('const x = 1;'))());
 });

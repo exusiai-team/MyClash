@@ -44,7 +44,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
 **覆写脚本**：`/script.js` 代理上游 [Script.js](https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js)（缓存 1 小时），
-在前置规则加上 `huggingface.co`、`hf.co` → `默认代理`。上游改版找不到插入点时原样返回，不影响使用。
+并用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集（与「AI」同源、每天更新）把 HuggingFace 分出来，
+插在「AI」规则前、改走「默认代理」。只加工上游 `main()` 的输出，不依赖上游源码排版；AI 组没开时不做任何改动。
 
 **节点前缀**：区分不同机场。
 

@@ -86,17 +86,19 @@ test('/sub/<TOKEN>：rateTag 开启时在节点名称标注倍率', async (t) =>
   assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2.0x | 香港 01', 'A | 日本 01']);
 });
 
-test('/script.js：代理上游脚本并插入 HuggingFace 规则', async (t) => {
+test('/script.js：代理上游脚本并追加 HuggingFace 分流', async (t) => {
   const realFetch = globalThis.fetch;
   t.after(() => (globalThis.fetch = realFetch));
-  let upstream = { status: 200, body: "const prefixRules = [\n  'DOMAIN,x.com,直连',\n];" };
+  let upstream = { status: 200, body: 'function main(config) { return config; }' };
   globalThis.fetch = async () => new Response(upstream.body, { status: upstream.status });
   const env = {}; // 不需要 KV，预览版本也能用
 
   const res = await worker.fetch(new Request('https://w.test/script.js'), env);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /javascript/);
-  assert.match(await res.text(), /prefixRules = \[[^\]]*huggingface\.co,默认代理[^\]]*DOMAIN,x\.com/);
+  const body = await res.text();
+  assert.ok(body.startsWith('function main(config) { return config; }'));
+  assert.match(body, /RULE-SET,huggingface,默认代理/);
 
   upstream = { status: 404, body: '' };
   assert.equal((await worker.fetch(new Request('https://w.test/script.js'), env)).status, 502);
