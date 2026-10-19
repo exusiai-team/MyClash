@@ -91,6 +91,7 @@
       <label class="opt"><input type="radio" name="prefix-mode" value="none"> 不加前缀</label>
     </div>
     <p class="muted" id="prefix-hint" style="margin:0 0 6px"></p>
+    <label class="opt" style="margin:4px 0 6px"><input type="checkbox" id="rate-tag"> 在节点名称标示倍率（例如「飞云 | 2.0x | 香港 01」，1 倍不标）</label>
     <label>机场订阅</label>
     <div id="sources"></div>
     <div class="row">
@@ -127,8 +128,9 @@
     <ol>
       <li>按「复制链接」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。</li>
       <li>对这个订阅添加<b>脚本覆写</b>，填入：
-        <div class="link" id="script-url">https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js</div>
+        <div class="link" id="script-url"></div>
         <button id="copy-script">复制脚本链接</button>
+        <p class="muted" style="margin:6px 0 0">这是 Worker 代理的 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本，自动跟上游同步，另外让 HuggingFace 不走「AI」组、改走「默认代理」。</p>
       </li>
       <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
     </ol>
@@ -199,7 +201,7 @@
     list.innerHTML = items.map((it) => `
       <div class="item" data-token="${escapeHtml(it.token)}" data-name="${escapeHtml(it.name || '')}">
         <div class="item-title">${it.error ? '<span class="muted">读取失败：' + escapeHtml(it.error) + '</span>'
-          : escapeHtml(it.name) + ' <span class="muted">· ' + it.sources.length + ' 个机场 · 前缀：' + ({ name: '机场名称', index: 'S1、S2…', none: '不加' }[it.prefixMode || 'index']) + ' · 更新于 ' + fmtTime(it.updatedAt) + '</span>'}</div>
+          : escapeHtml(it.name) + ' <span class="muted">· ' + it.sources.length + ' 个机场 · 前缀：' + ({ name: '机场名称', index: 'S1、S2…', none: '不加' }[it.prefixMode || 'index']) + (it.rateTag ? ' · 倍率标注' : '') + ' · 更新于 ' + fmtTime(it.updatedAt) + '</span>'}</div>
         <div class="link">${escapeHtml(subUrl(it.token))}</div>
         <div class="row">
           <button data-act="copy" class="primary">复制链接</button>
@@ -271,6 +273,7 @@
     $('edit-title').textContent = record ? `编辑「${record.name}」` : '生成新的订阅';
     $('edit-name').value = record ? record.name : '';
     setPrefixMode(record ? record.prefixMode || 'index' : 'name');
+    $('rate-tag').checked = record ? record.rateTag === true : true;
     $('sources').innerHTML = '';
     (record ? record.sources : [{}, {}]).forEach(addSourceRow);
     $('edit-msg').textContent = '';
@@ -318,8 +321,8 @@
     $('save-btn').disabled = true;
     try {
       const saved = editingToken
-        ? await api('PUT', '/subs/' + editingToken, { name, prefixMode: getPrefixMode(), sources })
-        : await api('POST', '/subs', { name, prefixMode: getPrefixMode(), sources });
+        ? await api('PUT', '/subs/' + editingToken, { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, sources })
+        : await api('POST', '/subs', { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, sources });
       if (!editingToken) addToken(saved.token);
       $('edit-card').classList.add('hidden');
       await loadList();
@@ -386,6 +389,7 @@
     a.click();
     URL.revokeObjectURL(a.href);
   };
+  $('script-url').textContent = `${workerUrl}/script.js`;
   $('copy-script').onclick = (e) => copy($('script-url').textContent, e.target);
 
   loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; });

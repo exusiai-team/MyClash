@@ -80,10 +80,12 @@ Clash 客户端 ───────────▶ Cloudflare Worker ───
 ## 客户端设置
 
 1. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端，把合并订阅链接加成**远程订阅**，并打开自动更新
-2. 对这个订阅添加**脚本覆写**：
+2. 对这个订阅添加**脚本覆写**（管理页可直接复制）：
    ```text
-   https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js
+   https://<你的 Worker 地址>/script.js
    ```
+   这是 Worker 代理的 [AIsouler/MyClash 脚本](https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js)，
+   每小时跟上游同步一次，并多加两条前置规则：`huggingface.co`、`hf.co` 不走「AI」组，改走「默认代理」。
 3. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
 合并后的配置**不含** `proxy-providers`（MyClash 脚本遇到它会报错），并保留各机场的 `dns` / `hosts`，
@@ -108,6 +110,11 @@ Clash 客户端 ───────────▶ Cloudflare Worker ───
 
 也可以给单个机场填自定义前缀（「不加前缀」时不生效）。自定义前缀请避免「香港、日本、美国、HK、US、JP、机场、订阅」等字样，
 否则会影响 MyClash 脚本的地区分组和节点过滤。
+
+**倍率标注**（新建订阅默认勾选）：从节点名称读出倍率，统一写成 `前缀 | 2.0x | 原名`，并去掉原本的倍率字样，
+例如 `🇺🇸 美国04-1.5x |4837` → `MNKCloud | 1.5x | 🇺🇸 美国04|4837`、`台湾1|5倍率|勿跑大流量` → `三毛 | 5.0x | 台湾1|勿跑大流量`。
+认得 `2x`、`2.0X`、`x2`、`×1.5`、`*3`、`2倍`、`2倍率`、`倍率:2`（可带括号）；1 倍只去掉原字样、不加标注。
+标注后的 `2.0x`、`0.5x` 仍会被 MyClash 脚本归到高/低倍率组。
 
 ## 注意事项
 

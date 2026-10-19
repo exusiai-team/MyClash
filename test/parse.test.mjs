@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, GROUP_NAME } from '../src/parse.js';
+import { patchScript, EXTRA_RULES } from '../src/script.js';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
@@ -85,4 +86,49 @@ test('识别机场名称：Content-Disposition 优先，其次域名', () => {
   assert.equal(detectAirportName(null, 'https://api.foo.co.uk/s'), 'foo');
   assert.equal(detectAirportName('attachment', 'http://1.2.3.4:8080/s'), '');
   assert.equal(detectAirportName("attachment; filename*=UTF-8''A%7CB", 'https://x.com'), 'A B');
+});
+
+test('倍率提取：常见写法与分隔符清理', () => {
+  const cases = [
+    ['🇺🇸 美国04-1.5x |4837', 1.5, '🇺🇸 美国04|4837'],
+    ['🇹🇼 台湾01-1.0x |移联|家宽', 1, '🇹🇼 台湾01|移联|家宽'],
+    ['台湾1|5倍率|勿跑大流量', 5, '台湾1|勿跑大流量'],
+    ['2x专线-日本-1', 2, '专线-日本-1'],
+    ['🇯🇵日本高速01|CTCU|0.5x', 0.5, '🇯🇵日本高速01|CTCU'],
+    ['🇭🇰香港04|负载均衡x0.6', 0.6, '🇭🇰香港04|负载均衡'],
+    ['🇭🇰Hong Kong｜下载推荐｜0.01X', 0.01, '🇭🇰Hong Kong｜下载推荐'],
+    ['新加坡 (2倍)', 2, '新加坡'],
+    ['[0.5x] 日本', 0.5, '日本'],
+    ['倍率:3 韩国', 3, '韩国'],
+    ['美国 ×1.5', 1.5, '美国'],
+  ];
+  for (const [name, rate, rest] of cases) assert.deepEqual(extractRate(name), { rate, rest }, name);
+  for (const name of ['香港 01', 'Linux2 香港', '日本-4 (IPv6)', '剩余流量：2x', '套餐到期 x2']) {
+    assert.deepEqual(extractRate(name), { rate: null, rest: name }, name);
+  }
+});
+
+test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', () => {
+  const parsed = {
+    proxies: [
+      { name: '香港 01-2.0x', type: 'ss' },
+      { name: '日本 01-1.0x', type: 'ss' },
+      { name: '美国 01', type: 'ss', 'dialer-proxy': '香港 01-2.0x' },
+    ],
+    dns: null,
+    hosts: null,
+    skipped: 0,
+  };
+  const tagged = mergeSubscriptions([{ prefix: '飞云', parsed }], { rateTag: true });
+  assert.deepEqual(tagged.proxies.map((p) => p.name), ['飞云 | 2.0x | 香港 01', '飞云 | 日本 01', '飞云 | 美国 01']);
+  assert.equal(tagged.proxies[2]['dialer-proxy'], '飞云 | 2.0x | 香港 01');
+  assert.equal(mergeSubscriptions([{ prefix: '', parsed }], { rateTag: true }).proxies[0].name, '2.0x | 香港 01');
+  assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
+});
+
+test('覆写脚本修补：HuggingFace 规则插在 prefixRules 开头', () => {
+  const patched = patchScript("const a = 1;\nconst prefixRules = [\n  'DOMAIN,x.com,直连',\n];\n");
+  const rules = new Function(`${patched}; return prefixRules;`)();
+  assert.deepEqual(rules, [...EXTRA_RULES, 'DOMAIN,x.com,直连']);
+  assert.match(patchScript('function main(c) { return c; }'), /^\/\/ MyClash：.*修补失败/);
 });

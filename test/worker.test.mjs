@@ -50,6 +50,8 @@ function startUpstream() {
     } else if (req.url === '/b64') {
       res.setHeader('subscription-userinfo', 'upload=10; download=20; total=50; expire=1900000000');
       res.end(b64(['trojan://pw@us.node:443#美国 01', 'trojan://pw@hk2.node:443#香港 01'].join('\n')));
+    } else if (req.url === '/rate') {
+      res.end(b64(['trojan://pw@hk.node:443#香港 01 [2x]', 'trojan://pw@jp.node:443#日本 01-1.0x'].join('\n')));
     } else if (req.url === '/blocked') {
       res.statusCode = 403;
       res.end('blocked');
@@ -69,6 +71,36 @@ function call(env, method, path, { body } = {}) {
     env,
   );
 }
+
+test('/sub/<TOKEN>：rateTag 开启时在节点名称标注倍率', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const env = { SUB_STORE: memoryKv() };
+  const { token, rateTag } = await (
+    await call(env, 'POST', '/api/subs', {
+      body: { name: 'r', rateTag: true, sources: [{ name: 'A', url: `http://127.0.0.1:${upstream.address().port}/rate` }] },
+    })
+  ).json();
+  assert.equal(rateTag, true);
+  const config = yaml.load(await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text());
+  assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2.0x | 香港 01', 'A | 日本 01']);
+});
+
+test('/script.js：代理上游脚本并插入 HuggingFace 规则', async (t) => {
+  const realFetch = globalThis.fetch;
+  t.after(() => (globalThis.fetch = realFetch));
+  let upstream = { status: 200, body: "const prefixRules = [\n  'DOMAIN,x.com,直连',\n];" };
+  globalThis.fetch = async () => new Response(upstream.body, { status: upstream.status });
+  const env = {}; // 不需要 KV，预览版本也能用
+
+  const res = await worker.fetch(new Request('https://w.test/script.js'), env);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /javascript/);
+  assert.match(await res.text(), /prefixRules = \[[^\]]*huggingface\.co,默认代理[^\]]*DOMAIN,x\.com/);
+
+  upstream = { status: 404, body: '' };
+  assert.equal((await worker.fetch(new Request('https://w.test/script.js'), env)).status, 502);
+});
 
 test('没有管理密码也能用，且不提供列出全部订阅的 API', async () => {
   const env = { SUB_STORE: memoryKv() };
