@@ -3,9 +3,8 @@
  * 作者：AIsouler
  * 源仓库：https://github.com/AIsouler/MyClash
  * 脚本链接：https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js
- *
- * 本文件是 exusiai-team/MyClash 维护的修改版（由 Worker 以 /script.js 提供），相对原版的改动：
- * - 分流策略组使用各自服务的测速网址（testUrl），不再全部共用 groupBaseOption.url
+ * 本文件由 exusiai-team/MyClash 的 scripts/sync-scripts.mjs 从 Script.js 生成（MIT License, Copyright (c) 2026 AIsouler），改动：
+ * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
@@ -338,6 +337,7 @@ const serviceConfigs = [
   ...baseGroups,
   {
     name: 'Google',
+    testUrl: 'https://www.google.com/generate_204',
     baseOption: selectBaseOption,
     providers: {
       google: {
@@ -354,11 +354,11 @@ const serviceConfigs = [
       },
     },
     icon: `${iconBaseUrl}Google.svg`,
-    testUrl: 'https://www.google.com/generate_204',
     rules: ['RULE-SET,google,Google', 'RULE-SET,google_ip,Google,no-resolve'],
   },
   {
     name: 'AI',
+    testUrl: 'https://api.anthropic.com/cdn-cgi/trace',
     baseOption: selectBaseOption,
     defaultSelected: '美国',
     providers: {
@@ -377,11 +377,11 @@ const serviceConfigs = [
       },
     },
     icon: `${iconBaseUrl}OpenAI.svg`,
-    testUrl: 'https://api.anthropic.com',
     rules: ['RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'],
   },
   {
     name: 'Telegram',
+    testUrl: 'http://91.108.56.100/',
     baseOption: selectBaseOption,
     providers: {
       telegram: {
@@ -398,11 +398,11 @@ const serviceConfigs = [
       },
     },
     icon: `${iconBaseUrl}Telegram.svg`,
-    testUrl: 'https://web.telegram.org',
     rules: ['RULE-SET,telegram,Telegram', 'RULE-SET,telegram_ip,Telegram,no-resolve'],
   },
   {
     name: 'Steam',
+    testUrl: 'https://store.steampowered.com/',
     baseOption: selectBaseOption,
     direct: true,
     providers: {
@@ -420,7 +420,6 @@ const serviceConfigs = [
       },
     },
     icon: `${iconBaseUrl}Steam.svg`,
-    testUrl: 'https://store.steampowered.com',
     rules: ['RULE-SET,steam,Steam', 'RULE-SET,steam_ip,Steam,no-resolve'],
   },
   {

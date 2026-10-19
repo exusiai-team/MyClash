@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
+import { TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
@@ -127,24 +128,35 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
-test('覆写脚本 public/script.js：分流组各自的测速网址，HuggingFace 不走 AI 组', () => {
+function runScript(file) {
   const ctx = vm.createContext({ console, structuredClone, URL });
-  vm.runInContext(fs.readFileSync(new URL('../public/script.js', import.meta.url), 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'), ctx);
   const proxies = ['🇺🇸 美国 01', '🇭🇰 香港 01', '🇯🇵 日本 01', '🇸🇬 新加坡 01', '🇹🇼 台湾 01'].map((name, i) => ({
     name, type: 'ss', server: `n${i}.example`, port: 1, cipher: 'aes-128-gcm', password: 'x',
   }));
-  const out = vm.runInContext('main', ctx)({ proxies });
+  return vm.runInContext('main', ctx)({ proxies });
+}
 
-  const url = (name) => out['proxy-groups'].find((g) => g.name === name)?.url;
-  assert.equal(url('Google'), 'https://www.google.com/generate_204');
-  assert.equal(url('AI'), 'https://api.anthropic.com');
-  assert.equal(url('Telegram'), 'https://web.telegram.org');
-  assert.equal(url('Steam'), 'https://store.steampowered.com');
-  // 其他组维持原本的通用测速网址
-  assert.equal(url('默认代理'), 'https://www.apple.com/library/test/success.html');
-  assert.equal(url('香港'), 'https://www.apple.com/library/test/success.html');
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：分流组用 Bettbox 的测速网址，HuggingFace 不走 AI 组`, () => {
+    const out = runScript(file);
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    // 有这个分流组时，测速网址必须是 TEST_URLS 里的
+    for (const [name, url] of Object.entries(TEST_URLS)) {
+      if (groups.has(name)) assert.equal(groups.get(name).url, url, name);
+    }
+    for (const name of ['Google', 'AI', 'Telegram', 'Steam']) assert.ok(groups.has(name), name);
+    // 其他组维持上游的通用测速网址
+    for (const name of ['默认代理', '香港', '漏网之鱼']) {
+      assert.equal(groups.get(name).url, 'https://www.apple.com/library/test/success.html', name);
+    }
 
-  const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
-  assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));
-  assert.match(out['rule-providers'].huggingface.url, /bett-rules@meta\/geo\/geosite\/huggingface\.mrs$/);
+    const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
+    assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));
+    assert.match(out['rule-providers'].huggingface.url, /bett-rules@meta\/geo\/geosite\/huggingface\.mrs$/);
+  });
+}
+
+test('sync-scripts：上游改版找不到修改位置时报错', () => {
+  assert.throws(() => patchScript('function main() {}', 'x.js'), /上游脚本可能改版/);
 });

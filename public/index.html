@@ -127,10 +127,13 @@
     <h2>客户端怎么用</h2>
     <ol>
       <li>按「复制链接」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。</li>
-      <li>对这个订阅添加<b>脚本覆写</b>，填入：
+      <li>对这个订阅添加<b>脚本覆写</b>，填入（精简版，推荐）：
         <div class="link" id="script-url"></div>
         <button id="copy-script">复制脚本链接</button>
-        <p class="muted" style="margin:6px 0 0">这是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：Google、AI、Telegram、Steam 分流组用各自服务的网址测速，HuggingFace 不走「AI」组、改走「默认代理」。</p>
+        <div class="muted" style="margin-top:8px">需要更多分流组（YouTube、Netflix、GitHub、Apple 等）可改用全量版：</div>
+        <div class="link" id="script-full-url"></div>
+        <button id="copy-script-full">复制全量版链接</button>
+        <p class="muted" style="margin:6px 0 0">两者都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。</p>
       </li>
       <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
     </ol>
@@ -390,6 +393,8 @@
   };
   $('script-url').textContent = `${workerUrl}/script.js`;
   $('copy-script').onclick = (e) => copy($('script-url').textContent, e.target);
+  $('script-full-url').textContent = `${workerUrl}/script-full.js`;
+  $('copy-script-full').onclick = (e) => copy($('script-full-url').textContent, e.target);
 
   loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; });
 })();
