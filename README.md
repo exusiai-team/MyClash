@@ -72,7 +72,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 | 项目 | 时间 | 内容 |
 | --- | --- | --- |
 | 代抓订阅缓存 | 每天台湾时间 03:17，或管理页触发 | `.github/workflows/refresh-cache.yml` |
-| 测试 | 每次 push / PR | 单元测试 + `wrangler deploy --dry-run` |
+| 测试 | PR 与 `main` 有更新时（只改文档不跑） | 单元测试 + `wrangler deploy --dry-run` |
 | 依赖更新 | 每月 1 号 | Dependabot 合成一个 PR，测试通过后自动合并 |
 | 部署 | `main` 有更新时 | Cloudflare 自动重新部署 |
 
@@ -89,6 +89,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML） |
 | `GET /script.js` | 修补后的 MyClash 覆写脚本 |
 | `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, sources: [{ name, url }] }` |
+| `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
 | `GET` / `PUT` / `DELETE /api/subs/<TOKEN>` | 查找、编辑、删除 |
 | `POST /api/subs/<TOKEN>/rotate` | 换新 TOKEN |
 | `POST /api/subs/<TOKEN>/refresh` | 触发代抓缓存（需 `GITHUB_TOKEN`，1 分钟限一次） |

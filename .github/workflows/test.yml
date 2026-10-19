@@ -1,8 +1,17 @@
 name: 测试
 
+# PR 只跑一次（pull_request），合并进 main 再跑一次；只改文档时不跑
 on:
   push:
+    branches: [main]
+    paths-ignore: ['**.md']
   pull_request:
+    paths-ignore: ['**.md']
+
+# 同一个分支连续推送时，取消还在跑的旧任务
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -14,7 +23,7 @@ jobs:
           # 每次都用最新的 Node 版本
           node-version: latest
           cache: npm
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npx wrangler deploy --dry-run --outdir dist
 

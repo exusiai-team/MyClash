@@ -18,7 +18,8 @@ jobs:
         with:
           node-version: latest
           cache: npm
-      - run: npm ci
+      # 只需要 js-yaml，不装 wrangler 等开发依赖
+      - run: npm ci --omit=dev --no-audit --no-fund
       - run: node scripts/refresh-cache.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

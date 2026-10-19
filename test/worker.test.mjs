@@ -86,22 +86,47 @@ test('/sub/<TOKEN>：rateTag 开启时在节点名称标注倍率', async (t) =>
   assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2.0x | 香港 01', 'A | 日本 01']);
 });
 
-test('/script.js：代理上游脚本并追加 HuggingFace 分流', async (t) => {
+test('/script.js：代理上游脚本、追加 HuggingFace 分流，并在 isolate 内快取', async (t) => {
   const realFetch = globalThis.fetch;
   t.after(() => (globalThis.fetch = realFetch));
-  let upstream = { status: 200, body: 'function main(config) { return config; }' };
-  globalThis.fetch = async () => new Response(upstream.body, { status: upstream.status });
+  let upstream = { status: 404, body: '' };
+  let calls = 0;
+  globalThis.fetch = async () => (calls++, new Response(upstream.body, { status: upstream.status }));
   const env = {}; // 不需要 KV，预览版本也能用
+  const get = () => worker.fetch(new Request('https://w.test/script.js'), env);
 
-  const res = await worker.fetch(new Request('https://w.test/script.js'), env);
+  // 还没有快取时，上游失败就返回 502
+  assert.equal((await get()).status, 502);
+
+  upstream = { status: 200, body: 'function main(config) { return config; }' };
+  const res = await get();
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /javascript/);
   const body = await res.text();
   assert.ok(body.startsWith('function main(config) { return config; }'));
   assert.match(body, /RULE-SET,huggingface,默认代理/);
 
-  upstream = { status: 404, body: '' };
-  assert.equal((await worker.fetch(new Request('https://w.test/script.js'), env)).status, 502);
+  // 1 小时内不再向上游抓
+  calls = 0;
+  assert.equal(await (await get()).text(), body);
+  assert.equal(calls, 0);
+});
+
+test('POST /api/subs/lookup：一次查多个 TOKEN', async () => {
+  const env = { SUB_STORE: memoryKv() };
+  const create = async (name) => (await (await call(env, 'POST', '/api/subs', { body: { name, sources: [{ url: 'https://a.test' }] } })).json()).token;
+  const a = await create('甲');
+  const b = await create('乙');
+  const gone = 'f'.repeat(32);
+
+  const res = await call(env, 'POST', '/api/subs/lookup', { body: { tokens: [a, gone, 'not-a-token', b, a] } });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).items.map((it) => [it.token, it.name]), [[a, '甲'], [b, '乙']]);
+
+  assert.deepEqual(await (await call(env, 'POST', '/api/subs/lookup', { body: { tokens: [] } })).json(), { items: [] });
+  assert.equal((await call(env, 'POST', '/api/subs/lookup', { body: { tokens: 'x' } })).status, 400);
+  assert.equal((await call(env, 'POST', '/api/subs/lookup', { body: { tokens: Array(51).fill(a) } })).status, 400);
+  assert.equal((await call(env, 'GET', '/api/subs/lookup')).status, 404);
 });
 
 test('没有管理密码也能用，且不提供列出全部订阅的 API', async () => {
