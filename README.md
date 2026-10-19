@@ -9,13 +9,13 @@
 - **覆写脚本代理**：`/script.js` 跟上游同步，并让 HuggingFace 不走「AI」组
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
-```text
-             每次更新订阅                      直连抓取
-Clash 客户端 ───────────▶ Cloudflare Worker ───────────▶ 各机场订阅
-                               │    ▲
-                直连失败时读取 │    │ 每天 / 管理页「立即刷新缓存」写入
-                               ▼    │
-                             KV 缓存 ◀──── GitHub Actions（非 Cloudflare IP 代抓）
+```mermaid
+flowchart LR
+  C[Clash 客户端] -- 每次更新订阅 --> W[Cloudflare Worker]
+  W -- 直连抓取 --> A[各机场订阅]
+  W -. 直连失败时读取 .-> K[(KV 缓存)]
+  G[GitHub Actions<br/>非 Cloudflare IP 代抓] -- 每天 / 管理页「立即刷新缓存」写入 --> K
+  G -- 代抓 --> A
 ```
 
 ## 部署
@@ -44,7 +44,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
 **覆写脚本**：`/script.js` 代理上游 [Script.js](https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js)（缓存 1 小时），
-在前置规则加上 `huggingface.co`、`hf.co` → `默认代理`。上游改版找不到插入点时原样返回，不影响使用。
+并用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集（与「AI」同源、每天更新）把 HuggingFace 分出来，
+插在「AI」规则前、改走「默认代理」。只加工上游 `main()` 的输出，不依赖上游源码排版；AI 组没开时不做任何改动。
 
 **节点前缀**：区分不同机场。
 
