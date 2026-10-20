@@ -415,8 +415,93 @@ export function sumUserinfo(values) {
 
 export function dumpConfig(config, comments = []) {
   const header = comments.map((c) => `# ${c}`).join('\n');
-  const body = yaml.dump(config, { lineWidth: -1, noRefs: true });
+  const body = dumpYaml(config);
   return header ? `${header}\n${body}` : body;
+}
+
+// --- 输出 YAML ---
+// 自己写的精简 YAML 输出：js-yaml 的 dump 会逐字检查该用哪种写法，几百个节点就要花掉 Workers 免费方案大半的 CPU 时间；
+// 这里只用两种写法，快 10 倍以上：
+// - 简单字符串（字母、数字、中文、- _ . / + @ 空格，且不像数字或布尔值）不加引号，其余一律用 JSON 的双引号写法（也是合法的 YAML）
+// - proxies 每个节点一行（flow 写法，机场订阅常见的格式），其余用缩进的 block 写法
+
+const PLAIN = /^[\p{L}\p{N}_](?:[\p{L}\p{N}_\-./+@ ]*[\p{L}\p{N}_\-./+@])?$/u;
+// YAML 1.1 会当成布尔值或空值的字；数字开头的一律加引号，避免被当成数字
+const RESERVED = /^(?:true|false|yes|no|on|off|y|n|null)$/i;
+
+// 同一个节点名称会在各个策略组里重复出现几十次，判断结果记下来重复使用（每次输出重新开始）
+let scalarCache = new Map();
+function scalar(v) {
+  if (v === null) return 'null';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null';
+  if (typeof v === 'boolean') return String(v);
+  const s = String(v);
+  let out = scalarCache.get(s);
+  if (out === undefined) {
+    out = PLAIN.test(s) && !RESERVED.test(s) && !/^\d/.test(s) ? s : quote(s);
+    scalarCache.set(s, out);
+  }
+  return out;
+}
+
+// JSON 没转义、但 YAML 当成换行（U+2028、U+2029、U+0085）或不可打印的字符，补上 \u 转义
+const NON_PRINTABLE = /[\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/g;
+function quote(s) {
+  return JSON.stringify(s).replace(NON_PRINTABLE, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const entries = (obj) => Object.entries(obj).filter(([, v]) => v !== undefined);
+
+function flow(v) {
+  if (Array.isArray(v)) return `[${v.filter((x) => x !== undefined).map(flow).join(', ')}]`;
+  if (isMap(v)) return `{${entries(v).map(([k, x]) => `${scalar(k)}: ${flow(x)}`).join(', ')}}`;
+  return scalar(v);
+}
+
+// 空的 map / 数组和标量写在同一行
+const inline = (v) => (Array.isArray(v) || isMap(v) ? flow(v) : scalar(v));
+const isBlock = (v) => (Array.isArray(v) ? v.length > 0 : isMap(v) && entries(v).length > 0);
+
+function blockMap(obj, indent, lines, top = false) {
+  for (const [k, v] of entries(obj)) {
+    const key = indent + scalar(k) + ':';
+    if (!isBlock(v)) lines.push(`${key} ${inline(v)}`);
+    else if (Array.isArray(v)) {
+      lines.push(key);
+      blockSeq(v, indent + '  ', lines, top && k === 'proxies');
+    } else {
+      lines.push(key);
+      blockMap(v, indent + '  ', lines);
+    }
+  }
+}
+
+function blockSeq(arr, indent, lines, flowItems) {
+  for (const v of arr) {
+    if (v === undefined) continue;
+    if (flowItems || !isBlock(v)) lines.push(`${indent}- ${inline(v)}`);
+    else if (Array.isArray(v)) {
+      lines.push(`${indent}-`);
+      blockSeq(v, indent + '  ', lines, false);
+    } else {
+      // map 的第一个键接在「- 」后面
+      const start = lines.length;
+      blockMap(v, indent + '  ', lines);
+      lines[start] = `${indent}- ${lines[start].slice(indent.length + 2)}`;
+    }
+  }
+}
+
+export function dumpYaml(config) {
+  const lines = [];
+  scalarCache = new Map();
+  try {
+    blockMap(config, '', lines, true);
+  } finally {
+    scalarCache = new Map();
+  }
+  return lines.join('\n') + '\n';
 }
 
 // 机场名称里这些字会被 MyClash 脚本当成「信息节点」过滤掉，所以去掉

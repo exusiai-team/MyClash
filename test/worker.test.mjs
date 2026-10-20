@@ -86,6 +86,67 @@ test('/sub/<TOKEN>：rateTag 开启时在节点名称标注倍率', async (t) =>
   assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2x | 香港 01', 'A | 日本 01']);
 });
 
+test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', {
+      body: { name: '手机', prefixMode: 'none', sources: [{ url: `http://127.0.0.1:${upstream.address().port}/yaml` }] },
+    })
+  ).json();
+  const get = (query) => worker.fetch(new Request(`https://w.test/sub/${token}${query}`), env);
+
+  // 不带参数：维持不覆写，输出的是合法 YAML（JSON 格式）
+  const plain = await get('');
+  const plainText = await plain.text();
+  assert.match(plainText, /^# MyClash 合并订阅：手机\n/);
+  assert.deepEqual(yaml.load(plainText)['proxy-groups'].map((g) => g.name), ['节点选择']);
+  assert.equal(plain.headers.get('content-disposition'), `attachment; filename*=UTF-8''${encodeURIComponent('手机')}`);
+
+  const groups = {};
+  for (const [mode, label] of [['lite', '精简'], ['full', '全量']]) {
+    const res = await get(`?script=${mode}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-disposition'), `attachment; filename*=UTF-8''${encodeURIComponent(`手机（${label}）`)}`);
+    assert.ok(res.headers.get('subscription-userinfo'));
+    const body = await res.text();
+    assert.match(body, new RegExp(`已套用${label}版覆写脚本`));
+    assert.match(body, /^# \[S1\] 2 个节点$/m);
+    const config = yaml.load(body);
+    groups[mode] = config['proxy-groups'].map((g) => g.name);
+    assert.ok(groups[mode].includes('默认代理'));
+    assert.ok(config.proxies.some((p) => p.name.includes('香港')));
+    assert.ok(config.rules.includes('RULE-SET,huggingface,默认代理'));
+  }
+  assert.ok(!groups.lite.includes('YouTube'));
+  assert.ok(groups.full.includes('YouTube'));
+
+  assert.equal((await get('?script=nope')).status, 400);
+});
+
+test('/sub/<TOKEN>：浏览器网址栏打开时跳到管理页自动导入，「首页」按钮也带上 TOKEN', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: '手机', sources: [{ url: `http://127.0.0.1:${upstream.address().port}/yaml` }] } })
+  ).json();
+  const browser = { 'Sec-Fetch-Mode': 'navigate', Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
+  const open = (query, headers) => worker.fetch(new Request(`https://w.test/sub/${token}${query}`, { headers }), env);
+
+  const nav = await open('?script=full', browser);
+  assert.equal(nav.status, 302);
+  assert.equal(nav.headers.get('location'), `https://w.test/#import=${token}&script=full`);
+  assert.equal((await open('', browser)).headers.get('location'), `https://w.test/#import=${token}`);
+
+  // 客户端与管理页的 fetch 照常拿到配置
+  const sub = await open('?script=lite', { Accept: '*/*' });
+  assert.equal(sub.status, 200);
+  assert.equal(sub.headers.get('profile-web-page-url'), `https://w.test/#import=${token}&script=lite`);
+  assert.equal((await open('', {})).headers.get('profile-web-page-url'), `https://w.test/#import=${token}`);
+});
+
 test('POST /api/subs/lookup：一次查多个 TOKEN', async () => {
   const env = { SUB_STORE: memoryKv() };
   const create = async (name) => (await (await call(env, 'POST', '/api/subs', { body: { name, sources: [{ url: 'https://a.test' }] } })).json()).token;
@@ -149,7 +210,7 @@ test('/sub/<TOKEN>：合并多个订阅，失败的跳过', async (t) => {
   const res = await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=11; download=22; total=150; expire=1900000000');
-  assert.equal(res.headers.get('profile-web-page-url'), 'https://w.test/');
+  assert.equal(res.headers.get('profile-web-page-url'), `https://w.test/#import=${token}`);
   const body = await res.text();
   assert.match(body, /\[坏掉\] 失败：HTTP 500/);
   const config = yaml.load(body);
