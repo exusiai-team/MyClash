@@ -172,8 +172,7 @@
   function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
   // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果
   const MODES = [['lite', '精简'], ['full', '全量'], ['none', '不覆写']];
-  const MODE_SUFFIX = { lite: '（精简）', full: '（全量）', none: '' };
-  function getMode(token) { const m = store.get('mode:' + token); return m in MODE_SUFFIX ? m : 'lite'; }
+  function getMode(token) { const m = store.get('mode:' + token); return MODES.some(([x]) => x === m) ? m : 'lite'; }
   function setMode(token, mode) { store.set('mode:' + token, mode); }
   function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' ? '' : `?script=${mode}`); }
   function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : ''; }
@@ -269,9 +268,9 @@
       switch (btn.dataset.act) {
         case 'copy': return copy(subUrl(token, mode), btn);
         case 'import':
-          location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name + MODE_SUFFIX[mode])}`;
+          location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name)}`;
           return;
-        case 'preview': return preview(token, name + MODE_SUFFIX[mode], mode);
+        case 'preview': return preview(token, name, mode);
         case 'edit': return openEditor(await api('GET', '/subs/' + token));
         case 'rotate':
           if (!confirm(`「${name}」换新 TOKEN 后，旧的订阅链接会立刻失效，要继续吗？`)) return;

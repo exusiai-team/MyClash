@@ -80,7 +80,6 @@ async function serveSubscription(env, token, origin, script) {
       return text(`套用${override.label}版覆写脚本失败：${err?.message ?? err}`, 502);
     }
   }
-  const name = override ? `${record.name}（${override.label}）` : record.name;
   const comments = [
     `MyClash 合并订阅：${record.name}${override ? `，已套用${override.label}版覆写脚本` : ''}`,
     `更新时间：${new Date().toISOString()}`,
@@ -94,7 +93,7 @@ async function serveSubscription(env, token, origin, script) {
 
   const headers = {
     'Content-Type': 'text/yaml; charset=utf-8',
-    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`,
     'Profile-Update-Interval': '12',
     // 客户端订阅卡片上的「首页」按钮，打开管理页并自动导入这个订阅
     'Profile-Web-Page-Url': `${origin}/#${importHash(token, script)}`,

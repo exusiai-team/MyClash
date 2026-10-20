@@ -108,7 +108,7 @@ test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', asy
   for (const [mode, label] of [['lite', '精简'], ['full', '全量']]) {
     const res = await get(`?script=${mode}`);
     assert.equal(res.status, 200);
-    assert.equal(res.headers.get('content-disposition'), `attachment; filename*=UTF-8''${encodeURIComponent(`手机（${label}）`)}`);
+    assert.equal(res.headers.get('content-disposition'), `attachment; filename*=UTF-8''${encodeURIComponent('手机')}`);
     assert.ok(res.headers.get('subscription-userinfo'));
     const body = await res.text();
     assert.match(body, new RegExp(`已套用${label}版覆写脚本`));
