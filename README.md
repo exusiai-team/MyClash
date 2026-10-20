@@ -58,6 +58,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 分流组用各自服务的测速网址，全部取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 AI → `https://api.anthropic.com/cdn-cgi/trace`、
   Telegram → `http://91.108.56.100/`）；Bettbox 没检测的服务与地区、倍率组维持原版的 Apple 测速网址。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
+- 「AI」组默认选「台湾」（原版为「美国」；订阅里没有台湾节点时由客户端退回第一项）
 
 上游更新后执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（找不到修改位置会直接报错），提交后服务端覆写在下次部署时自动跟着更新。
 

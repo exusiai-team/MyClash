@@ -6,6 +6,7 @@
  * 本文件由 exusiai-team/MyClash 的 scripts/sync-scripts.mjs 从 Script.js 生成（MIT License, Copyright (c) 2026 AIsouler），改动：
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
+ * - 「AI」组默认选「台湾」
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
 
@@ -360,7 +361,7 @@ const serviceConfigs = [
     name: 'AI',
     testUrl: 'https://api.anthropic.com/cdn-cgi/trace',
     baseOption: selectBaseOption,
-    defaultSelected: '美国',
+    defaultSelected: '台湾',
     providers: {
       // HuggingFace 也在 category-ai-!cn 里，用单独的规则集抢先分到「默认代理」
       huggingface: {

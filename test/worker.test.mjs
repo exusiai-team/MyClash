@@ -118,6 +118,7 @@ test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', asy
     assert.ok(groups[mode].includes('默认代理'));
     assert.ok(config.proxies.some((p) => p.name.includes('香港')));
     assert.ok(config.rules.includes('RULE-SET,huggingface,默认代理'));
+    assert.equal(config['proxy-groups'].find((g) => g.name === 'AI')['default-selected'], '台湾');
   }
   assert.ok(!groups.lite.includes('YouTube'));
   assert.ok(groups.full.includes('YouTube'));
