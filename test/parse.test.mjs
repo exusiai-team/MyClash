@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
 import { TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
+import * as yaml from 'js-yaml';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 
@@ -159,4 +160,29 @@ for (const file of ['script.js', 'script-full.js']) {
 
 test('sync-scripts：上游改版找不到修改位置时报错', () => {
   assert.throws(() => patchScript('function main() {}', 'x.js'), /上游脚本可能改版/);
+});
+
+test('dumpYaml：输出读回来跟原本一样，节点一行一个，容易误判的字串加引号', () => {
+  const config = {
+    'mixed-port': 7890,
+    ipv6: true,
+    dns: { 'nameserver-policy': { 'geosite:cn': ['223.5.5.5'], '+.example.com': 'https://1.1.1.1/dns-query' }, empty: [] },
+    proxies: [
+      { name: '🇭🇰 飞云 | 2x | 香港 01', type: 'ss', server: 'hk.node', port: 443, 'ws-opts': { path: '/a', headers: { Host: 'x' } } },
+      { name: 'a, b: {c} #d', type: 'trojan', password: 'yes' },
+    ],
+    'proxy-groups': [{ name: '默认代理', type: 'select', proxies: ['DIRECT', '🇭🇰 飞云 | 2x | 香港 01'] }],
+    rules: ['RULE-SET,ai,AI', 'MATCH,默认代理'],
+    words: ['true', 'No', 'on', 'null', '~', '', '1.5', '0x1F', '2001-12-14', '.inf', '<<', '- a', 'a\u2028b', 'a\u0085b', '\ufeff', 'line\nbreak'],
+    nothing: null,
+    skipped: undefined,
+  };
+  const out = dumpYaml(config);
+  assert.deepEqual(yaml.load(out), JSON.parse(JSON.stringify(config)));
+  assert.match(out, /^ {2}- \{name: "🇭🇰 飞云 \| 2x \| 香港 01", type: ss, server: hk\.node, port: 443, ws-opts: \{path: "\/a", headers: \{Host: x\}\}\}$/m);
+  assert.match(out, /^ {2}- name: 默认代理$/m);
+  assert.match(out, /^mixed-port: 7890$/m);
+  assert.match(out, /^ {2}empty: \[\]$/m);
+  assert.ok(!/[\u2028\u0085\ufeff]/.test(out), 'YAML 当成换行或不可打印的字符要转义');
+  assert.ok(!out.includes('skipped'));
 });

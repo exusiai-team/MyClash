@@ -78,7 +78,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - **没有管理密码**：Worker 不提供列出所有订阅的功能；管理页清单只存在浏览器里。换设备时把订阅链接贴进浏览器网址栏打开（或贴到管理页的输入框），就会自动导入。
 - **抓取失败**：失败且无缓存的机场会被跳过并在配置开头注释原因；全部失败时返回错误，客户端保留上次的配置。
 - 合并结果**不含** `proxy-providers`（脚本会报错），保留各机场的 `dns` / `hosts`。
-- 订阅内容是**缩进的 JSON**（JSON 本身就是合法的 YAML，mihomo 与各客户端都能读）：比 YAML 输出快 10 倍以上，避免超过 Workers 免费方案每次请求 10 ms 的 CPU 时间。
+- 订阅内容由自带的精简 YAML 输出（`src/parse.js` 的 `dumpYaml`，节点一行一个）：比 js-yaml 快 4～6 倍，避免超过 Workers 免费方案每次请求 10 ms 的 CPU 时间。
 - 免费额度（Workers 每天 10 万次请求、KV 每天 1000 次写入）个人使用绰绰有余。
 
 ## 自动化
@@ -100,7 +100,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 
 | 路径 | 说明 |
 | --- | --- |
-| `GET /sub/<TOKEN>` | 合并后的订阅（mihomo 配置，JSON 格式）；`?script=lite` / `?script=full` 在服务端套用覆写脚本 |
+| `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML）；`?script=lite` / `?script=full` 在服务端套用覆写脚本 |
 | `GET /script.js`、`/script-full.js` | 修改版 MyClash 覆写脚本（精简 / 全量，静态文件） |
 | `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, sources: [{ name, url }] }` |
 | `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
