@@ -7,6 +7,7 @@
 - **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时改用 GitHub Actions 代抓的缓存
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
+- **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
 ```mermaid
@@ -58,7 +59,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   Telegram → `http://91.108.56.100/`）；Bettbox 没检测的服务与地区、倍率组维持原版的 Apple 测速网址。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
 
-上游更新后执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（找不到修改位置会直接报错）。
+上游更新后执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（找不到修改位置会直接报错），提交后服务端覆写在下次部署时自动跟着更新。
 
 **节点前缀**：区分不同机场。
 
@@ -72,14 +73,35 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 去掉原字样后改写为 `前缀 | 2x | 原名`，例如 `美国04-1.5x |4837` → `MNKCloud | 1.5x | 美国04|4837`。
 1 倍不标；「剩余流量 / 到期」等信息节点不处理。标注后仍会被脚本归入高/低倍率组。
 
+## 管理订阅
+
+每个订阅卡片可以「编辑」（名称、机场、前缀、倍率标注）、「换 TOKEN」（旧链接立即失效）、「删除」（使用这个链接的客户端无法再更新）。
+
+管理页清单**只存在这个浏览器里**：Worker 没有管理密码，所以不提供列出所有订阅的功能。换设备、换浏览器或清除浏览器数据后清单会是空的，
+但订阅仍然有效。只要手上还有订阅链接（客户端的订阅设置里都有），用以下任一方式就能找回来管理：
+
+- 把订阅链接贴进浏览器网址栏打开
+- 在客户端的订阅卡片按「首页」
+- 贴到管理页清单下方的输入框
+
+> 链接完全找不到时，到 Cloudflare → **存储和数据库 → Workers KV → `myclash-sub-store`**，`sub:` 开头的每一笔就是一个订阅（内容含名称与机场清单），直接删除即可。
+
 ## 注意事项
 
 - **TOKEN 等同密码**：拿到链接的人能用节点，也能编辑或删除订阅。外流时按「换 TOKEN」，旧链接立即失效。
-- **没有管理密码**：Worker 不提供列出所有订阅的功能；管理页清单只存在浏览器里。换设备时把订阅链接贴进浏览器网址栏打开（或贴到管理页的输入框），就会自动导入。
 - **抓取失败**：失败且无缓存的机场会被跳过并在配置开头注释原因；全部失败时返回错误，客户端保留上次的配置。
 - 合并结果**不含** `proxy-providers`（脚本会报错），保留各机场的 `dns` / `hosts`。
 - 订阅内容由自带的精简 YAML 输出（`src/parse.js` 的 `dumpYaml`，节点一行一个）：比 js-yaml 快 4～6 倍，避免超过 Workers 免费方案每次请求 10 ms 的 CPU 时间。
-- 免费额度（Workers 每天 10 万次请求、KV 每天 1000 次写入）个人使用绰绰有余。
+- **免费额度**个人使用绰绰有余：
+
+  | 项目 | 免费额度（每天） | 用量 |
+  | --- | --- | --- |
+  | Worker 请求 | 10 万次 | 客户端每次更新订阅算 1 次（管理页是静态文件，不计） |
+  | KV 读取 | 10 万次 | 每次更新读 1 次；机场直连失败时每个机场再读 1 次缓存 |
+  | KV 写入 | 1000 次 | 添加、编辑、换 TOKEN，以及代抓缓存（每个机场 1 次） |
+
+  没人使用的旧订阅只占 KV 约 1 KB，不消耗请求。唯一可能超额的是链接外流被大量请求：超额后当天请求失败（台湾时间 08:00 重置，免费方案不会扣款），
+  客户端保留上次的配置；按「换 TOKEN」即可止血。实际用量可在 Cloudflare → Workers → myclash → 指标查看。
 
 ## 自动化
 
@@ -100,7 +122,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 
 | 路径 | 说明 |
 | --- | --- |
-| `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML）；`?script=lite` / `?script=full` 在服务端套用覆写脚本 |
+| `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML）；`?script=lite` / `?script=full` 在服务端套用覆写脚本；浏览器网址栏打开时跳到管理页 `/#import=<TOKEN>` 自动导入 |
 | `GET /script.js`、`/script-full.js` | 修改版 MyClash 覆写脚本（精简 / 全量，静态文件） |
 | `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, sources: [{ name, url }] }` |
 | `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
