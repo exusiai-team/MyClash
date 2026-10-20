@@ -1,12 +1,12 @@
 # MyClash 订阅合并
 
-把多个机场订阅合并成**一个**订阅链接（节点并集），在客户端套用 [AIsouler/MyClash](https://github.com/AIsouler/MyClash) 覆写脚本。
+把多个机场订阅合并成**一个**订阅链接（节点并集），并直接套用 [AIsouler/MyClash](https://github.com/AIsouler/MyClash) 覆写脚本，客户端导入就能用。
 
 - **一键合并**：Worker 地址就是管理页，粘贴多个机场订阅即生成合并链接，流量自动加总
 - **即时节点**：客户端每次更新时即时抓各机场最新节点
 - **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时改用 GitHub Actions 代抓的缓存
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
-- **覆写脚本**：精简版 `/script.js` 与全量版 `/script-full.js`，分流组按服务测速，HuggingFace 不走「AI」组
+- **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
 ```mermaid
@@ -38,17 +38,20 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 ## 使用
 
-1. 管理页按「生成新的订阅」，粘贴各机场订阅（可批量粘贴），保存后「复制链接」或「一键导入 Clash」
-2. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新（订阅卡片上的「首页」按钮会打开管理页）
-3. 添加**脚本覆写** `https://<Worker 地址>/script.js`（管理页可复制）
+1. 管理页按「生成新的订阅」，粘贴各机场订阅（可批量粘贴）并保存
+2. 在订阅卡片选覆写脚本（精简 / 全量 / 不覆写），按「复制链接」或「一键导入 Clash」
+3. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新（订阅卡片上的「首页」按钮会打开管理页）
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
-**覆写脚本**：本仓库提供 [AIsouler/MyClash](https://github.com/AIsouler/MyClash)（MIT）两个版本的修改版，都是静态文件、不占 Worker 请求：
+**覆写脚本**：本仓库提供 [AIsouler/MyClash](https://github.com/AIsouler/MyClash)（MIT）两个版本的修改版，Worker 输出订阅时直接套用：
 
-| 链接 | 来源 | 说明 |
+| 订阅链接 | 来源 | 说明 |
 | --- | --- | --- |
-| `/script.js` | 精简版 `Script.js` | 默认推荐，分流组：Google、AI、Telegram、Steam、AdBlock |
-| `/script-full.js` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Apple、Microsoft、TikTok 等 17 个分流组 |
+| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、AI、Telegram、Steam、AdBlock |
+| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Apple、Microsoft、TikTok 等 17 个分流组 |
+| `/sub/<TOKEN>` | 不覆写 | 只合并节点；可自己在客户端加脚本覆写 `/script.js` 或 `/script-full.js` |
+
+> 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。
 
 相对原版的改动：
 - 分流组用各自服务的测速网址，全部取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 AI → `https://api.anthropic.com/cdn-cgi/trace`、
@@ -75,6 +78,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - **没有管理密码**：Worker 不提供列出所有订阅的功能；管理页清单只存在浏览器里，可用「导入 TOKEN」找回。
 - **抓取失败**：失败且无缓存的机场会被跳过并在配置开头注释原因；全部失败时返回错误，客户端保留上次的配置。
 - 合并结果**不含** `proxy-providers`（脚本会报错），保留各机场的 `dns` / `hosts`。
+- 订阅内容是**缩进的 JSON**（JSON 本身就是合法的 YAML，mihomo 与各客户端都能读）：比 YAML 输出快 10 倍以上，避免超过 Workers 免费方案每次请求 10 ms 的 CPU 时间。
 - 免费额度（Workers 每天 10 万次请求、KV 每天 1000 次写入）个人使用绰绰有余。
 
 ## 自动化
@@ -96,7 +100,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 
 | 路径 | 说明 |
 | --- | --- |
-| `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML） |
+| `GET /sub/<TOKEN>` | 合并后的订阅（mihomo 配置，JSON 格式）；`?script=lite` / `?script=full` 在服务端套用覆写脚本 |
 | `GET /script.js`、`/script-full.js` | 修改版 MyClash 覆写脚本（精简 / 全量，静态文件） |
 | `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, sources: [{ name, url }] }` |
 | `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
@@ -113,6 +117,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `public/index.html` | 管理页 |
 | `public/script.js`、`public/script-full.js` | 修改版 MyClash 覆写脚本（由 `scripts/sync-scripts.mjs` 生成） |
 | `scripts/sync-scripts.mjs` | 从上游同步覆写脚本并套用改动 |
+| `scripts/build-overrides.mjs` | 部署 / 测试前把上面两个脚本包成 ES module（`src/overrides/`，不进 git），给服务端覆写用 |
 
 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)。
 

@@ -62,7 +62,7 @@
 <body>
 <main>
   <h1>MyClash 订阅合并</h1>
-  <p class="sub">把多个机场订阅合并成一个订阅链接（节点并集），再自己在客户端套用 MyClash 覆写脚本。</p>
+  <p class="sub">把多个机场订阅合并成一个订阅链接（节点并集），并直接套用 MyClash 覆写脚本，客户端导入就能用。</p>
 
   <section class="card" id="list-card">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
@@ -126,17 +126,20 @@
   <section class="card">
     <h2>客户端怎么用</h2>
     <ol>
-      <li>按「复制链接」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。</li>
-      <li>对这个订阅添加<b>脚本覆写</b>，填入（精简版，推荐）：
-        <div class="link" id="script-url"></div>
-        <button id="copy-script">复制脚本链接</button>
-        <div class="muted" style="margin-top:8px">需要更多分流组（YouTube、Netflix、GitHub、Apple 等）可改用全量版：</div>
-        <div class="link" id="script-full-url"></div>
-        <button id="copy-script-full">复制全量版链接</button>
-        <p class="muted" style="margin:6px 0 0">两者都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。</p>
-      </li>
+      <li>在订阅卡片选覆写脚本：<b>精简</b>（推荐，分流组：Google、AI、Telegram、Steam、AdBlock）或<b>全量</b>（另加 YouTube、Netflix、GitHub、Apple 等）。</li>
+      <li>按「复制链接」或「一键导入 Clash」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。
+        链接已经套用好脚本，<b>客户端不要再加脚本覆写</b>，否则会覆写两次。</li>
       <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
     </ol>
+    <p class="muted">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。</p>
+    <details><summary>想自己在客户端覆写？</summary>
+      <p class="muted">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版：</p>
+      <div class="link" id="script-url"></div>
+      <button id="copy-script">复制脚本链接</button>
+      <div class="muted" style="margin-top:8px">或全量版：</div>
+      <div class="link" id="script-full-url"></div>
+      <button id="copy-script-full">复制全量版链接</button>
+    </details>
     <details><summary>安全提醒</summary>
       <p class="muted">每个订阅链接里的 TOKEN 都等同密码，拿到的人就能用你的节点，也能编辑或删除这个订阅。如果外流了，按「换 TOKEN」，旧链接会立刻失效，再把新链接贴回客户端就好。</p>
     </details>
@@ -169,7 +172,12 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
-  function subUrl(token) { return `${workerUrl}/sub/${token}`; }
+  // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果
+  const MODES = [['lite', '精简'], ['full', '全量'], ['none', '不覆写']];
+  const MODE_SUFFIX = { lite: '（精简）', full: '（全量）', none: '' };
+  function getMode(token) { const m = store.get('mode:' + token); return m in MODE_SUFFIX ? m : 'lite'; }
+  function setMode(token, mode) { store.set('mode:' + token, mode); }
+  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' ? '' : `?script=${mode}`); }
   function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : ''; }
 
   async function api(method, path, body) {
@@ -204,7 +212,11 @@
       <div class="item" data-token="${escapeHtml(it.token)}" data-name="${escapeHtml(it.name || '')}">
         <div class="item-title">${it.error ? '<span class="muted">读取失败：' + escapeHtml(it.error) + '</span>'
           : escapeHtml(it.name) + ' <span class="muted">· ' + it.sources.length + ' 个机场 · 前缀：' + ({ name: '机场名称', index: 'S1、S2…', none: '不加' }[it.prefixMode || 'index']) + (it.rateTag ? ' · 倍率标注' : '') + ' · 更新于 ' + fmtTime(it.updatedAt) + '</span>'}</div>
-        <div class="link">${escapeHtml(subUrl(it.token))}</div>
+        <div class="row mode" style="margin-top:6px">
+          <span class="muted">覆写脚本：</span>
+          ${MODES.map(([m, label]) => `<label class="opt"><input type="radio" name="mode-${escapeHtml(it.token)}" value="${m}"${m === getMode(it.token) ? ' checked' : ''}> ${label}</label>`).join('')}
+        </div>
+        <div class="link">${escapeHtml(subUrl(it.token, getMode(it.token)))}</div>
         <div class="row">
           <button data-act="copy" class="primary">复制链接</button>
           <button data-act="import">一键导入 Clash</button>
@@ -228,24 +240,33 @@
     } catch (e) { showMsg($('import-msg'), e.message); }
   };
 
+  $('list').addEventListener('change', (e) => {
+    if (!e.target.name?.startsWith('mode-')) return;
+    const item = e.target.closest('.item');
+    setMode(item.dataset.token, e.target.value);
+    item.querySelector('.link').textContent = subUrl(item.dataset.token, e.target.value);
+  });
+
   $('list').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const item = btn.closest('.item');
     const { token, name } = item.dataset;
+    const mode = getMode(token);
     try {
       switch (btn.dataset.act) {
-        case 'copy': return copy(subUrl(token), btn);
+        case 'copy': return copy(subUrl(token, mode), btn);
         case 'import':
-          location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token))}&name=${encodeURIComponent(name)}`;
+          location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name + MODE_SUFFIX[mode])}`;
           return;
-        case 'preview': return preview(token, name);
+        case 'preview': return preview(token, name + MODE_SUFFIX[mode], mode);
         case 'edit': return openEditor(await api('GET', '/subs/' + token));
         case 'rotate':
           if (!confirm(`「${name}」换新 TOKEN 后，旧的订阅链接会立刻失效，要继续吗？`)) return;
           {
             const { token: next } = await api('POST', `/subs/${token}/rotate`);
             saveTokens(getTokens().map((t) => (t === token ? next : t)));
+            setMode(next, mode);
           }
           return loadList();
         case 'delete':
@@ -344,7 +365,7 @@
   };
 
   // --- 预览 ---
-  async function preview(token, name) {
+  async function preview(token, name, mode) {
     $('preview-card').classList.remove('hidden');
     $('preview-title').textContent = `预览：${name}`;
     $('preview-info').textContent = '抓取中…（会即时抓取所有机场，可能要几秒）';
@@ -353,7 +374,7 @@
     $('preview-hint').classList.add('hidden');
     $('preview-card').scrollIntoView({ behavior: 'smooth' });
     try {
-      const res = await fetch(subUrl(token), { cache: 'no-store' });
+      const res = await fetch(subUrl(token, mode), { cache: 'no-store' });
       previewText = await res.text();
       previewName = name;
       const info = res.headers.get('subscription-userinfo');

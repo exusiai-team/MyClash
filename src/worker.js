@@ -1,5 +1,7 @@
 import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey } from './cache.js';
+import liteScript from './overrides/lite.js';
+import fullScript from './overrides/full.js';
 
 const KEY_PREFIX = 'sub:';
 const FETCH_TIMEOUT_MS = 15000;
@@ -13,6 +15,11 @@ const REFRESH_COOLDOWN_SECONDS = 60;
 const PREFIX_MODES = ['name', 'index', 'none'];
 // 管理页一次查多个 TOKEN 的上限
 const MAX_LOOKUP = 50;
+// /sub/<TOKEN>?script=lite|full：在服务端套用覆写脚本，客户端不用再加脚本覆写；不带参数则不覆写
+const OVERRIDES = {
+  lite: { run: liteScript, label: '精简' },
+  full: { run: fullScript, label: '全量' },
+};
 
 export default {
   async fetch(request, env) {
@@ -30,14 +37,18 @@ async function route(request, env) {
   if (!env.SUB_STORE) return text('这个版本没有绑定 KV（预览版本），请使用正式的 Worker 地址', 503);
 
   if (parts.length === 0) return text('MyClash 订阅合并 Worker 运行中。合并订阅链接：/sub/<TOKEN>\n');
-  if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') return serveSubscription(env, parts[1], url.origin);
+  if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') {
+    return serveSubscription(env, parts[1], url.origin, url.searchParams.get('script'));
+  }
   if (parts[0] === 'api') return api(request, env, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
 
 // --- 订阅输出 ---
 
-async function serveSubscription(env, token, origin) {
+async function serveSubscription(env, token, origin, script) {
+  const override = script === null ? null : Object.hasOwn(OVERRIDES, script) ? OVERRIDES[script] : undefined;
+  if (override === undefined) return text('script 参数只能是 lite（精简）或 full（全量），不覆写请去掉这个参数', 400);
   const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
@@ -46,12 +57,21 @@ async function serveSubscription(env, token, origin) {
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) return text('所有机场订阅都抓取失败或没有节点，请稍后再试', 502);
 
-  const config = mergeSubscriptions(
+  let config = mergeSubscriptions(
     ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
     { rateTag: record.rateTag === true },
   );
+  if (override) {
+    try {
+      config = override.run(config);
+    } catch (err) {
+      // 返回错误让客户端保留上次的配置，不给半成品
+      return text(`套用${override.label}版覆写脚本失败：${err?.message ?? err}`, 502);
+    }
+  }
+  const name = override ? `${record.name}（${override.label}）` : record.name;
   const comments = [
-    `MyClash 合并订阅：${record.name}`,
+    `MyClash 合并订阅：${record.name}${override ? `，已套用${override.label}版覆写脚本` : ''}`,
     `更新时间：${new Date().toISOString()}`,
     ...results.map((r) =>
       r.parsed
@@ -63,7 +83,7 @@ async function serveSubscription(env, token, origin) {
 
   const headers = {
     'Content-Type': 'text/yaml; charset=utf-8',
-    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`,
+    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
     'Profile-Update-Interval': '12',
     // 客户端订阅卡片上的「首页」按钮，指向这个 Worker 的管理页
     'Profile-Web-Page-Url': `${origin}/`,

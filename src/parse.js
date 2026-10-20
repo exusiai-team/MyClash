@@ -413,9 +413,11 @@ export function sumUserinfo(values) {
   return `upload=${total.upload}; download=${total.download}; total=${total.total}; expire=${expire}`;
 }
 
+// 输出缩进的 JSON：JSON 本身就是合法的 YAML，mihomo 与各客户端都读得懂，
+// 而且 JSON.stringify 比 js-yaml 的 dump 快 10 倍以上，能省下 Workers 的 CPU 时间；开头的 # 注释在 YAML 里照样合法
 export function dumpConfig(config, comments = []) {
   const header = comments.map((c) => `# ${c}`).join('\n');
-  const body = yaml.dump(config, { lineWidth: -1, noRefs: true });
+  const body = JSON.stringify(config, null, 2) + '\n';
   return header ? `${header}\n${body}` : body;
 }
 

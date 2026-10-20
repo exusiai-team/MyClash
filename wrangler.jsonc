@@ -2,6 +2,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "myclash",
   "main": "src/worker.js",
+  // 打包前把 public/ 的覆写脚本包成 ES module（src/overrides/），给 /sub/<TOKEN>?script= 在服务端覆写用
+  // watch_dir 指向 public/：生成的文件在 src/ 底下，监看 src/ 会让 wrangler dev 一直重新打包
+  "build": { "command": "node scripts/build-overrides.mjs", "watch_dir": "public" },
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
   // 压缩打包结果（154 KiB → 78 KiB），上传更快；不发送 wrangler 使用统计，部署少一次网络请求
