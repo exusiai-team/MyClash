@@ -38,6 +38,10 @@ async function route(request, env) {
 
   if (parts.length === 0) return text('MyClash 订阅合并 Worker 运行中。合并订阅链接：/sub/<TOKEN>\n');
   if (parts[0] === 'sub' && parts.length === 2 && request.method === 'GET') {
+    // 订阅链接直接贴进浏览器网址栏时，跳到管理页自动导入；客户端与管理页的 fetch 不会带这两个标头
+    if (request.headers.get('sec-fetch-mode') === 'navigate' && request.headers.get('accept')?.includes('text/html')) {
+      return Response.redirect(`${url.origin}/#${importHash(parts[1], url.searchParams.get('script'))}`, 302);
+    }
     return serveSubscription(env, parts[1], url.origin, url.searchParams.get('script'));
   }
   if (parts[0] === 'api') return api(request, env, parts.slice(1));
@@ -45,6 +49,13 @@ async function route(request, env) {
 }
 
 // --- 订阅输出 ---
+
+// 管理页读取的网址片段：#import=<TOKEN>&script=lite（片段不会发给服务器）
+function importHash(token, script) {
+  const params = new URLSearchParams({ import: token });
+  if (Object.hasOwn(OVERRIDES, script ?? '')) params.set('script', script);
+  return params.toString();
+}
 
 async function serveSubscription(env, token, origin, script) {
   const override = script === null ? null : Object.hasOwn(OVERRIDES, script) ? OVERRIDES[script] : undefined;
@@ -85,8 +96,8 @@ async function serveSubscription(env, token, origin, script) {
     'Content-Type': 'text/yaml; charset=utf-8',
     'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
     'Profile-Update-Interval': '12',
-    // 客户端订阅卡片上的「首页」按钮，指向这个 Worker 的管理页
-    'Profile-Web-Page-Url': `${origin}/`,
+    // 客户端订阅卡片上的「首页」按钮，打开管理页并自动导入这个订阅
+    'Profile-Web-Page-Url': `${origin}/#${importHash(token, script)}`,
     'Cache-Control': 'no-store',
   };
   const userinfo = sumUserinfo(ok.map((r) => r.userinfo));

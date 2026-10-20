@@ -40,7 +40,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 1. 管理页按「生成新的订阅」，粘贴各机场订阅（可批量粘贴）并保存
 2. 在订阅卡片选覆写脚本（精简 / 全量 / 不覆写），按「复制链接」或「一键导入 Clash」
-3. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新（订阅卡片上的「首页」按钮会打开管理页）
+3. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新（订阅卡片上的「首页」按钮会打开管理页并自动导入这个订阅）
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
 **覆写脚本**：本仓库提供 [AIsouler/MyClash](https://github.com/AIsouler/MyClash)（MIT）两个版本的修改版，Worker 输出订阅时直接套用：
@@ -75,7 +75,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 ## 注意事项
 
 - **TOKEN 等同密码**：拿到链接的人能用节点，也能编辑或删除订阅。外流时按「换 TOKEN」，旧链接立即失效。
-- **没有管理密码**：Worker 不提供列出所有订阅的功能；管理页清单只存在浏览器里，可用「导入 TOKEN」找回。
+- **没有管理密码**：Worker 不提供列出所有订阅的功能；管理页清单只存在浏览器里。换设备时把订阅链接贴进浏览器网址栏打开（或贴到管理页的输入框），就会自动导入。
 - **抓取失败**：失败且无缓存的机场会被跳过并在配置开头注释原因；全部失败时返回错误，客户端保留上次的配置。
 - 合并结果**不含** `proxy-providers`（脚本会报错），保留各机场的 `dns` / `hosts`。
 - 订阅内容是**缩进的 JSON**（JSON 本身就是合法的 YAML，mihomo 与各客户端都能读）：比 YAML 输出快 10 倍以上，避免超过 Workers 免费方案每次请求 10 ms 的 CPU 时间。

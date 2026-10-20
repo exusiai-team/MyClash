@@ -70,14 +70,12 @@
       <button class="primary" id="new-btn">＋ 生成新的订阅</button>
     </div>
     <div id="list"></div>
-    <details style="margin-top:14px"><summary>在别的设备生成过？导入 TOKEN</summary>
-      <div class="row" style="margin-top:8px">
-        <input type="text" id="import-input" class="grow" placeholder="粘贴 TOKEN 或完整的订阅链接">
-        <button id="import-btn">导入</button>
-      </div>
-      <div class="msg" id="import-msg"></div>
-    </details>
-    <p class="muted" style="margin-bottom:0">清单只记在这个浏览器里；清除浏览器数据后，订阅链接仍然有效，用「导入 TOKEN」就能找回来。</p>
+    <div class="row" style="margin-top:14px">
+      <input type="text" id="import-input" class="grow" placeholder="在别的设备生成过？粘贴订阅链接或 TOKEN，自动导入">
+      <button id="import-btn">导入</button>
+    </div>
+    <div class="msg" id="import-msg"></div>
+    <p class="muted" style="margin-bottom:0">清单只记在这个浏览器里。换设备或清除浏览器数据后，把订阅链接贴到上面，或直接贴进浏览器网址栏打开，就会自动导入。</p>
   </section>
 
   <section class="card hidden" id="edit-card">
@@ -228,17 +226,31 @@
       </div>`).join('');
   }
 
-  $('import-btn').onclick = async () => {
-    const m = $('import-input').value.match(/[a-f0-9]{32}/);
+  // 从订阅链接或 TOKEN 导入；链接带 ?script= 时一并记住覆写版本
+  async function importFrom(input) {
+    const m = String(input).match(/[a-f0-9]{32}/);
     if (!m) return showMsg($('import-msg'), '找不到 TOKEN，请粘贴 32 位的 TOKEN 或完整订阅链接');
+    const mode = String(input).match(/[?&]script=(lite|full)\b/)?.[1];
     try {
-      await api('GET', '/subs/' + m[0]);
+      const { name } = await api('GET', '/subs/' + m[0]);
+      const existed = getTokens().includes(m[0]);
       addToken(m[0]);
+      if (mode) setMode(m[0], mode);
       $('import-input').value = '';
-      showMsg($('import-msg'), '已导入', true);
+      showMsg($('import-msg'), existed ? `「${name}」已在清单里` : `已导入「${name}」`, true);
       await loadList();
+      highlight(m[0]);
     } catch (e) { showMsg($('import-msg'), e.message); }
-  };
+  }
+  $('import-btn').onclick = () => importFrom($('import-input').value);
+  // 粘贴或输入完整 TOKEN 后自动导入，不用再按按钮
+  $('import-input').addEventListener('input', (e) => { if (/[a-f0-9]{32}/.test(e.target.value)) importFrom(e.target.value); });
+  $('import-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') importFrom(e.target.value); });
+
+  function highlight(token) {
+    const el = document.querySelector(`.item[data-token="${token}"]`);
+    if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('.link').style.outline = '2px solid var(--accent)'; }
+  }
 
   $('list').addEventListener('change', (e) => {
     if (!e.target.name?.startsWith('mode-')) return;
@@ -349,8 +361,7 @@
       if (!editingToken) addToken(saved.token);
       $('edit-card').classList.add('hidden');
       await loadList();
-      const el = document.querySelector(`.item[data-token="${saved.token}"]`);
-      if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('.link').style.outline = '2px solid var(--accent)'; }
+      highlight(saved.token);
     } catch (e) { showMsg($('edit-msg'), e.message); }
     finally { $('save-btn').disabled = false; }
   };
@@ -417,6 +428,13 @@
   $('script-full-url').textContent = `${workerUrl}/script-full.js`;
   $('copy-script-full').onclick = (e) => copy($('script-full-url').textContent, e.target);
 
+  // 网址带 #import=<TOKEN>（浏览器打开订阅链接、客户端的「首页」按钮会跳到这里）就自动导入
+  const fromHash = new URLSearchParams(location.hash.slice(1));
+  if (fromHash.has('import')) {
+    history.replaceState(null, '', location.pathname);
+    const script = fromHash.get('script');
+    importFrom(fromHash.get('import') + (script ? `?script=${script}` : ''));
+  }
   loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; });
 })();
 </script>

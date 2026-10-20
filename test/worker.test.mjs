@@ -125,6 +125,28 @@ test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', asy
   assert.equal((await get('?script=nope')).status, 400);
 });
 
+test('/sub/<TOKEN>：浏览器网址栏打开时跳到管理页自动导入，「首页」按钮也带上 TOKEN', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: '手机', sources: [{ url: `http://127.0.0.1:${upstream.address().port}/yaml` }] } })
+  ).json();
+  const browser = { 'Sec-Fetch-Mode': 'navigate', Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
+  const open = (query, headers) => worker.fetch(new Request(`https://w.test/sub/${token}${query}`, { headers }), env);
+
+  const nav = await open('?script=full', browser);
+  assert.equal(nav.status, 302);
+  assert.equal(nav.headers.get('location'), `https://w.test/#import=${token}&script=full`);
+  assert.equal((await open('', browser)).headers.get('location'), `https://w.test/#import=${token}`);
+
+  // 客户端与管理页的 fetch 照常拿到配置
+  const sub = await open('?script=lite', { Accept: '*/*' });
+  assert.equal(sub.status, 200);
+  assert.equal(sub.headers.get('profile-web-page-url'), `https://w.test/#import=${token}&script=lite`);
+  assert.equal((await open('', {})).headers.get('profile-web-page-url'), `https://w.test/#import=${token}`);
+});
+
 test('POST /api/subs/lookup：一次查多个 TOKEN', async () => {
   const env = { SUB_STORE: memoryKv() };
   const create = async (name) => (await (await call(env, 'POST', '/api/subs', { body: { name, sources: [{ url: 'https://a.test' }] } })).json()).token;
@@ -188,7 +210,7 @@ test('/sub/<TOKEN>：合并多个订阅，失败的跳过', async (t) => {
   const res = await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=11; download=22; total=150; expire=1900000000');
-  assert.equal(res.headers.get('profile-web-page-url'), 'https://w.test/');
+  assert.equal(res.headers.get('profile-web-page-url'), `https://w.test/#import=${token}`);
   const body = await res.text();
   assert.match(body, /\[坏掉\] 失败：HTTP 500/);
   const config = yaml.load(body);
