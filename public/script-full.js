@@ -7,6 +7,7 @@
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
+ * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
 
@@ -1030,6 +1031,20 @@ function buildRegionGroups(filteredProxies, customProxies) {
   const generatedRegionGroups = allRegionDefinitions
     .filter((r) => regionGroups[r.name].length > 0 && (generateRateGroupEnabled || !rateRegionDefinitions.includes(r)))
     .flatMap((r) => createRegionGroup(r.name, r.icon, regionGroups[r.name]));
+
+  // IPv6 节点：名称标有 IPv6 / v6，或 server 本身是 IPv6 地址，或强制只用 IPv6
+  const ipv6NameRegex = /ipv6|(?<![a-z0-9])v6(?![a-z0-9])/i;
+  const ipv6Proxies = [...filteredProxies, ...customProxies]
+    .filter(
+      (proxy) =>
+        ipv6NameRegex.test(toMatchableName(proxy.name)) ||
+        String(proxy.server ?? '').includes(':') ||
+        proxy['ip-version'] === 'ipv6',
+    )
+    .map((proxy) => proxy.name);
+  if (ipv6Proxies.length > 0) {
+    generatedRegionGroups.push(...createRegionGroup('IPv6', `${iconBaseUrl}Global.svg`, ipv6Proxies));
+  }
 
   if (otherProxies.length > 0) {
     generatedRegionGroups.push(...createRegionGroup('其他节点', `${iconBaseUrl}WorldMap.svg`, otherProxies));

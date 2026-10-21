@@ -129,13 +129,13 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
-function runScript(file) {
+function runScript(file, extra = []) {
   const ctx = vm.createContext({ console, structuredClone, URL });
   vm.runInContext(fs.readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'), ctx);
   const proxies = ['🇺🇸 美国 01', '🇭🇰 香港 01', '🇯🇵 日本 01', '🇸🇬 新加坡 01', '🇹🇼 台湾 01'].map((name, i) => ({
     name, type: 'ss', server: `n${i}.example`, port: 1, cipher: 'aes-128-gcm', password: 'x',
   }));
-  return vm.runInContext('main', ctx)({ proxies });
+  return vm.runInContext('main', ctx)({ proxies: [...proxies, ...extra] });
 }
 
 for (const file of ['script.js', 'script-full.js']) {
@@ -155,6 +155,28 @@ for (const file of ['script.js', 'script-full.js']) {
     const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
     assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));
     assert.match(out['rule-providers'].huggingface.url, /bett-rules@meta\/geo\/geosite\/huggingface\.mrs$/);
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：IPv6 节点组加进默认代理`, () => {
+    const node = (name, server) => ({ name, type: 'ss', server, port: 1, cipher: 'aes-128-gcm', password: 'x' });
+    const groups = (out) => new Map(out['proxy-groups'].map((g) => [g.name, g]));
+
+    // 没有 IPv6 节点就不生成
+    assert.ok(!groups(runScript(file)).has('IPv6'));
+
+    const out = groups(runScript(file, [
+      node('🇯🇵 日本 IPv6 02', 'jp6.example'),
+      node('🇺🇸 美国 v6-03', 'us6.example'),
+      node('🇭🇰 香港 02', '2001:db8::1'),
+      node('🇸🇬 新加坡 dev602', 'sg.example'),
+    ]));
+    assert.deepEqual([...out.get('IPv6').proxies], ['🇯🇵 日本 IPv6 02', '🇺🇸 美国 v6-03', '🇭🇰 香港 02', 'IPv6-自动选择']);
+    assert.equal(out.get('IPv6-自动选择').type, 'url-test');
+    assert.ok(out.get('默认代理').proxies.includes('IPv6'));
+    // 节点仍留在原本的地区组
+    assert.ok(out.get('日本').proxies.includes('🇯🇵 日本 IPv6 02'));
   });
 }
 
