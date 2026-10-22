@@ -8,6 +8,7 @@
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
+ * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
 
@@ -67,6 +68,12 @@ const ruleOptionsEnable = {
 
 // 定义前置规则
 const prefixRules = [
+  // 本机其他代理核心（如 v2rayN 的 xray / sing-box）自己会连节点，直连即可，不再经节点代理一次
+  'PROCESS-NAME,xray.exe,直连',
+  'PROCESS-NAME,sing-box.exe,直连',
+  'PROCESS-NAME,xray,直连',
+  'PROCESS-NAME,sing-box,直连',
+
   // 规则集下载域名，避免出现鸡蛋问题
   'DOMAIN,cdn.jsdmirror.com,直连',
 
@@ -1736,7 +1743,7 @@ function main(config) {
   newConfig['allow-lan'] = true;
   newConfig['ipv6'] = true;
   newConfig['mode'] = 'rule';
-  newConfig['log-level'] = 'info';
+  newConfig['log-level'] = 'warning';
   newConfig['bind-address'] = '*';
   newConfig['unified-delay'] = true;
   newConfig['tcp-concurrent'] = true;
