@@ -687,8 +687,11 @@ function buildRegionGroups(filteredProxies, customProxies) {
         proxy['ip-version'] === 'ipv6',
     )
     .map((proxy) => proxy.name);
+  // 上游没有 IPv6 图标，Global.svg 已给 GLOBAL 组用，改用本仓库仿上游风格画的 public/icons/IPv6.svg
   if (ipv6Proxies.length > 0) {
-    generatedRegionGroups.push(...createRegionGroup('IPv6', `${iconBaseUrl}Global.svg`, ipv6Proxies));
+    generatedRegionGroups.push(
+      ...createRegionGroup('IPv6', 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/icons/IPv6.svg', ipv6Proxies),
+    );
   }
 
   if (otherProxies.length > 0) {
