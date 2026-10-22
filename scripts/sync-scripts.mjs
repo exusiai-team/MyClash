@@ -18,7 +18,8 @@ export const TEST_URLS = {
   AI: 'https://api.anthropic.com/cdn-cgi/trace',
   GitHub: 'https://github.com/',
   Apple: 'https://gspe1-ssl.ls.apple.com/pep/gcc',
-  Telegram: 'http://91.108.56.100/',
+  // Bettbox 用的 http://91.108.56.100/ 不支持 keep-alive，unified-delay 的第二次请求常失败、延迟失准
+  Telegram: 'https://api.telegram.org/',
   Steam: 'https://store.steampowered.com/',
   TikTok: 'https://perfops1.byteperf.com/500b-bench.jpg',
   Twitter: 'https://x.com/cdn-cgi/trace',
@@ -56,6 +57,7 @@ export function patchScript(source, file) {
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
+ * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐`,
     '文件开头注释',
   );
@@ -79,6 +81,7 @@ export function patchScript(source, file) {
   );
   s = s.slice(0, start) + block + s.slice(end);
   s = addIpv6Group(s);
+  s = reduceMemory(s);
 
   return replaceOnce(
     s,
@@ -100,8 +103,11 @@ const IPV6_GROUP = `  // IPv6 节点：名称标有 IPv6 / v6，或 server 本�
         proxy['ip-version'] === 'ipv6',
     )
     .map((proxy) => proxy.name);
+  // 上游没有 IPv6 图标，Global.svg 已给 GLOBAL 组用，改用本仓库仿上游风格画的 public/icons/IPv6.svg
   if (ipv6Proxies.length > 0) {
-    generatedRegionGroups.push(...createRegionGroup('IPv6', \`\${iconBaseUrl}Global.svg\`, ipv6Proxies));
+    generatedRegionGroups.push(
+      ...createRegionGroup('IPv6', 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/icons/IPv6.svg', ipv6Proxies),
+    );
   }
 
 `;
@@ -109,6 +115,24 @@ const IPV6_GROUP = `  // IPv6 节点：名称标有 IPv6 / v6，或 server 本�
 export function addIpv6Group(source) {
   const anchor = "  if (otherProxies.length > 0) {\n    generatedRegionGroups.push(...createRegionGroup('其他节点'";
   return replaceOnce(source, anchor, IPV6_GROUP + anchor, '其他节点组生成代码');
+}
+
+// 减少 mihomo 内存与日志量：
+// - info 级别会把每条连接写进日志（一晚数 MB），改成 warning 只留警告与错误
+// - 本机的 xray / sing-box（如 v2rayN 的核心）自己会连节点，经 TUN 进来后直连即可，
+//   不再经节点代理一次，避免连接数翻倍与无谓的拨号失败；放在最前面才不会先被其他规则抢走
+const LOCAL_PROXY_CORE_RULES = `  // 本机其他代理核心（如 v2rayN 的 xray / sing-box）自己会连节点，直连即可，不再经节点代理一次
+  'PROCESS-NAME,xray.exe,直连',
+  'PROCESS-NAME,sing-box.exe,直连',
+  'PROCESS-NAME,xray,直连',
+  'PROCESS-NAME,sing-box,直连',
+
+`;
+
+export function reduceMemory(source) {
+  let s = replaceOnce(source, "  newConfig['log-level'] = 'info';\n", "  newConfig['log-level'] = 'warning';\n", '日志级别');
+  const anchor = "const prefixRules = [\n  // 规则集下载域名";
+  return replaceOnce(s, anchor, `const prefixRules = [\n${LOCAL_PROXY_CORE_RULES}  // 规则集下载域名`, '前置规则');
 }
 
 async function main() {

@@ -8,6 +8,7 @@
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
+ * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
 
@@ -67,6 +68,12 @@ const ruleOptionsEnable = {
 
 // 定义前置规则
 const prefixRules = [
+  // 本机其他代理核心（如 v2rayN 的 xray / sing-box）自己会连节点，直连即可，不再经节点代理一次
+  'PROCESS-NAME,xray.exe,直连',
+  'PROCESS-NAME,sing-box.exe,直连',
+  'PROCESS-NAME,xray,直连',
+  'PROCESS-NAME,sing-box,直连',
+
   // 规则集下载域名，避免出现鸡蛋问题
   'DOMAIN,cdn.jsdmirror.com,直连',
 
@@ -82,6 +89,7 @@ const prefixRules = [
   'RULE-SET,microsoft_cn,直连',
   'DOMAIN,fsend.cn,直连',
   'DOMAIN,international-gfe.download.nvidia.com,直连',
+  'DOMAIN-SUFFIX,ctaiot.com,直连',
 ];
 
 // 此处添加自定义节点，填入下方[]内（可选，留空则不生成“自建节点”策略组）
@@ -513,7 +521,7 @@ const serviceConfigs = [
   },
   {
     name: 'Telegram',
-    testUrl: 'http://91.108.56.100/',
+    testUrl: 'https://api.telegram.org/',
     baseOption: selectBaseOption,
     providers: {
       telegram: {
@@ -1042,8 +1050,11 @@ function buildRegionGroups(filteredProxies, customProxies) {
         proxy['ip-version'] === 'ipv6',
     )
     .map((proxy) => proxy.name);
+  // 上游没有 IPv6 图标，Global.svg 已给 GLOBAL 组用，改用本仓库仿上游风格画的 public/icons/IPv6.svg
   if (ipv6Proxies.length > 0) {
-    generatedRegionGroups.push(...createRegionGroup('IPv6', `${iconBaseUrl}Global.svg`, ipv6Proxies));
+    generatedRegionGroups.push(
+      ...createRegionGroup('IPv6', 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/icons/IPv6.svg', ipv6Proxies),
+    );
   }
 
   if (otherProxies.length > 0) {
@@ -1123,14 +1134,25 @@ function buildFunctionalGroups(filteredProxies, generatedRegionGroups, customize
   const customGroupNames = customGroup ? [customGroup.name] : [];
 
   if (minimalModeEnabled) {
+    const autoSelectGroupEnabled = ruleOptionsEnable.自动选择;
+
+    const finalRuleProviders = { ...baseRuleProviders };
+    if (!blockForeignQuicEnabled) delete finalRuleProviders.cn_additional;
+
     const defaultGroup = {
       ...selectBaseOption,
       name: '默认代理',
-      proxies: allProxiesNames,
+      proxies: [...allProxiesNames, ...(autoSelectGroupEnabled ? ['自动选择'] : [])],
       icon: `${iconBaseUrl}Proxy.svg`,
     };
-    const finalRuleProviders = { ...baseRuleProviders };
-    if (!blockForeignQuicEnabled) delete finalRuleProviders.cn_additional;
+
+    const autoSelectGroup = {
+      ...urlTestBaseOption,
+      name: '自动选择',
+      proxies: allProxiesNames,
+      hidden: true,
+    };
+
     const directGroup = {
       ...selectBaseOption,
       name: '直连',
@@ -1138,15 +1160,17 @@ function buildFunctionalGroups(filteredProxies, generatedRegionGroups, customize
       icon: `${iconBaseUrl}China.svg`,
       hidden: true,
     };
+
     const globalGroup = {
       ...selectBaseOption,
       name: 'GLOBAL',
-      proxies: ['默认代理', ...customGroupNames, '直连'],
+      proxies: ['默认代理', ...customGroupNames, ...(autoSelectGroupEnabled ? [autoSelectGroup.name] : []), '直连'],
       icon: `${iconBaseUrl}Global.svg`,
     };
+
     return {
       globalGroup,
-      functionalGroups: [defaultGroup],
+      functionalGroups: [defaultGroup, ...(autoSelectGroupEnabled ? [autoSelectGroup] : [])],
       functionalRules: [],
       finalRuleProviders,
       directGroup,
@@ -1736,7 +1760,7 @@ function main(config) {
   newConfig['allow-lan'] = true;
   newConfig['ipv6'] = true;
   newConfig['mode'] = 'rule';
-  newConfig['log-level'] = 'info';
+  newConfig['log-level'] = 'warning';
   newConfig['bind-address'] = '*';
   newConfig['unified-delay'] = true;
   newConfig['tcp-concurrent'] = true;

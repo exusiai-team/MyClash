@@ -180,6 +180,19 @@ for (const file of ['script.js', 'script-full.js']) {
   });
 }
 
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：日志级别 warning，本机 xray / sing-box 最先直连`, () => {
+    const out = runScript(file);
+    assert.equal(out['log-level'], 'warning');
+    assert.deepEqual([...out.rules.slice(0, 4)], [
+      'PROCESS-NAME,xray.exe,直连',
+      'PROCESS-NAME,sing-box.exe,直连',
+      'PROCESS-NAME,xray,直连',
+      'PROCESS-NAME,sing-box,直连',
+    ]);
+  });
+}
+
 test('sync-scripts：上游改版找不到修改位置时报错', () => {
   assert.throws(() => patchScript('function main() {}', 'x.js'), /上游脚本可能改版/);
 });

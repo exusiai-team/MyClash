@@ -55,11 +55,13 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 > 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。
 
 相对原版的改动：
-- 分流组用各自服务的测速网址，全部取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 AI → `https://api.anthropic.com/cdn-cgi/trace`、
-  Telegram → `http://91.108.56.100/`）；Bettbox 没检测的服务与地区、倍率组维持原版的 Apple 测速网址。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
+- 分流组用各自服务的测速网址，取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 AI → `https://api.anthropic.com/cdn-cgi/trace`、
+  Telegram 改用 `https://api.telegram.org/`：Bettbox 的 `http://91.108.56.100/` 不支持 keep-alive，开了 unified-delay 测速常报错且延迟失准）；Bettbox 没检测的服务与地区、倍率组维持原版的 Apple 测速网址。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
 - 「AI」组默认选「台湾」（原版为「美国」；订阅里没有台湾节点时由客户端退回第一项）
-- 新增「IPv6」节点组：名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6` 的节点归进来（同时保留在原地区组），附「IPv6-自动选择」，并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
+- 新增「IPv6」节点组：名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6` 的节点归进来（同时保留在原地区组），附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
+- 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
+  Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 
 上游更新后执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（找不到修改位置会直接报错），提交后服务端覆写在下次部署时自动跟着更新。
 
