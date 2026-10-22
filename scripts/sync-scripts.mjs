@@ -18,7 +18,8 @@ export const TEST_URLS = {
   AI: 'https://api.anthropic.com/cdn-cgi/trace',
   GitHub: 'https://github.com/',
   Apple: 'https://gspe1-ssl.ls.apple.com/pep/gcc',
-  Telegram: 'http://91.108.56.100/',
+  // Bettbox 用的 http://91.108.56.100/ 不支持 keep-alive，unified-delay 的第二次请求常失败、延迟失准
+  Telegram: 'https://api.telegram.org/',
   Steam: 'https://store.steampowered.com/',
   TikTok: 'https://perfops1.byteperf.com/500b-bench.jpg',
   Twitter: 'https://x.com/cdn-cgi/trace',
