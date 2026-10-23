@@ -7,6 +7,7 @@
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
+ * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
@@ -1038,7 +1039,11 @@ function buildRegionGroups(filteredProxies, customProxies) {
 
   const generatedRegionGroups = allRegionDefinitions
     .filter((r) => regionGroups[r.name].length > 0 && (generateRateGroupEnabled || !rateRegionDefinitions.includes(r)))
-    .flatMap((r) => createRegionGroup(r.name, r.icon, regionGroups[r.name]));
+    .flatMap((r) => {
+      // 部分地区组用各自的测速网址
+      const testUrl = { 台湾: 'https://api.anthropic.com/cdn-cgi/trace' }[r.name];
+      return createRegionGroup(r.name, r.icon, regionGroups[r.name]).map((g) => (testUrl ? { ...g, url: testUrl } : g));
+    });
 
   // IPv6 节点：名称标有 IPv6 / v6，或 server 本身是 IPv6 地址，或强制只用 IPv6
   const ipv6NameRegex = /ipv6|(?<![a-z0-9])v6(?![a-z0-9])/i;
