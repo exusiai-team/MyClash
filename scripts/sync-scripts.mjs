@@ -1,6 +1,7 @@
 // 从 AIsouler/MyClash 抓精简版与全量版覆写脚本，套用本项目的改动后写进 public/：
 //   public/script.js       ← Script/Script.js（精简版，管理页默认）
 //   public/script-full.js  ← Script/mihomoScript.js（全量版）
+// 同时抓 LoopDns/Fuck-you-MIUI 的 hosts 清单，加进两个脚本的「AdBlock」组。
 // 上游改版导致找不到要改的位置时直接报错，不会写出半成品。用法：node scripts/sync-scripts.mjs
 import { writeFile } from 'node:fs/promises';
 
@@ -9,6 +10,11 @@ const TARGETS = [
   { from: 'Script.js', to: 'public/script.js' },
   { from: 'mihomoScript.js', to: 'public/script-full.js' },
 ];
+
+// LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），
+// 转成内嵌规则集加进「AdBlock」组（默认 REJECT）
+const MIUI_HOSTS_UPSTREAM = 'https://raw.githubusercontent.com/LoopDns/Fuck-you-MIUI/main/';
+const MIUI_HOSTS_FILES = ['MIhosts', 'Fhosts'];
 
 // 分流组的测速网址，全部取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
 // Bettbox 没检测的服务不列在这里，维持上游的通用测速网址
@@ -45,6 +51,22 @@ const HUGGINGFACE_PROVIDER = `      // HuggingFace 也在 category-ai-!cn 里，
       },
 `;
 
+// 从 hosts 文件取出被屏蔽的域名（跳过注释掉的行），去重；
+// 域名会写进生成的脚本里，格式不对就报错，不写进去
+export function parseHosts(...texts) {
+  const domains = new Set();
+  for (const text of texts) {
+    for (const line of text.split('\n')) {
+      const [ip, domain] = line.replace(/#.*/, '').trim().split(/\s+/);
+      if (!domain) continue;
+      if (!/^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain)) throw new Error(`hosts 里的「${ip} ${domain}」不是域名`);
+      domains.add(domain.toLowerCase());
+    }
+  }
+  if (domains.size === 0) throw new Error('hosts 里没有域名，上游清单可能改版了');
+  return [...domains];
+}
+
 function replaceOnce(source, search, replacement, what) {
   const i = source.indexOf(search);
   if (i === -1 || source.indexOf(search, i + search.length) !== -1) {
@@ -53,7 +75,7 @@ function replaceOnce(source, search, replacement, what) {
   return source.slice(0, i) + replacement + source.slice(i + search.length);
 }
 
-export function patchScript(source, file) {
+export function patchScript(source, file, miuiDomains) {
   let s = source;
   s = replaceOnce(
     s,
@@ -63,6 +85,7 @@ export function patchScript(source, file) {
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
+ * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐`,
@@ -79,6 +102,7 @@ export function patchScript(source, file) {
     if (block.includes(line)) block = replaceOnce(block, line, `${line}    testUrl: '${url}',\n`, `${name} 分流组`);
   }
   block = replaceOnce(block, "      ai: {\n", `${HUGGINGFACE_PROVIDER}      ai: {\n`, 'AI 规则集');
+  block = addMiuiBlocklist(block, miuiDomains);
   block = replaceOnce(block, "rules: ['RULE-SET,ai,AI'],", "rules: ['RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'],", 'AI 规则');
   block = replaceOnce(
     block,
@@ -96,6 +120,26 @@ export function patchScript(source, file) {
     '      icon: svc.icon,\n      proxies: groupProxies,\n',
     '      icon: svc.icon,\n      proxies: groupProxies,\n      // 分流组用各自服务的测速网址\n      ...(svc.testUrl && { url: svc.testUrl }),\n',
     '分流组生成代码',
+  );
+}
+
+// 「AdBlock」组加一个内嵌规则集，内容是 Fuck-you-MIUI 的域名
+export function addMiuiBlocklist(source, domains) {
+  const payload = domains.map((d) => `          '${d}',\n`).join('');
+  const provider = `      // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
+      'fuck-you-miui': {
+        type: 'inline',
+        behavior: 'domain',
+        payload: [
+${payload}        ],
+      },
+`;
+  let s = replaceOnce(source, "      'category-ads': {\n", `${provider}      'category-ads': {\n`, 'AdBlock 规则集');
+  return replaceOnce(
+    s,
+    "rules: ['RULE-SET,category-ads,AdBlock'],",
+    "rules: ['RULE-SET,category-ads,AdBlock', 'RULE-SET,fuck-you-miui,AdBlock'],",
+    'AdBlock 规则',
   );
 }
 
@@ -158,11 +202,18 @@ export function reduceMemory(source) {
   return replaceOnce(s, anchor, `const prefixRules = [\n${LOCAL_PROXY_CORE_RULES}  // 规则集下载域名`, '前置规则');
 }
 
+async function fetchText(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`抓取 ${url} 失败：HTTP ${res.status}`);
+  return res.text();
+}
+
 async function main() {
+  const miuiDomains = parseHosts(...(await Promise.all(MIUI_HOSTS_FILES.map((f) => fetchText(MIUI_HOSTS_UPSTREAM + f)))));
+  console.log(`Fuck-you-MIUI：${miuiDomains.length} 个域名`);
   for (const { from, to } of TARGETS) {
-    const res = await fetch(UPSTREAM + from);
-    if (!res.ok) throw new Error(`抓取 ${from} 失败：HTTP ${res.status}`);
-    await writeFile(new URL(`../${to}`, import.meta.url), patchScript(await res.text(), from));
+    const source = await fetchText(UPSTREAM + from);
+    await writeFile(new URL(`../${to}`, import.meta.url), patchScript(source, from, miuiDomains));
     console.log(`${from} → ${to}`);
   }
 }

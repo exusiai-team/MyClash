@@ -61,11 +61,13 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
 - 「AI」组默认选「台湾」（原版为「美国」；订阅里没有台湾节点时由客户端退回第一项）
 - 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/cdn-cgi/trace`（同「AI」组），按 Claude 的连通性挑节点
+- 「AdBlock」组（默认 `REJECT`）加上 [LoopDns/Fuck-you-MIUI](https://github.com/LoopDns/Fuck-you-MIUI) 的 hosts 屏蔽清单（`MIhosts` + `Fhosts`，约 100 个域名：小米系统跟踪器、广告、安全中心云扫描、浏览器推送，以及内置的腾讯 / 字节 / 迅雷等 SDK），同步时转成内嵌规则集 `fuck-you-miui`；只取没注释掉的行。
+  注意清单会挡掉 MIUI 的安装检查、系统应用更新（`update.miui.com`）、流量校正（`api.sec.miui.com`）、云扫描病毒等功能，不需要时可在 AdBlock 组改选 `PASS`（连同广告规则一起放行）
 - 新增「IPv6」节点组：名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6` 的节点归进来（同时保留在原地区组），附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
 - 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 
-GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件，有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
+GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（同时更新 Fuck-you-MIUI 清单），有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
 
 **节点前缀**：区分不同机场。
 
@@ -172,3 +174,4 @@ npx wrangler dev    # 本机运行（含本机 KV）
 
 - [AIsouler/MyClash](https://github.com/AIsouler/MyClash)：覆写脚本
 - [Kwisma/cf-SubCloud](https://github.com/Kwisma/cf-SubCloud)：架构参考
+- [LoopDns/Fuck-you-MIUI](https://github.com/LoopDns/Fuck-you-MIUI)：MIUI 跟踪器屏蔽清单

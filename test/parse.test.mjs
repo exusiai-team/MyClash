@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { REGION_TEST_URLS, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import { REGION_TEST_URLS, TEST_URLS, parseHosts, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -211,6 +211,25 @@ for (const file of ['script.js', 'script-full.js']) {
     ]);
   });
 }
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：Fuck-you-MIUI 的域名走 AdBlock 组（默认 REJECT）`, () => {
+    const out = runScript(file);
+    const miui = out['rule-providers']['fuck-you-miui'];
+    assert.equal(miui.type, 'inline');
+    assert.equal(miui.behavior, 'domain');
+    for (const domain of ['tracking.miui.com', 'data.mistat.xiaomi.com', 'adv.sec.miui.com']) assert.ok(miui.payload.includes(domain), domain);
+    assert.ok(out.rules.includes('RULE-SET,fuck-you-miui,AdBlock'));
+    assert.equal(out['proxy-groups'].find((g) => g.name === 'AdBlock').proxies[0], 'REJECT');
+  });
+}
+
+test('sync-scripts：hosts 只取没注释掉的域名并去重，不是域名就报错', () => {
+  const hosts = '#注释\n0.0.0.0 a.miui.com\n\n#127.0.0.1 off.miui.com\n127.0.0.1 b.xiaomi.com # 行尾注释\n127.0.0.1 A.miui.com\n127.0.0.1 *.rdt.tfogc.com\n';
+  assert.deepEqual(parseHosts(hosts, '127.0.0.1 b.xiaomi.com'), ['a.miui.com', 'b.xiaomi.com', '*.rdt.tfogc.com']);
+  assert.throws(() => parseHosts("127.0.0.1 x.com',evil"), /不是域名/);
+  assert.throws(() => parseHosts('# 空的'), /上游清单可能改版/);
+});
 
 test('sync-scripts：上游改版找不到修改位置时报错', () => {
   assert.throws(() => patchScript('function main() {}', 'x.js'), /上游脚本可能改版/);
