@@ -34,7 +34,7 @@ KV（`myclash-sub-store`）会自动创建。部署后打开 `https://myclash.<�
 
 > 若提示「请在 Secrets 里直接指定」，再加 `CLOUDFLARE_ACCOUNT_ID` 与 `KV_NAMESPACE_ID`。日志不会印出订阅链接或节点。
 
-**3. 管理页「立即刷新缓存」**（选做）：建 GitHub [Fine-grained token](https://github.com/settings/personal-access-tokens/new)
+**3. 管理页「立即刷新缓存」「立即同步」**（选做）：建 GitHub [Fine-grained token](https://github.com/settings/personal-access-tokens/new)
 （只选本仓库，`Actions: Read and write`），在 Cloudflare 的 myclash → 设置 → 变量和机密，加**密钥** `GITHUB_TOKEN`。
 fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
@@ -69,6 +69,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 
 GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（同时更新 Fuck-you-MIUI 规则集；本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
+管理页「客户端怎么用」下方显示覆写脚本最后更新时间与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
 
 **节点前缀**：区分不同机场。
 
@@ -157,6 +158,8 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `GET /api/subs/<TOKEN>/status` | 即时检查每个机场：`{ checkedAt, sources: [{ url, name, error, directError, cachedAt, info: { upload, download, total, expire }, blocked: null \| "expired" \| "exhausted" }] }` |
 | `POST /api/subs/<TOKEN>/rotate` | 换新 TOKEN |
 | `POST /api/subs/<TOKEN>/refresh` | 触发代抓缓存（需 `GITHUB_TOKEN`，1 分钟限一次） |
+| `GET /api/scripts` | 覆写脚本同步状态：`{ run: { status, conclusion, event, createdAt, url } \| null, updated: { at, message, url } \| null, canTrigger }`（「同步上游覆写脚本」最近一次执行，与 `public/script.js` 最后一次改动的提交；在 KV 存 5 分钟） |
+| `POST /api/subs/<TOKEN>/sync-scripts` | 触发「同步上游覆写脚本」（需 `GITHUB_TOKEN`，10 分钟限一次） |
 
 | 文件 | 说明 |
 | --- | --- |

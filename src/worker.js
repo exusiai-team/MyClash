@@ -11,6 +11,12 @@ const MAX_SOURCES = 30;
 const REFRESH_WORKFLOW = 'refresh-cache.yml';
 const REFRESH_COOLDOWN_KEY = 'refresh:cooldown';
 const REFRESH_COOLDOWN_SECONDS = 60;
+// 管理页显示「同步上游覆写脚本」的最近一次执行与覆写脚本的最后更新时间；结果在 KV 存 5 分钟，少打 GitHub API
+const SYNC_WORKFLOW = 'sync-scripts.yml';
+const SYNC_STATUS_KEY = 'sync:status';
+const SYNC_STATUS_TTL = 300;
+const SYNC_COOLDOWN_KEY = 'sync:cooldown';
+const SYNC_COOLDOWN_SECONDS = 600;
 // 节点前缀：name = 机场名称（自定义 > 自动识别），index = S1、S2…（自定义 > 序号），none = 不加
 const PREFIX_MODES = ['name', 'index', 'none'];
 // 管理页一次查多个 TOKEN 的上限
@@ -193,6 +199,7 @@ class HttpError extends Error {
 
 async function api(request, env, parts) {
   const { method } = request;
+  if (parts.length === 1 && parts[0] === 'scripts' && method === 'GET') return syncStatus(env);
   if (parts[0] !== 'subs') throw new HttpError(404, '找不到');
 
   if (parts.length === 1) {
@@ -235,6 +242,7 @@ async function api(request, env, parts) {
   }
 
   if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') return triggerRefresh(env);
+  if (parts.length === 3 && parts[2] === 'sync-scripts' && method === 'POST') return triggerSync(env);
   if (parts.length === 3 && parts[2] === 'status' && method === 'GET') return sourceStatus(env, record);
 
   if (parts.length === 3 && parts[2] === 'rotate' && method === 'POST') {
@@ -248,23 +256,84 @@ async function api(request, env, parts) {
   throw new HttpError(405, '不支持的操作');
 }
 
-async function triggerRefresh(env) {
+function githubHeaders(env) {
+  return {
+    ...(env.GITHUB_TOKEN && { Authorization: `Bearer ${env.GITHUB_TOKEN}` }),
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'myclash-worker',
+  };
+}
+
+// 触发 GitHub Actions 的 workflow，冷却期间不再触发
+async function dispatchWorkflow(env, { workflow, cooldownKey, cooldownSeconds, what, busy }) {
   if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
-    throw new HttpError(501, '还没设置 GITHUB_TOKEN，无法从管理页刷新缓存（设置方法见 README）');
+    throw new HttpError(501, `还没设置 GITHUB_TOKEN，无法从管理页${what}（设置方法见 README）`);
   }
-  if (await env.SUB_STORE.get(REFRESH_COOLDOWN_KEY)) throw new HttpError(429, '刚刷新过，请 1 分钟后再试');
-  const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${REFRESH_WORKFLOW}/dispatches`, {
+  if (await env.SUB_STORE.get(cooldownKey)) throw new HttpError(429, busy);
+  const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/dispatches`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'myclash-worker',
-    },
+    headers: githubHeaders(env),
     body: JSON.stringify({ ref: 'main' }),
   });
   if (!res.ok) throw new HttpError(502, `触发 GitHub Actions 失败：HTTP ${res.status}（检查 GITHUB_TOKEN 的权限）`);
-  await env.SUB_STORE.put(REFRESH_COOLDOWN_KEY, '1', { expirationTtl: REFRESH_COOLDOWN_SECONDS });
+  await env.SUB_STORE.put(cooldownKey, '1', { expirationTtl: cooldownSeconds });
   return json({ ok: true });
+}
+
+function triggerRefresh(env) {
+  return dispatchWorkflow(env, {
+    workflow: REFRESH_WORKFLOW,
+    cooldownKey: REFRESH_COOLDOWN_KEY,
+    cooldownSeconds: REFRESH_COOLDOWN_SECONDS,
+    what: '刷新缓存',
+    busy: '刚刷新过，请 1 分钟后再试',
+  });
+}
+
+async function triggerSync(env) {
+  const res = await dispatchWorkflow(env, {
+    workflow: SYNC_WORKFLOW,
+    cooldownKey: SYNC_COOLDOWN_KEY,
+    cooldownSeconds: SYNC_COOLDOWN_SECONDS,
+    what: '同步覆写脚本',
+    busy: '刚同步过，请 10 分钟后再试',
+  });
+  // 让管理页下次读到新的执行状态
+  await env.SUB_STORE.delete(SYNC_STATUS_KEY);
+  return res;
+}
+
+// 「同步上游覆写脚本」最近一次执行，与覆写脚本最后一次有改动的提交；没设 GITHUB_TOKEN 也能读（公开仓库）
+async function syncStatus(env) {
+  if (!env.GITHUB_REPO) throw new HttpError(501, '没有设置 GITHUB_REPO');
+  const cached = await env.SUB_STORE.get(SYNC_STATUS_KEY, 'json');
+  if (cached) return json(cached);
+
+  const base = `https://api.github.com/repos/${env.GITHUB_REPO}`;
+  const get = async (path) => {
+    const res = await fetch(base + path, { headers: githubHeaders(env) });
+    if (!res.ok) throw new HttpError(502, `读取 GitHub 失败：HTTP ${res.status}`);
+    return res.json();
+  };
+  const [runs, commits] = await Promise.all([
+    get(`/actions/workflows/${SYNC_WORKFLOW}/runs?per_page=1`),
+    get('/commits?path=public/script.js&per_page=1'),
+  ]);
+  const run = runs.workflow_runs?.[0];
+  const commit = commits[0];
+  const status = {
+    run: run
+      ? { status: run.status, conclusion: run.conclusion, event: run.event, createdAt: Date.parse(run.created_at), url: run.html_url }
+      : null,
+    updated: commit
+      ? { at: Date.parse(commit.commit.committer.date), message: commit.commit.message.split('\n')[0], url: commit.html_url }
+      : null,
+    canTrigger: Boolean(env.GITHUB_TOKEN),
+  };
+  // 还在执行时只存 1 分钟（KV 最短），好让管理页尽快看到结果
+  const ttl = run && run.status !== 'completed' ? 60 : SYNC_STATUS_TTL;
+  await env.SUB_STORE.put(SYNC_STATUS_KEY, JSON.stringify(status), { expirationTtl: ttl });
+  return json(status);
 }
 
 // 编辑页显示每个机场的流量、到期日与是否屏蔽：只读响应标头，不下载、不解析节点
