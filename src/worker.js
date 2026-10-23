@@ -1,4 +1,4 @@
-import { parseSubscription, mergeSubscriptions, sumUserinfo, dumpConfig, detectAirportName } from './parse.js';
+import { parseSubscription, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey } from './cache.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
@@ -66,7 +66,11 @@ async function serveSubscription(env, token, origin, script) {
   const mode = record.prefixMode ?? 'index';
   const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode)));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
-  if (ok.length === 0) return text('所有机场订阅都抓取失败或没有节点，请稍后再试', 502);
+  if (ok.length === 0) {
+    return results.every((r) => r.blocked)
+      ? text('所有机场订阅都已到期或流量用完（已自动屏蔽），请续费或在管理页更换订阅', 502)
+      : text('所有机场订阅都抓取失败、已屏蔽或没有节点，请稍后再试', 502);
+  }
 
   let config = mergeSubscriptions(
     ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
@@ -84,10 +88,13 @@ async function serveSubscription(env, token, origin, script) {
     `MyClash 合并订阅：${record.name}${override ? `，已套用${override.label}版覆写脚本` : ''}`,
     `更新时间：${new Date().toISOString()}`,
     ...results.map((r) =>
-      r.parsed
-        ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
-          (r.cachedAt ? `（直连失败：${r.directError}，使用 ${cacheAge(r.cachedAt)}的缓存）` : '')
-        : `[${r.label}] 失败：${r.error}`,
+      r.blocked
+        ? `[${r.label}] 已屏蔽：${r.blocked}` +
+          (r.cachedAt ? `（直连失败：${r.directError}，依 ${cacheAge(r.cachedAt)}的缓存判断）` : '')
+        : r.parsed
+          ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
+            (r.cachedAt ? `（直连失败：${r.directError}，使用 ${cacheAge(r.cachedAt)}的缓存）` : '')
+          : `[${r.label}] 失败：${r.error}`,
     ),
   ];
 
@@ -109,12 +116,7 @@ async function fetchSource(env, source, index, mode) {
   const fallback = source.name || `S${index + 1}`;
   let label = fallback;
   let prefix = mode === 'none' ? '' : fallback;
-  let got = await fetchUpstream(source.url);
-  if (got.error) {
-    // 直连失败就改用 GitHub Actions 代抓的缓存
-    const cached = await env.SUB_STORE.get(await cacheKey(source.url), 'json').catch(() => null);
-    if (cached?.body) got = { ...cached, cachedAt: cached.fetchedAt, directError: got.error };
-  }
+  const got = await loadSource(env, source.url);
   if (!source.name) {
     const detected = detectAirportName(got.disposition, source.url);
     if (detected) {
@@ -123,12 +125,26 @@ async function fetchSource(env, source, index, mode) {
     }
   }
   if (got.error) return { label, prefix, error: got.error };
+  // 到期或流量用完：节点多半已不能用，整个机场跳过（不解析节点），流量与到期日也不计入合并后的订阅
+  if (got.blocked) return { label, prefix, blocked: blockReason(got), cachedAt: got.cachedAt, directError: got.directError };
   const parsed = parseSubscription(got.body);
   if (parsed.proxies.length === 0) return { label, prefix, parsed, error: '没有可用节点' };
   return { label, prefix, parsed, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
 }
 
-async function fetchUpstream(url) {
+// 直连抓取，失败就改用 GitHub Actions 代抓的缓存；顺便解析流量与到期日，blocked 为 expired（已到期）/ exhausted（流量用完）时由调用者屏蔽
+async function loadSource(env, url, { body = true } = {}) {
+  let got = await fetchUpstream(url, body);
+  if (got.error) {
+    const cached = await env.SUB_STORE.get(await cacheKey(url), 'json').catch(() => null);
+    if (cached?.body) got = { ...cached, cachedAt: cached.fetchedAt, directError: got.error };
+  }
+  const info = parseUserinfo(got.userinfo);
+  return { ...got, info, blocked: isExpired(info) ? 'expired' : isExhausted(info) ? 'exhausted' : null };
+}
+
+// body = false 时只读响应标头（流量、到期日、文件名），不下载订阅内容
+async function fetchUpstream(url, body = true) {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': FETCH_UA },
@@ -136,11 +152,28 @@ async function fetchUpstream(url) {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     const disposition = res.headers.get('content-disposition');
+    if (!res.ok || !body) res.body?.cancel().catch(() => {});
     if (!res.ok) return { disposition, error: `HTTP ${res.status}` };
-    return { disposition, userinfo: res.headers.get('subscription-userinfo'), body: await res.text() };
+    const userinfo = res.headers.get('subscription-userinfo');
+    return body ? { disposition, userinfo, body: await res.text() } : { disposition, userinfo };
   } catch (err) {
     return { error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
   }
+}
+
+function blockReason({ blocked, info }) {
+  return blocked === 'expired'
+    ? `订阅已于 ${fmtDate(info.expire)} 到期`
+    : `流量已用完（${fmtGb(info.upload + info.download)} / ${fmtGb(info.total)}）`;
+}
+
+// 订阅注释里的日期用 UTC+8（台湾时间）
+function fmtDate(sec) {
+  return new Date(sec * 1000 + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function fmtGb(bytes) {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 function cacheAge(ms) {
@@ -202,6 +235,7 @@ async function api(request, env, parts) {
   }
 
   if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') return triggerRefresh(env);
+  if (parts.length === 3 && parts[2] === 'status' && method === 'GET') return sourceStatus(env, record);
 
   if (parts.length === 3 && parts[2] === 'rotate' && method === 'POST') {
     const next = newToken();
@@ -231,6 +265,25 @@ async function triggerRefresh(env) {
   if (!res.ok) throw new HttpError(502, `触发 GitHub Actions 失败：HTTP ${res.status}（检查 GITHUB_TOKEN 的权限）`);
   await env.SUB_STORE.put(REFRESH_COOLDOWN_KEY, '1', { expirationTtl: REFRESH_COOLDOWN_SECONDS });
   return json({ ok: true });
+}
+
+// 编辑页显示每个机场的流量、到期日与是否屏蔽：只读响应标头，不下载、不解析节点
+async function sourceStatus(env, record) {
+  const sources = await Promise.all(
+    record.sources.map(async ({ url }) => {
+      const got = await loadSource(env, url, { body: false });
+      return {
+        url,
+        name: detectAirportName(got.disposition, url),
+        error: got.error ?? null,
+        directError: got.directError ?? null,
+        cachedAt: got.cachedAt ?? null,
+        info: got.info,
+        blocked: got.blocked,
+      };
+    }),
+  );
+  return json({ checkedAt: Date.now(), sources });
 }
 
 function putRecord(env, token, record) {

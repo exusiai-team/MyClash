@@ -4,145 +4,379 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1117" media="(prefers-color-scheme: dark)">
 <title>MyClash 订阅合并</title>
+<!-- 内嵌图标：浏览器就不会再请求 /favicon.ico（那会多算一次 Worker 请求） -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234f6ef7'/%3E%3Cstop offset='1' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M10 7v3c0 5 6 5 6 10v5M22 7v3c0 5-6 5-6 10' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
-    --accent: #2f6fed; --accent-text: #ffffff; --danger: #d92d20; --ok: #12805c; --warn: #b54708; --code: #f1f3f6;
+    --bg: #f4f6fb; --glow: rgba(79, 110, 247, .14); --card: #fff; --sunken: #f6f7fa; --field: #fff; --hover: #eef1f6;
+    --text: #131a26; --muted: #5d6879; --faint: #8b94a5; --border: #e3e7ee; --border-strong: #d3d9e3;
+    --accent: #4f6ef7; --accent-hover: #3f5ee6; --accent-2: #8b5cf6; --accent-soft: rgba(79, 110, 247, .1); --accent-text: #fff;
+    --ok: #0f8a5f; --ok-soft: rgba(15, 138, 95, .1); --warn: #b45309; --warn-soft: rgba(180, 83, 9, .1);
+    --danger: #d92d20; --danger-soft: rgba(217, 45, 32, .09); --idle: #8b94a5; --idle-soft: rgba(139, 148, 165, .14);
+    --code-bg: #f6f8fa; --toast: #1d2433; --toast-text: #fff;
+    --ring: 0 0 0 3px rgba(79, 110, 247, .28);
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px -8px rgba(16, 24, 40, .08);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #12141a; --card: #1b1e26; --text: #e6e8ee; --muted: #9aa3b2; --border: #2c313c;
-      --accent: #5b8cff; --accent-text: #0d1220; --danger: #ff6b5e; --ok: #45c48f; --warn: #d9822b; --code: #232733;
+      --bg: #0e1117; --glow: rgba(110, 135, 255, .16); --card: #161a22; --sunken: #1b2029; --field: #11151c; --hover: #222834;
+      --text: #e7eaf0; --muted: #9ca5b5; --faint: #6f7a8c; --border: #262c37; --border-strong: #343b48;
+      --accent: #7b93ff; --accent-hover: #93a7ff; --accent-2: #a78bfa; --accent-soft: rgba(123, 147, 255, .14); --accent-text: #0b1020;
+      --ok: #3fc58a; --ok-soft: rgba(63, 197, 138, .14); --warn: #e8a23b; --warn-soft: rgba(232, 162, 59, .14);
+      --danger: #ff6b5e; --danger-soft: rgba(255, 107, 94, .13); --idle: #7c8698; --idle-soft: rgba(124, 134, 152, .16);
+      --code-bg: #0b0e14; --toast: #e7eaf0; --toast-text: #131a26;
+      --ring: 0 0 0 3px rgba(123, 147, 255, .35);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -12px rgba(0, 0, 0, .5);
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
-  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  h2 { font-size: 17px; margin: 0 0 12px; }
-  p.sub { color: var(--muted); margin: 0 0 20px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-  label.opt { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--text); font-size: 14px; }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
-  input[type=text], input[type=url], input[type=password], textarea {
-    width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--bg); color: var(--text); font: inherit;
+  html { -webkit-text-size-adjust: 100%; }
+  /* 背景光晕只在页面顶部画一次，不用 fixed，滚动时不重绘 */
+  body {
+    margin: 0; color: var(--text);
+    background: radial-gradient(900px 340px at 50% -140px, var(--glow), transparent 70%) no-repeat, var(--bg);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  textarea { min-height: 110px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
-  button {
-    padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--card);
-    color: var(--text); font: inherit; cursor: pointer; white-space: nowrap;
-  }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-  button.danger { color: var(--danger); }
-  button:disabled { opacity: .5; cursor: default; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .row > .grow { flex: 1 1 200px; min-width: 0; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .msg { margin-top: 10px; font-size: 14px; }
-  .msg.err { color: var(--danger); } .msg.ok { color: var(--ok); }
-  .item { border-top: 1px solid var(--border); padding: 14px 0; }
-  .item:first-child { border-top: 0; padding-top: 0; }
-  .item-title { font-weight: 600; }
-  .link { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--code); padding: 6px 8px; border-radius: 6px; overflow-wrap: anywhere; margin: 6px 0 8px; }
-  .src-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 6px; margin-bottom: 6px; }
-  @media (max-width: 560px) { .src-row { grid-template-columns: 1fr auto; } .src-row input:first-child { grid-column: 1 / -1; } }
-  pre { background: var(--code); padding: 12px; border-radius: 8px; overflow: auto; max-height: 420px; font-size: 12.5px; }
+  h1, h2, h3 { margin: 0; line-height: 1.3; letter-spacing: -.01em; }
+  h1 { font-size: 22px; font-weight: 700; }
+  h2 { font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+  h3 { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+  p { margin: 0; }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .9em; }
   .hidden { display: none !important; }
-  details summary { cursor: pointer; color: var(--muted); }
-  ol { padding-left: 20px; margin: 6px 0; }
-  a { color: var(--accent); }
-  .status { list-style: none; padding: 0; margin: 10px 0; font-size: 14px; }
-  .status li { padding: 3px 0; }
-  .status .tag { display: inline-block; min-width: 44px; padding: 0 6px; margin-right: 6px; border-radius: 6px; font-size: 12px; text-align: center; color: #fff; }
-  .tag.ok { background: var(--ok); } .tag.cache { background: var(--warn); } .tag.fail { background: var(--danger); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .grow { flex: 1; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .top { max-width: 880px; margin: 0 auto; padding: 36px 16px 20px; display: flex; align-items: center; gap: 14px; }
+  .logo {
+    flex: none; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff;
+    background: linear-gradient(135deg, #4f6ef7, #8b5cf6); box-shadow: 0 8px 18px -8px rgba(79, 110, 247, .7);
+  }
+  .logo svg.i { width: 26px; height: 26px; stroke-width: 2.4; }
+  .top p { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  main { max-width: 880px; margin: 0 auto; padding: 0 16px 64px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .count {
+    display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .count:empty { display: none; }
+
+  /* 按钮 */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px;
+    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--card); color: var(--text);
+    font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+    transition: background-color .15s, border-color .15s, color .15s;
+  }
+  .btn:hover { background: var(--hover); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-text); font-weight: 600; }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { background: var(--hover); color: var(--text); }
+  .btn.danger, .icon-btn.danger { color: var(--danger); }
+  .btn.danger:hover, .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; border-radius: 8px; }
+  .btn:disabled, .icon-btn:disabled { opacity: .5; cursor: default; transform: none; }
+  .icon-btn {
+    display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: background-color .15s, color .15s;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  :focus-visible { outline: none; box-shadow: var(--ring); }
+
+  /* 输入框 */
+  input[type=text], input[type=url], textarea {
+    width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px;
+    background: var(--field); color: var(--text); font: inherit; font-size: 14px; transition: border-color .15s, box-shadow .15s;
+  }
+  textarea { height: auto; min-height: 120px; padding: 10px 12px; font-family: var(--mono); font-size: 13px; resize: vertical; }
+  input::placeholder, textarea::placeholder { color: var(--faint); }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  .field { margin-top: 18px; }
+  .field > label, .label { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .field > label .hint, .label .hint { font-weight: 400; }
+
+  /* 分段选择（单选按钮） */
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--sunken); }
+  .seg label { position: relative; cursor: pointer; }
+  .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+  .seg span { display: block; padding: 4px 12px; white-space: nowrap; border-radius: 7px; color: var(--muted); font-size: 13.5px; transition: background-color .15s, color .15s; }
+  .seg label:hover span { color: var(--text); }
+  .seg input:checked + span { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(16, 24, 40, .1), 0 0 0 1px var(--border); }
+  .seg input:focus-visible + span { box-shadow: var(--ring); }
+
+  /* 开关 */
+  .switch { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; cursor: pointer; font-size: 14px; }
+  .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+  .track { position: relative; flex: none; width: 38px; height: 22px; margin-top: 1px; border-radius: 999px; background: var(--border-strong); transition: background-color .2s; }
+  .track::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .2s;
+  }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(16px); }
+  .switch input:focus-visible + .track { box-shadow: var(--ring); }
+
+  /* 状态标签 */
+  .pill {
+    --c: var(--ok); --c-soft: var(--ok-soft);
+    display: inline-flex; align-items: center; gap: 5px; flex: none; height: 20px; padding: 0 8px; border-radius: 999px;
+    background: var(--c-soft); color: var(--c); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
+  }
+  .src-status .pill { margin-top: 1px; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.cache, .pill.warn { --c: var(--warn); --c-soft: var(--warn-soft); }
+  .pill.blocked, .pill.fail { --c: var(--danger); --c-soft: var(--danger-soft); }
+  .pill.idle, .pill.pending { --c: var(--idle); --c-soft: var(--idle-soft); }
+  .pill.pending::before { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  .msg { margin-top: 10px; font-size: 14px; }
+  .msg:empty { display: none; }
+  .msg.err { color: var(--danger); } .msg.ok { color: var(--ok); }
+
+  /* 订阅清单 */
+  .sub { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .sub + .sub { margin-top: 12px; }
+  .sub.flash { animation: flash 1.8s ease-out; }
+  @keyframes flash { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
+  .sub-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--sunken); color: var(--muted); font-size: 12.5px; }
+  .sub-mode { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .linkbox {
+    display: flex; align-items: center; gap: 4px; min-height: 40px; margin: 12px 0; padding: 4px 4px 4px 12px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--sunken);
+  }
+  .linkbox:not(:has(.icon-btn)) { padding-right: 12px; }
+  .link { flex: 1; min-width: 0; padding: 4px 0; font: 12.5px/1.5 var(--mono); overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .empty { display: grid; justify-items: center; gap: 6px; padding: 28px 12px; text-align: center; }
+  .empty .logo { margin-bottom: 6px; }
+  .import { display: flex; gap: 8px; margin-top: 16px; }
+  .import input { flex: 1; min-width: 0; }
+
+  /* 编辑页 */
+  .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .label-row .label { margin: 0; }
+  #src-summary { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  #sources { display: grid; gap: 8px; margin: 10px 0; }
+  .src {
+    display: grid; grid-template-columns: 26px 168px minmax(0, 1fr) 36px; gap: 6px 8px; align-items: center;
+    padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--sunken);
+    transition: border-color .15s, background-color .15s;
+  }
+  .src[data-kind=blocked], .src[data-kind=fail] { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: var(--danger-soft); }
+  .src[data-kind=warn] { border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+  .src-idx {
+    display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--border); color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .src-status { grid-column: 2 / -1; display: flex; align-items: flex-start; gap: 8px; min-height: 20px; font-size: 13px; color: var(--muted); }
+  .src-status:empty { display: none; }
+  .src-status span:last-child { min-width: 0; }
+  .footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+  /* 预览 */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat { padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--sunken); }
+  .stat span { display: block; color: var(--muted); font-size: 12.5px; }
+  .stat b { display: block; font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .status { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; font-size: 14px; }
+  .status li { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
+  #preview-hint { margin-bottom: 14px; }
+  pre {
+    margin: 0; padding: 14px; max-height: 460px; overflow: auto; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--code-bg); font: 12.5px/1.55 var(--mono); tab-size: 2;
+  }
+
+  /* 说明 */
+  .steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+  .steps li { position: relative; padding-left: 36px; counter-increment: step; }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
+  }
+  .note { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--sunken); color: var(--muted); font-size: 13.5px; }
+  details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: 14px; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: ""; width: 6px; height: 6px; margin: 0 2px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(-45deg); transition: transform .15s;
+  }
+  details[open] > summary::before { transform: rotate(45deg); }
+  details > :not(summary) { margin-top: 10px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 10; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px;
+    background: var(--toast); color: var(--toast-text); font-size: 14px; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, .35);
+    opacity: 0; transform: translate(-50%, 12px); pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.err { background: var(--danger); color: #fff; }
+
+  @media (max-width: 600px) {
+    .top { padding-top: 24px; }
+    .card { padding: 16px; border-radius: 14px; }
+    .sub { padding: 14px; }
+    .src { grid-template-columns: 26px minmax(0, 1fr) 36px; }
+    .src-url { grid-column: 2 / -1; grid-row: 2; }
+    /* 两个主要按钮各占半行，其余四个排成一行图标按钮 */
+    .actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .actions .btn:not(.ghost) { grid-column: span 2; padding: 0 8px; }
+    .actions .btn.ghost { flex-direction: column; gap: 2px; height: 50px; padding: 0 4px; font-size: 12.5px; }
+    .actions .grow { display: none; }
+    .seg { display: flex; }
+    .sub-mode .seg { flex: 1; }
+    .seg label { flex: 1; text-align: center; }
+    .seg span { padding: 4px 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>MyClash 订阅合并</h1>
-  <p class="sub">把多个机场订阅合并成一个订阅链接（节点并集），并直接套用 MyClash 覆写脚本，客户端导入就能用。</p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-merge" viewBox="0 0 24 24"><path d="M7 4v3c0 4.5 5 4.5 5 9v4M17 4v3c0 4.5-5 4.5-5 9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8M21 3v5h-5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+</svg>
 
+<header class="top">
+  <span class="logo"><svg class="i"><use href="#i-merge"/></svg></span>
+  <div>
+    <h1>MyClash 订阅合并</h1>
+    <p>把多个机场订阅合并成一个链接，服务端直接套用 MyClash 覆写脚本，到期或流量用完的机场自动屏蔽。</p>
+  </div>
+</header>
+
+<main>
   <section class="card" id="list-card">
-    <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <h2 style="margin:0">我的合并订阅</h2>
-      <button class="primary" id="new-btn">＋ 生成新的订阅</button>
+    <div class="card-head">
+      <h2>我的合并订阅 <span class="count" id="count"></span></h2>
+      <button class="btn primary" id="new-btn"><svg class="i"><use href="#i-plus"/></svg>生成新的订阅</button>
     </div>
-    <div id="list"></div>
-    <div class="row" style="margin-top:14px">
-      <input type="text" id="import-input" class="grow" placeholder="在别的设备生成过？粘贴订阅链接或 TOKEN，自动导入">
-      <button id="import-btn">导入</button>
+    <div id="list"><p class="empty muted">读取中…</p></div>
+    <div class="import">
+      <input type="text" id="import-input" placeholder="粘贴订阅链接或 TOKEN 导入" aria-label="订阅链接或 TOKEN">
+      <button class="btn" id="import-btn">导入</button>
     </div>
     <div class="msg" id="import-msg"></div>
-    <p class="muted" style="margin-bottom:0">清单只记在这个浏览器里。换设备或清除浏览器数据后，把订阅链接贴到上面，或直接贴进浏览器网址栏打开，就会自动导入。</p>
+    <p class="hint" style="margin-top:10px">清单只记在这个浏览器里。换设备或清除浏览器数据后，把订阅链接贴到上面，或直接贴进浏览器网址栏打开，就会自动导入。</p>
   </section>
 
   <section class="card hidden" id="edit-card">
-    <h2 id="edit-title">生成新的订阅</h2>
-    <label for="edit-name">名称（显示在客户端的配置文件名称）</label>
-    <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手机">
-    <label>节点前缀（加在每个节点名称前面，用来区分不同机场）</label>
-    <div class="row" id="prefix-mode" style="margin-bottom:6px">
-      <label class="opt"><input type="radio" name="prefix-mode" value="name" checked> 机场名称（自动识别）</label>
-      <label class="opt"><input type="radio" name="prefix-mode" value="index"> S1、S2…</label>
-      <label class="opt"><input type="radio" name="prefix-mode" value="none"> 不加前缀</label>
+    <div class="card-head" style="margin-bottom:0">
+      <h2 id="edit-title">生成新的订阅</h2>
+      <button class="icon-btn" id="close-edit" title="关闭" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
     </div>
-    <p class="muted" id="prefix-hint" style="margin:0 0 6px"></p>
-    <label class="opt" style="margin:4px 0 6px"><input type="checkbox" id="rate-tag"> 在节点名称标示倍率（例如「飞云 | 2x | 香港 01」，1 倍不标）</label>
-    <label>机场订阅</label>
-    <div id="sources"></div>
-    <div class="row">
-      <button id="add-src">＋ 添加一列</button>
-      <button id="bulk-btn">批量粘贴</button>
+    <div class="field">
+      <label for="edit-name">名称 <span class="hint">显示在客户端的配置文件名称</span></label>
+      <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手机">
     </div>
-    <div id="bulk-box" class="hidden" style="margin-top:8px">
-      <textarea id="bulk-text" placeholder="一行一个订阅链接，或「名称 链接」"></textarea>
-      <div class="row" style="margin-top:6px"><button id="bulk-apply">加入</button></div>
+    <div class="field">
+      <span class="label">节点前缀 <span class="hint">加在每个节点名称前面，用来区分不同机场</span></span>
+      <div class="seg" id="prefix-mode" role="radiogroup" aria-label="节点前缀">
+        <label><input type="radio" name="prefix-mode" value="name" checked><span>机场名称</span></label>
+        <label><input type="radio" name="prefix-mode" value="index"><span>S1、S2…</span></label>
+        <label><input type="radio" name="prefix-mode" value="none"><span>不加前缀</span></label>
+      </div>
+      <p class="hint" id="prefix-hint" style="margin-top:8px"></p>
     </div>
-    <p class="muted">自定义前缀请避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字样，否则会影响 MyClash 脚本的地区分组与节点过滤。</p>
-    <div class="row" style="margin-top:12px">
-      <button class="primary" id="save-btn">保存并生成链接</button>
-      <button id="cancel-btn">取消</button>
-      <button id="refresh-btn" class="hidden" title="让 GitHub Actions 立刻重抓所有机场，更新被屏蔽机场的缓存">立即刷新缓存</button>
+    <label class="switch">
+      <input type="checkbox" id="rate-tag"><span class="track"></span>
+      <span>在节点名称标示倍率 <span class="hint">例如「飞云 | 2x | 香港 01」，1 倍不标</span></span>
+    </label>
+    <div class="field">
+      <div class="label-row">
+        <span class="label">机场订阅 <span class="count" id="src-count"></span> <span id="src-summary"></span></span>
+        <button class="btn sm" id="check-btn" title="即时读取每个机场的流量与到期日"><svg class="i"><use href="#i-refresh"/></svg>重新检查</button>
+      </div>
+      <p class="hint" id="check-hint"></p>
+      <div id="sources"></div>
+      <div class="row">
+        <button class="btn sm" id="add-src"><svg class="i"><use href="#i-plus"/></svg>添加一列</button>
+        <button class="btn sm" id="bulk-btn">批量粘贴</button>
+      </div>
+      <div id="bulk-box" class="hidden" style="margin-top:10px">
+        <textarea id="bulk-text" placeholder="一行一个订阅链接，或「名称 链接」"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="bulk-apply"><svg class="i"><use href="#i-check"/></svg>加入</button></div>
+      </div>
+      <p class="hint" style="margin-top:10px">自定义前缀请避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字样，否则会影响 MyClash 脚本的地区分组与节点过滤。</p>
+    </div>
+    <div class="footer">
+      <button class="btn primary" id="save-btn">保存并生成链接</button>
+      <button class="btn" id="cancel-btn">取消</button>
+      <span class="grow"></span>
+      <button class="btn ghost hidden" id="refresh-btn" title="让 GitHub Actions 立刻重抓所有机场，更新被屏蔽 Cloudflare 的机场的缓存"><svg class="i"><use href="#i-refresh"/></svg>立即刷新缓存</button>
     </div>
     <div class="msg" id="edit-msg"></div>
   </section>
 
   <section class="card hidden" id="preview-card">
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
-      <h2 style="margin:0" id="preview-title">预览</h2>
-      <div class="row"><button id="download-btn">下载 YAML</button><button id="close-preview">关闭</button></div>
+    <div class="card-head">
+      <h2 id="preview-title">预览</h2>
+      <div class="row">
+        <button class="btn sm" id="download-btn"><svg class="i"><use href="#i-download"/></svg>下载 YAML</button>
+        <button class="icon-btn" id="close-preview" title="关闭" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
     </div>
-    <div class="muted" id="preview-info"></div>
+    <div id="preview-info"></div>
     <ul class="status" id="preview-status"></ul>
-    <p class="muted hidden" id="preview-hint">「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每天代抓的副本（编辑页可按「立即刷新缓存」）；
+    <p class="hint hidden" id="preview-hint">「已屏蔽」表示这个机场的订阅已到期或流量已用完，合并时自动跳过，续费或流量重置后会自动恢复；
+      「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每天代抓的副本（编辑页可按「立即刷新缓存」）；
       「失败」的机场如果一直失败，请确认已按 README 设置 <code>CLOUDFLARE_API_TOKEN</code>，或到 GitHub 的 Actions 页手动执行「代抓订阅缓存」。</p>
     <pre id="preview"></pre>
   </section>
 
   <section class="card">
-    <h2>客户端怎么用</h2>
-    <ol>
+    <div class="card-head"><h2>客户端怎么用</h2></div>
+    <ol class="steps">
       <li>在订阅卡片选覆写脚本：<b>精简</b>（推荐，分流组：Google、AI、Telegram、Steam、AdBlock）或<b>全量</b>（另加 YouTube、Netflix、GitHub、Apple 等）。</li>
       <li>按「复制链接」或「一键导入 Clash」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。
         链接已经套用好脚本，<b>客户端不要再加脚本覆写</b>，否则会覆写两次。</li>
       <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
     </ol>
-    <p class="muted">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。</p>
+    <p class="note">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。
+      已到期或流量用完的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
     <details><summary>想自己在客户端覆写？</summary>
-      <p class="muted">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版：</p>
-      <div class="link" id="script-url"></div>
-      <button id="copy-script">复制脚本链接</button>
-      <div class="muted" style="margin-top:8px">或全量版：</div>
-      <div class="link" id="script-full-url"></div>
-      <button id="copy-script-full">复制全量版链接</button>
+      <p class="hint">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版或全量版：</p>
+      <div class="linkbox"><code class="link" id="script-url"></code>
+        <button class="icon-btn" id="copy-script" title="复制精简版链接" aria-label="复制精简版链接"><svg class="i"><use href="#i-copy"/></svg></button></div>
+      <div class="linkbox"><code class="link" id="script-full-url"></code>
+        <button class="icon-btn" id="copy-script-full" title="复制全量版链接" aria-label="复制全量版链接"><svg class="i"><use href="#i-copy"/></svg></button></div>
     </details>
     <details><summary>安全提醒</summary>
-      <p class="muted">每个订阅链接里的 TOKEN 都等同密码，拿到的人就能用你的节点，也能编辑或删除这个订阅。如果外流了，按「换 TOKEN」，旧链接会立刻失效，再把新链接贴回客户端就好。</p>
+      <p class="hint">每个订阅链接里的 TOKEN 都等同密码，拿到的人就能用你的节点，也能编辑或删除这个订阅。如果外流了，按「换 TOKEN」，旧链接会立刻失效，再把新链接贴回客户端就好。</p>
     </details>
   </section>
 </main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
@@ -151,12 +385,18 @@
     get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
+  const smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
   // 管理页由 Worker 提供，API 与订阅链接都在同一个地址
   const workerUrl = location.origin;
   let editingToken = null;
   let previewText = '';
   let previewName = '';
+  // 编辑页：已保存的订阅链接，与即时检查的结果（以订阅链接为键）
+  let savedUrls = new Set();
+  let statusByUrl = new Map();
+  let checking = false;
+  let checkSeq = 0;
 
   // 这个浏览器生成或导入过的 TOKEN
   function getTokens() {
@@ -169,13 +409,43 @@
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+  const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  const pill = (kind, label) => `<span class="pill ${kind}">${label}</span>`;
   function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  let toastTimer = 0;
+  function toast(text, kind = '') {
+    const el = $('toast');
+    el.textContent = text;
+    el.className = 'toast show ' + kind;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  }
   // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果
   const MODES = [['lite', '精简'], ['full', '全量'], ['none', '不覆写']];
   function getMode(token) { const m = store.get('mode:' + token); return MODES.some(([x]) => x === m) ? m : 'lite'; }
   function setMode(token, mode) { store.set('mode:' + token, mode); }
   function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' ? '' : `?script=${mode}`); }
   function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : ''; }
+  const pad = (n) => String(n).padStart(2, '0');
+  function fmtDate(sec) { const d = new Date(sec * 1000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+  function size(bytes) {
+    const g = bytes / 1024 ** 3;
+    return g >= 1024 ? (g / 1024).toFixed(1) + ' TB' : g.toFixed(g >= 100 ? 0 : 1) + ' GB';
+  }
+  function ago(ms) {
+    const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+    return m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`;
+  }
+  // subscription-userinfo：upload=…; download=…; total=…; expire=…（expire 是 Unix 秒数，0 表示没有到期日）
+  function parseInfo(header) {
+    if (!header) return null;
+    const v = { upload: 0, download: 0, total: 0, expire: 0 };
+    for (const part of header.split(';')) {
+      const [k, n] = part.split('=').map((s) => s.trim());
+      if (Object.hasOwn(v, k) && Number(n) > 0) v[k] = Number(n);
+    }
+    return v;
+  }
 
   async function api(method, path, body) {
     const res = await fetch(workerUrl + '/api' + path, {
@@ -189,40 +459,56 @@
     return data;
   }
 
-  async function copy(text, btn) {
+  async function copy(text, what = '链接') {
     try { await navigator.clipboard.writeText(text); } catch {
       const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
       document.execCommand('copy'); t.remove();
     }
-    const old = btn.textContent; btn.textContent = '已复制 ✓'; setTimeout(() => (btn.textContent = old), 1500);
+    toast(`已复制${what}`);
   }
 
   // --- 列表 ---
+  const PREFIX_LABELS = { name: '机场名称', index: 'S1、S2…', none: '不加' };
+  function itemHtml(it) {
+    const token = escapeHtml(it.token);
+    const mode = getMode(it.token);
+    return `<article class="sub" data-token="${token}" data-name="${escapeHtml(it.name)}">
+      <div class="sub-head"><h3>${escapeHtml(it.name)}</h3><span class="hint">更新于 ${fmtTime(it.updatedAt)}</span></div>
+      <div class="chips">
+        <span class="chip">${it.sources.length} 个机场</span>
+        <span class="chip">前缀：${PREFIX_LABELS[it.prefixMode || 'index']}</span>
+        ${it.rateTag ? '<span class="chip">倍率标注</span>' : ''}
+      </div>
+      <div class="sub-mode">
+        <span class="hint">覆写脚本</span>
+        <div class="seg" role="radiogroup" aria-label="覆写脚本">${MODES.map(([m, label]) =>
+          `<label><input type="radio" name="mode-${token}" value="${m}"${m === mode ? ' checked' : ''}><span>${label}</span></label>`).join('')}</div>
+      </div>
+      <div class="linkbox"><code class="link">${escapeHtml(subUrl(it.token, mode))}</code></div>
+      <div class="actions">
+        <button class="btn primary" data-act="copy">${icon('copy')}复制链接</button>
+        <button class="btn" data-act="import">${icon('download')}一键导入 Clash</button>
+        <button class="btn ghost" data-act="preview">${icon('eye')}预览</button>
+        <button class="btn ghost" data-act="edit">${icon('edit')}编辑</button>
+        <span class="grow"></span>
+        <button class="btn ghost" data-act="rotate">${icon('refresh')}换 TOKEN</button>
+        <button class="btn ghost danger" data-act="delete">${icon('trash')}删除</button>
+      </div>
+    </article>`;
+  }
+
   async function loadList() {
     const list = $('list');
     const tokens = getTokens();
     // 一次请求查完所有 TOKEN；查不到的（已删除或已更换）从清单移除
     const items = tokens.length ? (await api('POST', '/subs/lookup', { tokens })).items : [];
     saveTokens(items.map((it) => it.token));
-    if (!items.length) { list.innerHTML = '<p class="muted">还没有任何合并订阅，按右上角「生成新的订阅」开始。</p>'; return; }
-    list.innerHTML = items.map((it) => `
-      <div class="item" data-token="${escapeHtml(it.token)}" data-name="${escapeHtml(it.name || '')}">
-        <div class="item-title">${it.error ? '<span class="muted">读取失败：' + escapeHtml(it.error) + '</span>'
-          : escapeHtml(it.name) + ' <span class="muted">· ' + it.sources.length + ' 个机场 · 前缀：' + ({ name: '机场名称', index: 'S1、S2…', none: '不加' }[it.prefixMode || 'index']) + (it.rateTag ? ' · 倍率标注' : '') + ' · 更新于 ' + fmtTime(it.updatedAt) + '</span>'}</div>
-        <div class="row mode" style="margin-top:6px">
-          <span class="muted">覆写脚本：</span>
-          ${MODES.map(([m, label]) => `<label class="opt"><input type="radio" name="mode-${escapeHtml(it.token)}" value="${m}"${m === getMode(it.token) ? ' checked' : ''}> ${label}</label>`).join('')}
-        </div>
-        <div class="link">${escapeHtml(subUrl(it.token, getMode(it.token)))}</div>
-        <div class="row">
-          <button data-act="copy" class="primary">复制链接</button>
-          <button data-act="import">一键导入 Clash</button>
-          <button data-act="preview">预览</button>
-          <button data-act="edit">编辑</button>
-          <button data-act="rotate">换 TOKEN</button>
-          <button data-act="delete" class="danger">删除</button>
-        </div>
-      </div>`).join('');
+    $('count').textContent = items.length || '';
+    list.innerHTML = items.length ? items.map(itemHtml).join('') : `<div class="empty">
+      <span class="logo">${icon('merge')}</span>
+      <b>还没有合并订阅</b>
+      <p class="hint">按「生成新的订阅」，把几个机场的订阅链接贴进去就好。</p>
+    </div>`;
   }
 
   // 从订阅链接或 TOKEN 导入；链接带 ?script= 时一并记住覆写版本
@@ -247,13 +533,17 @@
   $('import-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') importFrom(e.target.value); });
 
   function highlight(token) {
-    const el = document.querySelector(`.item[data-token="${token}"]`);
-    if (el) { el.scrollIntoView({ behavior: 'smooth' }); el.querySelector('.link').style.outline = '2px solid var(--accent)'; }
+    const el = document.querySelector(`.sub[data-token="${token}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: smooth, block: 'center' });
+    el.classList.remove('flash');
+    void el.offsetWidth; // 重新开始动画
+    el.classList.add('flash');
   }
 
   $('list').addEventListener('change', (e) => {
     if (!e.target.name?.startsWith('mode-')) return;
-    const item = e.target.closest('.item');
+    const item = e.target.closest('.sub');
     setMode(item.dataset.token, e.target.value);
     item.querySelector('.link').textContent = subUrl(item.dataset.token, e.target.value);
   });
@@ -261,60 +551,167 @@
   $('list').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
-    const item = btn.closest('.item');
+    const item = btn.closest('.sub');
     const { token, name } = item.dataset;
     const mode = getMode(token);
     try {
       switch (btn.dataset.act) {
-        case 'copy': return copy(subUrl(token, mode), btn);
+        case 'copy': return copy(subUrl(token, mode));
         case 'import':
           location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name)}`;
           return;
         case 'preview': return preview(token, name, mode);
-        case 'edit': return openEditor(await api('GET', '/subs/' + token));
+        case 'edit':
+          btn.disabled = true;
+          try { return openEditor(await api('GET', '/subs/' + token)); } finally { btn.disabled = false; }
         case 'rotate':
           if (!confirm(`「${name}」换新 TOKEN 后，旧的订阅链接会立刻失效，要继续吗？`)) return;
           {
             const { token: next } = await api('POST', `/subs/${token}/rotate`);
             saveTokens(getTokens().map((t) => (t === token ? next : t)));
             setMode(next, mode);
+            if (editingToken === token) editingToken = next;
           }
+          toast('已换新 TOKEN，记得把新链接贴回客户端');
           return loadList();
         case 'delete':
           if (!confirm(`确定删除「${name}」？使用这个链接的客户端将无法再更新。`)) return;
           await api('DELETE', '/subs/' + token);
           removeToken(token);
+          if (editingToken === token) closeEditor();
+          toast(`已删除「${name}」`);
           return loadList();
       }
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast(err.message, 'err'); }
   });
 
   // --- 编辑 ---
   function addSourceRow(src = {}) {
     const row = document.createElement('div');
-    row.className = 'src-row';
-    row.innerHTML = `<input type="text" placeholder="自定义前缀（选填）" maxlength="20">
-      <input type="url" placeholder="https://机场订阅链接">
-      <button class="danger" title="移除">✕</button>`;
-    row.children[0].value = src.name || '';
-    row.children[1].value = src.url || '';
-    row.children[2].onclick = () => { row.remove(); if (!$('sources').children.length) addSourceRow(); };
+    row.className = 'src';
+    row.innerHTML = `<span class="src-idx"></span>
+      <input type="text" class="src-name" maxlength="20" title="自定义前缀（选填）" aria-label="自定义前缀（选填）">
+      <input type="url" class="src-url" placeholder="https://机场订阅链接" aria-label="机场订阅链接">
+      <button type="button" class="icon-btn danger src-del" title="移除" aria-label="移除">${icon('x')}</button>
+      <div class="src-status"></div>`;
+    row.querySelector('.src-name').value = src.name || '';
+    row.querySelector('.src-url').value = src.url || '';
     $('sources').appendChild(row);
+  }
+
+  // 检查结果 → 状态标签与说明：到期或流量用完的机场合并时由 Worker 自动屏蔽（blocked = expired / exhausted）
+  function describe(st) {
+    if (st.error) return { kind: 'fail', tag: '失败', text: `抓取失败：${st.error}，合并时跳过` };
+    const info = st.info;
+    const used = info ? info.upload + info.download : 0;
+    const parts = [];
+    let kind = 'ok';
+    let tag = '正常';
+    if (st.blocked) {
+      kind = 'blocked'; tag = '已屏蔽';
+      parts.push(st.blocked === 'expired'
+        ? `已于 ${fmtDate(info.expire)} 到期，合并时自动屏蔽，续费后自动恢复`
+        : '流量已用完，合并时自动屏蔽，流量重置或续费后自动恢复');
+    }
+    if (info?.expire && st.blocked !== 'expired') {
+      const days = Math.ceil((info.expire * 1000 - Date.now()) / 86400000);
+      parts.push(`${fmtDate(info.expire)} 到期（${days > 0 ? `剩 ${days} 天` : '今天到期'}）`);
+      if (days <= 7 && !st.blocked) { kind = 'warn'; tag = '即将到期'; }
+    } else if (!info?.expire && !st.blocked) {
+      parts.push(info ? '没有到期日' : '机场没有提供流量与到期日');
+    }
+    if (info?.total) parts.push(`已用 ${size(used)} / ${size(info.total)}`);
+    else if (used) parts.push(`已用 ${size(used)}`);
+    if (st.cachedAt) {
+      parts.push(`直连失败（${st.directError}），资料来自 ${ago(st.cachedAt)}的缓存`);
+      if (kind === 'ok') { kind = 'cache'; tag = '缓存'; }
+    }
+    return { kind, tag, text: parts.join(' · ') };
+  }
+
+  function prefixPlaceholder(i, st) {
+    const mode = getPrefixMode();
+    if (mode === 'none') return '不加前缀';
+    if (mode === 'index') return `自动：S${i + 1}`;
+    return st ? `自动：${st.name || `S${i + 1}`}` : '自动识别（选填）';
+  }
+
+  function renderRow(row, i) {
+    const url = row.querySelector('.src-url').value.trim();
+    const st = statusByUrl.get(url);
+    row.querySelector('.src-idx').textContent = i + 1;
+    row.querySelector('.src-name').placeholder = prefixPlaceholder(i, st);
+    let d = null;
+    if (url && editingToken) {
+      if (checking && savedUrls.has(url)) d = { kind: 'pending', tag: '检查中', text: '正在读取流量与到期日…' };
+      else if (st) d = describe(st);
+      else if (!savedUrls.has(url)) d = { kind: 'idle', tag: '未检查', text: '新的链接保存后才会检查到期日' };
+    }
+    row.dataset.kind = d?.kind || '';
+    row.querySelector('.src-status').innerHTML = d ? `${pill(d.kind, d.tag)}<span>${escapeHtml(d.text)}</span>` : '';
+    return d;
+  }
+
+  // 重新编号、更新前缀提示与每个机场的状态，标题旁显示屏蔽 / 即将到期 / 失败的数量
+  function refreshRows() {
+    const rows = [...$('sources').children];
+    const counts = {};
+    rows.forEach((row, i) => {
+      const d = renderRow(row, i);
+      if (d) counts[d.tag] = (counts[d.tag] || 0) + 1;
+    });
+    $('src-count').textContent = rows.length;
+    $('src-summary').innerHTML = [['blocked', '已屏蔽'], ['warn', '即将到期'], ['fail', '失败']]
+      .filter(([, tag]) => counts[tag]).map(([kind, tag]) => pill(kind, `${tag} ${counts[tag]}`)).join('');
+  }
+
+  async function checkStatus() {
+    if (!editingToken) return;
+    const seq = ++checkSeq;
+    checking = true;
+    $('check-btn').disabled = true;
+    refreshRows();
+    try {
+      const { sources } = await api('GET', `/subs/${editingToken}/status`);
+      if (seq === checkSeq) statusByUrl = new Map(sources.map((s) => [s.url, s]));
+    } catch (e) {
+      if (seq === checkSeq) showMsg($('edit-msg'), '检查到期日失败：' + e.message);
+    } finally {
+      if (seq === checkSeq) {
+        checking = false;
+        $('check-btn').disabled = false;
+        refreshRows();
+      }
+    }
   }
 
   function openEditor(record) {
     editingToken = record ? record.token : null;
+    savedUrls = new Set(record ? record.sources.map((s) => s.url) : []);
+    statusByUrl = new Map();
+    checking = false;
+    checkSeq++;
     $('edit-title').textContent = record ? `编辑「${record.name}」` : '生成新的订阅';
     $('edit-name').value = record ? record.name : '';
-    setPrefixMode(record ? record.prefixMode || 'index' : 'name');
     $('rate-tag').checked = record ? record.rateTag === true : true;
     $('sources').innerHTML = '';
-    (record ? record.sources : [{}, {}]).forEach(addSourceRow);
+    (record ? record.sources : [{}, {}]).forEach((s) => addSourceRow(s));
+    setPrefixMode(record ? record.prefixMode || 'index' : 'name');
     $('edit-msg').textContent = '';
     $('bulk-box').classList.add('hidden');
     $('refresh-btn').classList.toggle('hidden', !record);
+    $('check-btn').classList.toggle('hidden', !record);
+    $('check-hint').textContent = record
+      ? '打开编辑页时会即时检查每个机场的流量与到期日；已到期或流量用完的机场合并时自动屏蔽，续费或流量重置后自动恢复。'
+      : '已到期或流量用完的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日与流量。';
     $('edit-card').classList.remove('hidden');
-    $('edit-card').scrollIntoView({ behavior: 'smooth' });
+    $('edit-card').scrollIntoView({ behavior: smooth, block: 'start' });
+    if (record) checkStatus();
+  }
+  function closeEditor() {
+    $('edit-card').classList.add('hidden');
+    editingToken = null;
+    checkSeq++;
   }
 
   const PREFIX_HINTS = {
@@ -326,16 +723,27 @@
   function setPrefixMode(mode) {
     document.querySelector(`input[name=prefix-mode][value=${mode}]`).checked = true;
     $('prefix-hint').textContent = PREFIX_HINTS[mode];
+    refreshRows();
   }
   $('prefix-mode').addEventListener('change', () => setPrefixMode(getPrefixMode()));
 
+  $('sources').addEventListener('click', (e) => {
+    if (!e.target.closest('.src-del')) return;
+    e.target.closest('.src').remove();
+    if (!$('sources').children.length) addSourceRow();
+    refreshRows();
+  });
+  // 改了链接：状态改成「未检查」，改回原本的链接就显示原本的检查结果
+  $('sources').addEventListener('input', (e) => { if (e.target.classList.contains('src-url')) refreshRows(); });
+
   $('new-btn').onclick = () => openEditor(null);
-  $('add-src').onclick = () => addSourceRow();
-  $('cancel-btn').onclick = () => $('edit-card').classList.add('hidden');
-  $('bulk-btn').onclick = () => $('bulk-box').classList.toggle('hidden');
+  $('add-src').onclick = () => { addSourceRow(); refreshRows(); $('sources').lastElementChild.querySelector('.src-url').focus(); };
+  $('cancel-btn').onclick = closeEditor;
+  $('close-edit').onclick = closeEditor;
+  $('check-btn').onclick = checkStatus;
+  $('bulk-btn').onclick = () => { $('bulk-box').classList.toggle('hidden'); $('bulk-text').focus(); };
   $('bulk-apply').onclick = () => {
-    const rows = [...$('sources').children];
-    rows.filter((r) => !r.children[1].value.trim()).forEach((r) => r.remove());
+    [...$('sources').children].filter((r) => !r.querySelector('.src-url').value.trim()).forEach((r) => r.remove());
     for (const line of $('bulk-text').value.split(/\r?\n/)) {
       const m = line.trim().match(/^(?:(.+?)\s+)?(https?:\/\/\S+)$/);
       if (m) addSourceRow({ name: (m[1] || '').trim(), url: m[2] });
@@ -343,22 +751,23 @@
     if (!$('sources').children.length) addSourceRow();
     $('bulk-text').value = '';
     $('bulk-box').classList.add('hidden');
+    refreshRows();
   };
 
   $('save-btn').onclick = async () => {
     const name = $('edit-name').value.trim();
     const sources = [...$('sources').children]
-      .map((r) => ({ name: r.children[0].value.trim(), url: r.children[1].value.trim() }))
+      .map((r) => ({ name: r.querySelector('.src-name').value.trim(), url: r.querySelector('.src-url').value.trim() }))
       .filter((s) => s.url);
     if (!name) return showMsg($('edit-msg'), '请填名称');
     if (!sources.length) return showMsg($('edit-msg'), '至少要填一个机场订阅链接');
     $('save-btn').disabled = true;
     try {
-      const saved = editingToken
-        ? await api('PUT', '/subs/' + editingToken, { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, sources })
-        : await api('POST', '/subs', { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, sources });
+      const body = { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, sources };
+      const saved = editingToken ? await api('PUT', '/subs/' + editingToken, body) : await api('POST', '/subs', body);
       if (!editingToken) addToken(saved.token);
-      $('edit-card').classList.add('hidden');
+      toast(editingToken ? `已保存「${saved.name}」` : `已生成「${saved.name}」，复制链接到客户端就能用`);
+      closeEditor();
       await loadList();
       highlight(saved.token);
     } catch (e) { showMsg($('edit-msg'), e.message); }
@@ -375,43 +784,46 @@
   };
 
   // --- 预览 ---
+  const stat = (label, value) => `<div class="stat"><span>${label}</span><b>${escapeHtml(value)}</b></div>`;
   async function preview(token, name, mode) {
     $('preview-card').classList.remove('hidden');
     $('preview-title').textContent = `预览：${name}`;
-    $('preview-info').textContent = '抓取中…（会即时抓取所有机场，可能要几秒）';
+    $('preview-info').innerHTML = `<p class="hint" style="margin-bottom:14px">${pill('pending', '抓取中')} 会即时抓取所有机场，可能要几秒…</p>`;
     $('preview').textContent = '';
     $('preview-status').innerHTML = '';
     $('preview-hint').classList.add('hidden');
-    $('preview-card').scrollIntoView({ behavior: 'smooth' });
+    $('preview-card').scrollIntoView({ behavior: smooth, block: 'start' });
     try {
       const res = await fetch(subUrl(token, mode), { cache: 'no-store' });
       previewText = await res.text();
       previewName = name;
-      const info = res.headers.get('subscription-userinfo');
-      const count = [...previewText.matchAll(/\] (\d+) 个节点/g)].reduce((n, m) => n + Number(m[1]), 0);
-      let infoText = res.ok ? `节点数：${count}` : `错误 ${res.status}`;
-      if (info) {
-        const v = Object.fromEntries(info.split(';').map((p) => p.trim().split('=')));
-        const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1) + ' GB';
-        infoText += `　已用 ${gb(Number(v.upload) + Number(v.download))} / 总共 ${gb(v.total)}`;
-        if (Number(v.expire)) infoText += `　最早到期 ${new Date(Number(v.expire) * 1000).toLocaleDateString('zh-CN')}`;
+      if (res.ok) {
+        const count = [...previewText.matchAll(/\] (\d+) 个节点/g)].reduce((n, m) => n + Number(m[1]), 0);
+        const tiles = [stat('节点数', count)];
+        const v = parseInfo(res.headers.get('subscription-userinfo'));
+        if (v) {
+          tiles.push(stat('已用 / 总流量', `${size(v.upload + v.download)} / ${v.total ? size(v.total) : '—'}`));
+          tiles.push(stat('最早到期', v.expire ? fmtDate(v.expire) : '没有到期日'));
+        }
+        $('preview-info').innerHTML = `<div class="stats">${tiles.join('')}</div>`;
+      } else {
+        $('preview-info').innerHTML = `<p class="msg err" style="margin:0 0 14px">错误 ${res.status}：${escapeHtml(previewText)}</p>`;
       }
-      $('preview-info').textContent = infoText;
       $('preview').textContent = previewText;
       renderStatus(previewText);
     } catch (e) {
-      $('preview-info').textContent = '抓取失败：' + e.message;
+      $('preview-info').innerHTML = `<p class="msg err" style="margin:0 0 14px">抓取失败：${escapeHtml(e.message)}</p>`;
     }
   }
-  // 每个机场的抓取结果写在配置文件开头的注释里：「# [名称] 46 个节点」「# [名称] 失败：HTTP 403」
+  // 每个机场的抓取结果写在配置文件开头的注释里：「# [名称] 46 个节点」「# [名称] 已屏蔽：…」「# [名称] 失败：HTTP 403」
+  const TAGS = { ok: '直连', cache: '缓存', blocked: '已屏蔽', fail: '失败' };
   function renderStatus(text) {
     const rows = [...text.matchAll(/^# \[(.+?)\] (.+)$/gm)].map(([, label, detail]) => {
-      const kind = /^失败/.test(detail) ? 'fail' : /缓存/.test(detail) ? 'cache' : 'ok';
-      return { label, detail, kind };
+      const kind = /^已屏蔽/.test(detail) ? 'blocked' : /^失败/.test(detail) ? 'fail' : /缓存/.test(detail) ? 'cache' : 'ok';
+      return { label, detail: detail.replace(/^(已屏蔽|失败)：/, ''), kind };
     });
-    const tags = { ok: '直连', cache: '缓存', fail: '失败' };
     $('preview-status').innerHTML = rows.map((r) =>
-      `<li><span class="tag ${r.kind}">${tags[r.kind]}</span><b>${escapeHtml(r.label)}</b> <span class="muted">${escapeHtml(r.detail)}</span></li>`).join('');
+      `<li>${pill(r.kind, TAGS[r.kind])}<b>${escapeHtml(r.label)}</b><span class="muted">${escapeHtml(r.detail)}</span></li>`).join('');
     $('preview-hint').classList.toggle('hidden', !rows.some((r) => r.kind !== 'ok'));
   }
   $('close-preview').onclick = () => $('preview-card').classList.add('hidden');
@@ -423,9 +835,9 @@
     URL.revokeObjectURL(a.href);
   };
   $('script-url').textContent = `${workerUrl}/script.js`;
-  $('copy-script').onclick = (e) => copy($('script-url').textContent, e.target);
+  $('copy-script').onclick = () => copy($('script-url').textContent, '精简版脚本链接');
   $('script-full-url').textContent = `${workerUrl}/script-full.js`;
-  $('copy-script-full').onclick = (e) => copy($('script-full-url').textContent, e.target);
+  $('copy-script-full').onclick = () => copy($('script-full-url').textContent, '全量版脚本链接');
 
   // 网址带 #import=<TOKEN>（浏览器打开订阅链接、客户端的「首页」按钮会跳到这里）就自动导入
   const fromHash = new URLSearchParams(location.hash.slice(1));
