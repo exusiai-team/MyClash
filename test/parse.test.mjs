@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
 import { TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
@@ -90,6 +90,11 @@ test('subscription-userinfo 解析与到期判断', () => {
   // 没有到期日、没有标头都不算到期
   assert.equal(isExpired({ expire: 0 }), false);
   assert.equal(isExpired(null), false);
+  assert.equal(isExhausted({ upload: 4, download: 6, total: 10 }), true);
+  assert.equal(isExhausted({ upload: 4, download: 5, total: 10 }), false);
+  // 总流量为 0（不限或没提供）不算用完
+  assert.equal(isExhausted({ upload: 4, download: 6, total: 0 }), false);
+  assert.equal(isExhausted(null), false);
 });
 
 test('识别机场名称：Content-Disposition 优先，其次域名', () => {

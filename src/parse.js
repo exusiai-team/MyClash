@@ -411,6 +411,11 @@ export function isExpired(info, now = Date.now()) {
   return info?.expire > 0 && info.expire * 1000 <= now;
 }
 
+/** 流量已用完（总流量为 0 表示不限或没提供，不算） */
+export function isExhausted(info) {
+  return info?.total > 0 && info.upload + info.download >= info.total;
+}
+
 /**
  * 加总多个 subscription-userinfo header：流量相加，到期日取最早的
  */

@@ -271,7 +271,7 @@
   <span class="logo"><svg class="i"><use href="#i-merge"/></svg></span>
   <div>
     <h1>MyClash 订阅合并</h1>
-    <p>把多个机场订阅合并成一个链接，服务端直接套用 MyClash 覆写脚本，到期的机场自动屏蔽。</p>
+    <p>把多个机场订阅合并成一个链接，服务端直接套用 MyClash 覆写脚本，到期或流量用完的机场自动屏蔽。</p>
   </div>
 </header>
 
@@ -348,7 +348,7 @@
     </div>
     <div id="preview-info"></div>
     <ul class="status" id="preview-status"></ul>
-    <p class="hint hidden" id="preview-hint">「已屏蔽」表示这个机场的订阅已到期，合并时自动跳过，续费后会自动恢复；
+    <p class="hint hidden" id="preview-hint">「已屏蔽」表示这个机场的订阅已到期或流量已用完，合并时自动跳过，续费或流量重置后会自动恢复；
       「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每天代抓的副本（编辑页可按「立即刷新缓存」）；
       「失败」的机场如果一直失败，请确认已按 README 设置 <code>CLOUDFLARE_API_TOKEN</code>，或到 GitHub 的 Actions 页手动执行「代抓订阅缓存」。</p>
     <pre id="preview"></pre>
@@ -363,7 +363,7 @@
       <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
     </ol>
     <p class="note">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。
-      订阅已到期的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
+      已到期或流量用完的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
     <details><summary>想自己在客户端覆写？</summary>
       <p class="hint">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版或全量版：</p>
       <div class="linkbox"><code class="link" id="script-url"></code>
@@ -599,30 +599,29 @@
     $('sources').appendChild(row);
   }
 
-  // 检查结果 → 状态标签与说明：到期的机场合并时由 Worker 自动屏蔽
+  // 检查结果 → 状态标签与说明：到期或流量用完的机场合并时由 Worker 自动屏蔽（blocked = expired / exhausted）
   function describe(st) {
     if (st.error) return { kind: 'fail', tag: '失败', text: `抓取失败：${st.error}，合并时跳过` };
     const info = st.info;
+    const used = info ? info.upload + info.download : 0;
     const parts = [];
     let kind = 'ok';
     let tag = '正常';
-    if (st.expired) {
+    if (st.blocked) {
       kind = 'blocked'; tag = '已屏蔽';
-      parts.push(`已于 ${fmtDate(info.expire)} 到期，合并时自动屏蔽，续费后自动恢复`);
-    } else if (info?.expire) {
+      parts.push(st.blocked === 'expired'
+        ? `已于 ${fmtDate(info.expire)} 到期，合并时自动屏蔽，续费后自动恢复`
+        : '流量已用完，合并时自动屏蔽，流量重置或续费后自动恢复');
+    }
+    if (info?.expire && st.blocked !== 'expired') {
       const days = Math.ceil((info.expire * 1000 - Date.now()) / 86400000);
       parts.push(`${fmtDate(info.expire)} 到期（${days > 0 ? `剩 ${days} 天` : '今天到期'}）`);
-      if (days <= 7) { kind = 'warn'; tag = '即将到期'; }
-    } else {
+      if (days <= 7 && !st.blocked) { kind = 'warn'; tag = '即将到期'; }
+    } else if (!info?.expire && !st.blocked) {
       parts.push(info ? '没有到期日' : '机场没有提供流量与到期日');
     }
-    if (info?.total) {
-      const used = info.upload + info.download;
-      parts.push(`已用 ${size(used)} / ${size(info.total)}`);
-      if (!st.expired && used >= info.total) { kind = 'warn'; tag = '流量用完'; }
-    } else if (info && (info.upload || info.download)) {
-      parts.push(`已用 ${size(info.upload + info.download)}`);
-    }
+    if (info?.total) parts.push(`已用 ${size(used)} / ${size(info.total)}`);
+    else if (used) parts.push(`已用 ${size(used)}`);
     if (st.cachedAt) {
       parts.push(`直连失败（${st.directError}），资料来自 ${ago(st.cachedAt)}的缓存`);
       if (kind === 'ok') { kind = 'cache'; tag = '缓存'; }
@@ -662,7 +661,7 @@
       if (d) counts[d.tag] = (counts[d.tag] || 0) + 1;
     });
     $('src-count').textContent = rows.length;
-    $('src-summary').innerHTML = [['blocked', '已屏蔽'], ['warn', '即将到期'], ['warn', '流量用完'], ['fail', '失败']]
+    $('src-summary').innerHTML = [['blocked', '已屏蔽'], ['warn', '即将到期'], ['fail', '失败']]
       .filter(([, tag]) => counts[tag]).map(([kind, tag]) => pill(kind, `${tag} ${counts[tag]}`)).join('');
   }
 
@@ -703,8 +702,8 @@
     $('refresh-btn').classList.toggle('hidden', !record);
     $('check-btn').classList.toggle('hidden', !record);
     $('check-hint').textContent = record
-      ? '打开编辑页时会即时检查每个机场的流量与到期日；已到期的机场合并时自动屏蔽，续费后自动恢复。'
-      : '已到期的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日。';
+      ? '打开编辑页时会即时检查每个机场的流量与到期日；已到期或流量用完的机场合并时自动屏蔽，续费或流量重置后自动恢复。'
+      : '已到期或流量用完的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日与流量。';
     $('edit-card').classList.remove('hidden');
     $('edit-card').scrollIntoView({ behavior: smooth, block: 'start' });
     if (record) checkStatus();

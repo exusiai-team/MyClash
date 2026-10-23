@@ -57,6 +57,10 @@ function startUpstream() {
       res.setHeader('subscription-userinfo', 'upload=5; download=5; total=10; expire=1000000000');
       res.setHeader('content-disposition', 'attachment; filename="OldCloud"');
       res.end(b64('trojan://pw@old.node:443#香港 过期'));
+    } else if (req.url === '/used-up') {
+      // 10 GB 用完，到期日还没到
+      res.setHeader('subscription-userinfo', 'upload=0; download=10737418240; total=10737418240; expire=2000000000');
+      res.end(b64('trojan://pw@used.node:443#日本 用完'));
     } else if (req.url === '/blocked') {
       res.statusCode = 403;
       res.end('blocked');
@@ -336,21 +340,24 @@ test('没有绑定 KV（预览版本）时给出明确提示', async () => {
   assert.match(await res.text(), /KV/);
 });
 
-test('/sub/<TOKEN>：到期的机场自动屏蔽，不计入流量与到期日', async (t) => {
+test('/sub/<TOKEN>：到期或流量用完的机场自动屏蔽，不计入流量与到期日', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
   const env = { SUB_STORE: memoryKv() };
   const { token } = await (
-    await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ name: 'A', url: `${base}/yaml` }, { url: `${base}/expired` }] } })
+    await call(env, 'POST', '/api/subs', {
+      body: { name: 'x', sources: [{ name: 'A', url: `${base}/yaml` }, { url: `${base}/expired` }, { name: '用完', url: `${base}/used-up` }] },
+    })
   ).json();
 
   const res = await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
   assert.equal(res.status, 200);
-  // 只剩 A 的流量与到期日；过期的机场若计入，客户端会把整个合并订阅显示成已到期
+  // 只剩 A 的流量与到期日；屏蔽的机场若计入，客户端会把整个合并订阅显示成已到期或流量用完
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=1; download=2; total=100; expire=2000000000');
   const body = await res.text();
   assert.match(body, /^# \[OldCloud\] 已屏蔽：订阅已于 2001-09-09 到期$/m);
+  assert.match(body, /^# \[用完\] 已屏蔽：流量已用完（10\.0 GB \/ 10\.0 GB）$/m);
   assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['A | 🇭🇰 香港 01', 'A | 🇯🇵 日本 01']);
 
   // 依缓存判断到期也会屏蔽
@@ -361,7 +368,7 @@ test('/sub/<TOKEN>：到期的机场自动屏蔽，不计入流量与到期日',
   await call(env, 'PUT', `/api/subs/${token}`, { body: { name: 'x', sources: [{ name: 'B', url: `${base}/blocked` }, { url: `${base}/expired` }] } });
   const all = await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
   assert.equal(all.status, 502);
-  assert.match(await all.text(), /都已到期/);
+  assert.match(await all.text(), /都已到期或流量用完/);
 });
 
 test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否屏蔽', async (t) => {
@@ -369,7 +376,7 @@ test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否�
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
   const env = { SUB_STORE: memoryKv() };
-  const urls = ['/yaml', '/named', '/expired', '/fail', '/blocked'].map((p) => base + p);
+  const urls = ['/yaml', '/named', '/expired', '/fail', '/blocked', '/used-up'].map((p) => base + p);
   const { token } = await (await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: urls.map((url) => ({ url })) } })).json();
   const fetchedAt = Date.now() - 3600 * 1000;
   await env.SUB_STORE.put(
@@ -382,21 +389,23 @@ test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否�
   const { checkedAt, sources } = await res.json();
   assert.ok(checkedAt > 0);
   assert.deepEqual(sources.map((s) => s.url), urls);
-  const [plain, named, expired, failed, cached] = sources;
+  const [plain, named, expired, failed, cached, usedUp] = sources;
   assert.deepEqual(plain.info, { upload: 1, download: 2, total: 100, expire: 2000000000 });
-  assert.equal(plain.expired, false);
+  assert.equal(plain.blocked, null);
   assert.equal(plain.error, null);
   assert.equal(named.name, '飞云');
   assert.equal(named.info, null);
-  assert.equal(named.expired, false);
+  assert.equal(named.blocked, null);
   assert.equal(expired.name, 'OldCloud');
-  assert.equal(expired.expired, true);
+  assert.equal(expired.blocked, 'expired');
   assert.equal(expired.info.expire, 1000000000);
   assert.equal(failed.error, 'HTTP 500');
   assert.equal(cached.error, null);
   assert.equal(cached.directError, 'HTTP 403');
   assert.equal(cached.cachedAt, fetchedAt);
   assert.equal(cached.info.expire, 2100000000);
+  assert.equal(cached.blocked, null);
+  assert.equal(usedUp.blocked, 'exhausted');
 
   assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/status`)).status, 404);
   assert.equal((await call(env, 'POST', `/api/subs/${token}/status`)).status, 405);

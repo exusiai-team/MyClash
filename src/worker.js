@@ -1,4 +1,4 @@
-import { parseSubscription, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, dumpConfig, detectAirportName } from './parse.js';
+import { parseSubscription, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey } from './cache.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
@@ -68,8 +68,8 @@ async function serveSubscription(env, token, origin, script) {
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) {
     return results.every((r) => r.blocked)
-      ? text('所有机场订阅都已到期（已自动屏蔽），请续费或在管理页更换订阅', 502)
-      : text('所有机场订阅都抓取失败、已到期或没有节点，请稍后再试', 502);
+      ? text('所有机场订阅都已到期或流量用完（已自动屏蔽），请续费或在管理页更换订阅', 502)
+      : text('所有机场订阅都抓取失败、已屏蔽或没有节点，请稍后再试', 502);
   }
 
   let config = mergeSubscriptions(
@@ -89,7 +89,7 @@ async function serveSubscription(env, token, origin, script) {
     `更新时间：${new Date().toISOString()}`,
     ...results.map((r) =>
       r.blocked
-        ? `[${r.label}] 已屏蔽：订阅已于 ${fmtDate(r.blocked)} 到期` +
+        ? `[${r.label}] 已屏蔽：${r.blocked}` +
           (r.cachedAt ? `（直连失败：${r.directError}，依 ${cacheAge(r.cachedAt)}的缓存判断）` : '')
         : r.parsed
           ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
@@ -125,14 +125,14 @@ async function fetchSource(env, source, index, mode) {
     }
   }
   if (got.error) return { label, prefix, error: got.error };
-  // 到期日已过：节点多半已不能用，整个机场跳过（不解析节点），流量与到期日也不计入合并后的订阅
-  if (got.expired) return { label, prefix, blocked: got.info.expire, cachedAt: got.cachedAt, directError: got.directError };
+  // 到期或流量用完：节点多半已不能用，整个机场跳过（不解析节点），流量与到期日也不计入合并后的订阅
+  if (got.blocked) return { label, prefix, blocked: blockReason(got), cachedAt: got.cachedAt, directError: got.directError };
   const parsed = parseSubscription(got.body);
   if (parsed.proxies.length === 0) return { label, prefix, parsed, error: '没有可用节点' };
   return { label, prefix, parsed, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
 }
 
-// 直连抓取，失败就改用 GitHub Actions 代抓的缓存；顺便解析流量与到期日，到期的由调用者屏蔽
+// 直连抓取，失败就改用 GitHub Actions 代抓的缓存；顺便解析流量与到期日，blocked 为 expired（已到期）/ exhausted（流量用完）时由调用者屏蔽
 async function loadSource(env, url, { body = true } = {}) {
   let got = await fetchUpstream(url, body);
   if (got.error) {
@@ -140,7 +140,7 @@ async function loadSource(env, url, { body = true } = {}) {
     if (cached?.body) got = { ...cached, cachedAt: cached.fetchedAt, directError: got.error };
   }
   const info = parseUserinfo(got.userinfo);
-  return { ...got, info, expired: isExpired(info) };
+  return { ...got, info, blocked: isExpired(info) ? 'expired' : isExhausted(info) ? 'exhausted' : null };
 }
 
 // body = false 时只读响应标头（流量、到期日、文件名），不下载订阅内容
@@ -161,9 +161,19 @@ async function fetchUpstream(url, body = true) {
   }
 }
 
+function blockReason({ blocked, info }) {
+  return blocked === 'expired'
+    ? `订阅已于 ${fmtDate(info.expire)} 到期`
+    : `流量已用完（${fmtGb(info.upload + info.download)} / ${fmtGb(info.total)}）`;
+}
+
 // 订阅注释里的日期用 UTC+8（台湾时间）
 function fmtDate(sec) {
   return new Date(sec * 1000 + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function fmtGb(bytes) {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 function cacheAge(ms) {
@@ -269,7 +279,7 @@ async function sourceStatus(env, record) {
         directError: got.directError ?? null,
         cachedAt: got.cachedAt ?? null,
         info: got.info,
-        expired: got.expired,
+        blocked: got.blocked,
       };
     }),
   );
