@@ -1,6 +1,7 @@
 name: 同步上游覆写脚本
 
-# 每天从 AIsouler/MyClash 抓一次覆写脚本，套用本项目的改动（scripts/sync-scripts.mjs）；
+# 每天从 AIsouler/MyClash 抓一次覆写脚本，套用本项目的改动（scripts/sync-scripts.mjs），
+# 并更新 Fuck-you-MIUI 的 mrs 规则集；
 # 有变化且测试通过就直接提交到 main，Cloudflare 再自动重新部署。
 # 上游改版导致找不到修改位置时脚本会报错，这个流程失败、不提交，GitHub 会发邮件通知
 on:
@@ -21,6 +22,13 @@ jobs:
         with:
           node-version: latest
           cache: npm
+      # sync-scripts 用 mihomo 把 Fuck-you-MIUI 清单转成 mrs 规则集
+      - run: |
+          curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/$V/mihomo-linux-amd64-$V.gz" | gunzip > "$RUNNER_TEMP/mihomo"
+          chmod +x "$RUNNER_TEMP/mihomo"
+          echo "MIHOMO=$RUNNER_TEMP/mihomo" >> "$GITHUB_ENV"
+        env:
+          V: v1.19.15
       - run: node scripts/sync-scripts.mjs
       - id: diff
         run: |
@@ -42,6 +50,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
-          git add public/script.js public/script-full.js
+          git add public/
           git commit -m 'chore(script): 同步上游覆写脚本'
           git push

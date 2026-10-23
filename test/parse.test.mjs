@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { REGION_TEST_URLS, TEST_URLS, parseHosts, patchScript } from '../scripts/sync-scripts.mjs';
+import { MIUI_RULESET, REGION_TEST_URLS, TEST_URLS, parseHosts, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -216,13 +216,20 @@ for (const file of ['script.js', 'script-full.js']) {
   test(`覆写脚本 public/${file}：Fuck-you-MIUI 的域名走 AdBlock 组（默认 REJECT）`, () => {
     const out = runScript(file);
     const miui = out['rule-providers']['fuck-you-miui'];
-    assert.equal(miui.type, 'inline');
+    assert.equal(miui.format, 'mrs');
     assert.equal(miui.behavior, 'domain');
-    for (const domain of ['tracking.miui.com', 'data.mistat.xiaomi.com', 'adv.sec.miui.com']) assert.ok(miui.payload.includes(domain), domain);
+    assert.equal(miui.url, `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${MIUI_RULESET}.mrs`);
     assert.ok(out.rules.includes('RULE-SET,fuck-you-miui,AdBlock'));
     assert.equal(out['proxy-groups'].find((g) => g.name === 'AdBlock').proxies[0], 'REJECT');
   });
 }
+
+test('Fuck-you-MIUI 规则集：清单与 mrs 都在仓库里', () => {
+  const domains = fs.readFileSync(new URL(`../${MIUI_RULESET}.txt`, import.meta.url), 'utf8').trim().split('\n');
+  for (const domain of ['tracking.miui.com', 'data.mistat.xiaomi.com', 'adv.sec.miui.com']) assert.ok(domains.includes(domain), domain);
+  assert.ok(!domains.includes('pdc.micloud.xiaomi.net')); // 上游注释掉的不收
+  assert.ok(fs.statSync(new URL(`../${MIUI_RULESET}.mrs`, import.meta.url)).size > 0);
+});
 
 test('sync-scripts：hosts 只取没注释掉的域名并去重，不是域名就报错', () => {
   const hosts = '#注释\n0.0.0.0 a.miui.com\n\n#127.0.0.1 off.miui.com\n127.0.0.1 b.xiaomi.com # 行尾注释\n127.0.0.1 A.miui.com\n127.0.0.1 *.rdt.tfogc.com\n';

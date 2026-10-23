@@ -1,9 +1,11 @@
 // 从 AIsouler/MyClash 抓精简版与全量版覆写脚本，套用本项目的改动后写进 public/：
 //   public/script.js       ← Script/Script.js（精简版，管理页默认）
 //   public/script-full.js  ← Script/mihomoScript.js（全量版）
-// 同时抓 LoopDns/Fuck-you-MIUI 的 hosts 清单，加进两个脚本的「AdBlock」组。
+// 同时抓 LoopDns/Fuck-you-MIUI 的 hosts 清单，用 mihomo 转成 public/rules/fuck-you-miui.mrs，加进两个脚本的「AdBlock」组。
+// 需要 mihomo（PATH 里，或用 MIHOMO 环境变量指定路径）。
 // 上游改版导致找不到要改的位置时直接报错，不会写出半成品。用法：node scripts/sync-scripts.mjs
-import { writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { readFile, writeFile } from 'node:fs/promises';
 
 const UPSTREAM = 'https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/';
 const TARGETS = [
@@ -12,9 +14,11 @@ const TARGETS = [
 ];
 
 // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），
-// 转成内嵌规则集加进「AdBlock」组（默认 REJECT）
+// 转成 mrs 规则集放在本仓库，经 CDN 下载，加进「AdBlock」组（默认 REJECT）
 const MIUI_HOSTS_UPSTREAM = 'https://raw.githubusercontent.com/LoopDns/Fuck-you-MIUI/main/';
 const MIUI_HOSTS_FILES = ['MIhosts', 'Fhosts'];
+export const MIUI_RULESET = 'public/rules/fuck-you-miui';
+const MIUI_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${MIUI_RULESET}.mrs`;
 
 // 分流组的测速网址，全部取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
 // Bettbox 没检测的服务不列在这里，维持上游的通用测速网址
@@ -51,8 +55,7 @@ const HUGGINGFACE_PROVIDER = `      // HuggingFace 也在 category-ai-!cn 里，
       },
 `;
 
-// 从 hosts 文件取出被屏蔽的域名（跳过注释掉的行），去重；
-// 域名会写进生成的脚本里，格式不对就报错，不写进去
+// 从 hosts 文件取出被屏蔽的域名（跳过注释掉的行），去重；格式不对就报错
 export function parseHosts(...texts) {
   const domains = new Set();
   for (const text of texts) {
@@ -75,7 +78,7 @@ function replaceOnce(source, search, replacement, what) {
   return source.slice(0, i) + replacement + source.slice(i + search.length);
 }
 
-export function patchScript(source, file, miuiDomains) {
+export function patchScript(source, file) {
   let s = source;
   s = replaceOnce(
     s,
@@ -102,7 +105,7 @@ export function patchScript(source, file, miuiDomains) {
     if (block.includes(line)) block = replaceOnce(block, line, `${line}    testUrl: '${url}',\n`, `${name} 分流组`);
   }
   block = replaceOnce(block, "      ai: {\n", `${HUGGINGFACE_PROVIDER}      ai: {\n`, 'AI 规则集');
-  block = addMiuiBlocklist(block, miuiDomains);
+  block = addMiuiBlocklist(block);
   block = replaceOnce(block, "rules: ['RULE-SET,ai,AI'],", "rules: ['RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'],", 'AI 规则');
   block = replaceOnce(
     block,
@@ -123,15 +126,13 @@ export function patchScript(source, file, miuiDomains) {
   );
 }
 
-// 「AdBlock」组加一个内嵌规则集，内容是 Fuck-you-MIUI 的域名
-export function addMiuiBlocklist(source, domains) {
-  const payload = domains.map((d) => `          '${d}',\n`).join('');
-  const provider = `      // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
+// 「AdBlock」组加上 Fuck-you-MIUI 的 mrs 规则集
+export function addMiuiBlocklist(source) {
+  const provider = `      // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），由本仓库转成 mrs
       'fuck-you-miui': {
-        type: 'inline',
-        behavior: 'domain',
-        payload: [
-${payload}        ],
+        ...ruleProviderCommonDomain,
+        url: '${MIUI_RULESET_URL}',
+        path: './ruleset/fuck-you-miui.mrs',
       },
 `;
   let s = replaceOnce(source, "      'category-ads': {\n", `${provider}      'category-ads': {\n`, 'AdBlock 规则集');
@@ -208,12 +209,30 @@ async function fetchText(url) {
   return res.text();
 }
 
+// 清单写成 .txt（一行一个域名，方便看差异），有变化才用 mihomo 转成 .mrs
+async function syncMiuiRuleset() {
+  const domains = parseHosts(...(await Promise.all(MIUI_HOSTS_FILES.map((f) => fetchText(MIUI_HOSTS_UPSTREAM + f)))));
+  const txt = new URL(`../${MIUI_RULESET}.txt`, import.meta.url);
+  const text = domains.join('\n') + '\n';
+  if ((await readFile(txt, 'utf8').catch(() => '')) !== text) {
+    await writeFile(txt, text);
+    const mihomo = process.env.MIHOMO || 'mihomo';
+    try {
+      execFileSync(mihomo, ['convert-ruleset', 'domain', 'text', txt.pathname, txt.pathname.replace(/\.txt$/, '.mrs')], {
+        stdio: 'inherit',
+      });
+    } catch (err) {
+      throw new Error(`用 ${mihomo} 转换 mrs 失败（需要安装 mihomo，或用 MIHOMO 环境变量指定路径）：${err.message}`);
+    }
+  }
+  console.log(`Fuck-you-MIUI：${domains.length} 个域名 → ${MIUI_RULESET}.mrs`);
+}
+
 async function main() {
-  const miuiDomains = parseHosts(...(await Promise.all(MIUI_HOSTS_FILES.map((f) => fetchText(MIUI_HOSTS_UPSTREAM + f)))));
-  console.log(`Fuck-you-MIUI：${miuiDomains.length} 个域名`);
+  await syncMiuiRuleset();
   for (const { from, to } of TARGETS) {
     const source = await fetchText(UPSTREAM + from);
-    await writeFile(new URL(`../${to}`, import.meta.url), patchScript(source, from, miuiDomains));
+    await writeFile(new URL(`../${to}`, import.meta.url), patchScript(source, from));
     console.log(`${from} → ${to}`);
   }
 }
