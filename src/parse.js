@@ -392,25 +392,35 @@ function mergeDns(acc, next) {
 }
 
 /**
+ * 解析 subscription-userinfo header
+ * @returns {{ upload: number, download: number, total: number, expire: number } | null} expire 是 Unix 秒数，0 表示没有到期日
+ */
+export function parseUserinfo(value) {
+  if (!value) return null;
+  const info = { upload: 0, download: 0, total: 0, expire: 0 };
+  for (const part of String(value).split(';')) {
+    const [k, v] = part.split('=').map((s) => s.trim());
+    const n = Number(v);
+    if (Object.hasOwn(info, k) && Number.isFinite(n) && n > 0) info[k] = n;
+  }
+  return info;
+}
+
+/** 订阅的到期日已过（没有到期日的不算） */
+export function isExpired(info, now = Date.now()) {
+  return info?.expire > 0 && info.expire * 1000 <= now;
+}
+
+/**
  * 加总多个 subscription-userinfo header：流量相加，到期日取最早的
  */
 export function sumUserinfo(values) {
-  const total = { upload: 0, download: 0, total: 0 };
-  let expire = 0;
-  let seen = false;
-  for (const value of values) {
-    if (!value) continue;
-    seen = true;
-    for (const part of value.split(';')) {
-      const [k, v] = part.split('=').map((s) => s.trim());
-      const n = Number(v);
-      if (!Number.isFinite(n)) continue;
-      if (k in total) total[k] += n;
-      else if (k === 'expire' && n > 0) expire = expire ? Math.min(expire, n) : n;
-    }
-  }
-  if (!seen) return null;
-  return `upload=${total.upload}; download=${total.download}; total=${total.total}; expire=${expire}`;
+  const infos = values.map(parseUserinfo).filter(Boolean);
+  if (infos.length === 0) return null;
+  const sum = (k) => infos.reduce((n, info) => n + info[k], 0);
+  const expires = infos.map((info) => info.expire).filter((e) => e > 0);
+  const expire = expires.length ? Math.min(...expires) : 0;
+  return `upload=${sum('upload')}; download=${sum('download')}; total=${sum('total')}; expire=${expire}`;
 }
 
 export function dumpConfig(config, comments = []) {

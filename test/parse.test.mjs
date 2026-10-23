@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
 import { TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
@@ -79,6 +79,17 @@ test('subscription-userinfo 加总', () => {
     'upload=4; download=6; total=35; expire=100',
   );
   assert.equal(sumUserinfo([null, undefined]), null);
+});
+
+test('subscription-userinfo 解析与到期判断', () => {
+  assert.deepEqual(parseUserinfo('upload=1; download=2.5; total=10;expire=200'), { upload: 1, download: 2.5, total: 10, expire: 200 });
+  assert.deepEqual(parseUserinfo('total=abc; expire=-1; foo=3'), { upload: 0, download: 0, total: 0, expire: 0 });
+  assert.equal(parseUserinfo(null), null);
+  assert.equal(isExpired({ expire: 200 }, 200 * 1000), true);
+  assert.equal(isExpired({ expire: 200 }, 199 * 1000), false);
+  // 没有到期日、没有标头都不算到期
+  assert.equal(isExpired({ expire: 0 }), false);
+  assert.equal(isExpired(null), false);
 });
 
 test('识别机场名称：Content-Disposition 优先，其次域名', () => {
