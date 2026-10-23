@@ -30,6 +30,12 @@ export const TEST_URLS = {
   EHentai: 'https://e-hentai.org/cdn-cgi/trace',
 };
 
+// 地区组（连同「<地区>-自动选择」）的测速网址；没列的维持上游的通用测速网址
+export const REGION_TEST_URLS = {
+  // 台湾节点主要拿来用 Claude，按 Claude 的连通性挑节点
+  台湾: TEST_URLS.AI,
+};
+
 const HUGGINGFACE_PROVIDER = `      // HuggingFace 也在 category-ai-!cn 里，用单独的规则集抢先分到「默认代理」
       huggingface: {
         ...ruleProviderCommonDomain,
@@ -56,6 +62,7 @@ export function patchScript(source, file) {
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
+ * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐`,
@@ -80,6 +87,7 @@ export function patchScript(source, file) {
     'AI 默认选择',
   );
   s = s.slice(0, start) + block + s.slice(end);
+  s = addRegionTestUrls(s);
   s = addIpv6Group(s);
   s = reduceMemory(s);
 
@@ -88,6 +96,21 @@ export function patchScript(source, file) {
     '      icon: svc.icon,\n      proxies: groupProxies,\n',
     '      icon: svc.icon,\n      proxies: groupProxies,\n      // 分流组用各自服务的测速网址\n      ...(svc.testUrl && { url: svc.testUrl }),\n',
     '分流组生成代码',
+  );
+}
+
+// 地区组按 REGION_TEST_URLS 改用各自的测速网址，手动选择组与自动选择组都改
+export function addRegionTestUrls(source) {
+  const call = 'createRegionGroup(r.name, r.icon, regionGroups[r.name])';
+  return replaceOnce(
+    source,
+    `.flatMap((r) => ${call});`,
+    `.flatMap((r) => {
+      // 部分地区组用各自的测速网址
+      const testUrl = { ${Object.entries(REGION_TEST_URLS).map(([name, url]) => `${name}: '${url}'`).join(', ')} }[r.name];
+      return ${call}.map((g) => (testUrl ? { ...g, url: testUrl } : g));
+    });`,
+    '地区组生成代码',
   );
 }
 
