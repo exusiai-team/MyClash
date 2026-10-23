@@ -64,7 +64,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 
-上游更新后执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（找不到修改位置会直接报错），提交后服务端覆写在下次部署时自动跟着更新。
+GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件，有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
 
 **节点前缀**：区分不同机场。
 
@@ -162,7 +162,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `scripts/refresh-cache.mjs` | GitHub Actions 代抓脚本 |
 | `public/index.html` | 管理页 |
 | `public/script.js`、`public/script-full.js` | 修改版 MyClash 覆写脚本（由 `scripts/sync-scripts.mjs` 生成） |
-| `scripts/sync-scripts.mjs` | 从上游同步覆写脚本并套用改动 |
+| `scripts/sync-scripts.mjs` | 从上游同步覆写脚本并套用改动 （`.github/workflows/sync-scripts.yml` 每天自动执行） |
 | `scripts/build-overrides.mjs` | 部署 / 测试前把上面两个脚本包成 ES module（`src/overrides/`，不进 git），给服务端覆写用 |
 
 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)。

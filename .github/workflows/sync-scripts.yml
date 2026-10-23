@@ -1,0 +1,47 @@
+name: 同步上游覆写脚本
+
+# 每天从 AIsouler/MyClash 抓一次覆写脚本，套用本项目的改动（scripts/sync-scripts.mjs）；
+# 有变化且测试通过就直接提交到 main，Cloudflare 再自动重新部署。
+# 上游改版导致找不到修改位置时脚本会报错，这个流程失败、不提交，GitHub 会发邮件通知
+on:
+  schedule:
+    - cron: '43 18 * * *' # 每天 UTC 18:43（台湾时间 02:43），在代抓订阅缓存之前
+  workflow_dispatch:
+
+concurrency: sync-scripts
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: latest
+          cache: npm
+      - run: node scripts/sync-scripts.mjs
+      - id: diff
+        run: |
+          if git diff --quiet -- public/; then
+            echo "上游没有更新"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git diff --stat -- public/
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      # 跟「测试」流程一样先测过再提交（用 GITHUB_TOKEN 推送不会再触发「测试」流程）
+      - if: steps.diff.outputs.changed == 'true'
+        run: npm ci --no-audit --no-fund
+      - if: steps.diff.outputs.changed == 'true'
+        run: npm test
+      - if: steps.diff.outputs.changed == 'true'
+        run: npx wrangler deploy --dry-run --outdir dist
+      - if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
+          git add public/script.js public/script-full.js
+          git commit -m 'chore(script): 同步上游覆写脚本'
+          git push
