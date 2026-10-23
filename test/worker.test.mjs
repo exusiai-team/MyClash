@@ -328,6 +328,49 @@ test('立即刷新缓存：触发 GitHub Actions，1 分钟内只能按一次', 
   assert.equal(calls.length, 1);
 });
 
+test('覆写脚本同步状态：读最近一次执行与最后更新，存 5 分钟；立即同步要有 TOKEN，10 分钟限一次', async (t) => {
+  const env = { SUB_STORE: memoryKv(), GITHUB_REPO: 'me/repo' };
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes('/runs?')) {
+      return Response.json({ workflow_runs: [{ status: 'completed', conclusion: 'failure', event: 'schedule', created_at: '2026-10-23T18:43:00Z', html_url: 'https://github.com/me/repo/actions/runs/1' }] });
+    }
+    if (String(url).includes('/commits?')) {
+      return Response.json([{ html_url: 'https://github.com/me/repo/commit/abc', commit: { message: 'chore(script): 同步上游覆写脚本\n\n正文', committer: { date: '2026-10-22T18:44:00Z' } } }]);
+    }
+    return new Response(null, { status: 204 });
+  };
+  t.after(() => (globalThis.fetch = realFetch));
+
+  const status = await (await call(env, 'GET', '/api/scripts')).json();
+  assert.deepEqual(status, {
+    run: { status: 'completed', conclusion: 'failure', event: 'schedule', createdAt: Date.parse('2026-10-23T18:43:00Z'), url: 'https://github.com/me/repo/actions/runs/1' },
+    updated: { at: Date.parse('2026-10-22T18:44:00Z'), message: 'chore(script): 同步上游覆写脚本', url: 'https://github.com/me/repo/commit/abc' },
+    canTrigger: false,
+  });
+  assert.equal(calls[0].url, 'https://api.github.com/repos/me/repo/actions/workflows/sync-scripts.yml/runs?per_page=1');
+  assert.equal(calls[1].url, 'https://api.github.com/repos/me/repo/commits?path=public/script.js&per_page=1');
+  assert.equal(calls[0].init.headers.Authorization, undefined);
+  // 第二次读 KV，不再打 GitHub
+  await call(env, 'GET', '/api/scripts');
+  assert.equal(calls.length, 2);
+
+  const { token } = await (await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ url: 'https://a.test' }] } })).json();
+  assert.equal((await call(env, 'POST', `/api/subs/${token}/sync-scripts`)).status, 501);
+  env.GITHUB_TOKEN = 'ghp_x';
+  assert.equal((await call(env, 'POST', '/api/subs/' + '0'.repeat(32) + '/sync-scripts')).status, 404);
+  assert.equal((await call(env, 'POST', `/api/subs/${token}/sync-scripts`)).status, 200);
+  assert.equal(calls[2].url, 'https://api.github.com/repos/me/repo/actions/workflows/sync-scripts.yml/dispatches');
+  assert.equal(calls[2].init.headers.Authorization, 'Bearer ghp_x');
+  assert.equal((await call(env, 'POST', `/api/subs/${token}/sync-scripts`)).status, 429);
+  assert.equal(calls.length, 3);
+  // 触发后清掉缓存，下次重新读 GitHub
+  assert.equal((await (await call(env, 'GET', '/api/scripts')).json()).canTrigger, true);
+  assert.equal(calls.length, 5);
+});
+
 test('缓存键名是链接的 SHA-256，不含链接本身', async () => {
   const key = await cacheKey('https://a.test/sub?token=secret');
   assert.match(key, /^cache:[a-f0-9]{64}$/);

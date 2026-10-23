@@ -8,6 +8,7 @@
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
+ * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
@@ -801,6 +802,12 @@ const serviceConfigs = [
     baseOption: selectBaseOption,
     reject: true,
     providers: {
+      // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），由本仓库转成 mrs
+      'fuck-you-miui': {
+        ...ruleProviderCommonDomain,
+        url: 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/rules/fuck-you-miui.mrs',
+        path: './ruleset/fuck-you-miui.mrs',
+      },
       'category-ads': {
         ...ruleProviderCommonDomain,
         url: `${ruleSetBaseUrl}geosite/category-ads.mrs`,
@@ -809,7 +816,7 @@ const serviceConfigs = [
       },
     },
     icon: `${iconBaseUrl}AdBlock.svg`,
-    rules: ['RULE-SET,category-ads,AdBlock'],
+    rules: ['RULE-SET,category-ads,AdBlock', 'RULE-SET,fuck-you-miui,AdBlock'],
   },
 ];
 

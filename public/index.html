@@ -213,6 +213,8 @@
     content: counter(step); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
     background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
   }
+  .sync-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; font-size: 13.5px; color: var(--muted); }
+  .sync-row a { color: inherit; }
   .note { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--sunken); color: var(--muted); font-size: 13.5px; }
   details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
   summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: 14px; list-style: none; }
@@ -364,6 +366,10 @@
     </ol>
     <p class="note">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。
       已到期或流量用完的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
+    <div class="sync-row">
+      <span id="sync-status">正在读取覆写脚本的同步状态…</span>
+      <button class="btn sm ghost hidden" id="sync-btn" title="让 GitHub Actions 立刻从上游同步覆写脚本（10 分钟限一次）"><svg class="i"><use href="#i-refresh"/></svg>立即同步</button>
+    </div>
     <details><summary>想自己在客户端覆写？</summary>
       <p class="hint">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版或全量版：</p>
       <div class="linkbox"><code class="link" id="script-url"></code>
@@ -434,7 +440,7 @@
   }
   function ago(ms) {
     const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
-    return m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`;
+    return m < 60 ? `${m} 分钟前` : m < 1440 ? `${Math.round(m / 60)} 小时前` : `${Math.round(m / 1440)} 天前`;
   }
   // subscription-userinfo：upload=…; download=…; total=…; expire=…（expire 是 Unix 秒数，0 表示没有到期日）
   function parseInfo(header) {
@@ -839,6 +845,38 @@
   $('script-full-url').textContent = `${workerUrl}/script-full.js`;
   $('copy-script-full').onclick = () => copy($('script-full-url').textContent, '全量版脚本链接');
 
+  // --- 覆写脚本同步状态（GitHub Actions「同步上游覆写脚本」）---
+  const link = (url, label) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${label}</a>`;
+  function syncRunPill(run) {
+    if (run.status !== 'completed') return pill('pending', '同步中');
+    if (run.conclusion === 'success') return pill('ok', '同步成功');
+    if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') return pill('idle', '已取消');
+    return pill('fail', '同步失败');
+  }
+  async function loadSync() {
+    try {
+      const { run, updated, canTrigger } = await api('GET', '/scripts');
+      const parts = [];
+      if (updated) parts.push(`覆写脚本更新于 ${link(updated.url, ago(updated.at))}`);
+      if (run) parts.push(`上次自动同步 ${link(run.url, ago(run.createdAt))} ${syncRunPill(run)}`);
+      $('sync-status').innerHTML = parts.join(' · ') || '还没有同步记录';
+      // 触发要用这个浏览器记得的任一 TOKEN，防止任何人都能触发
+      $('sync-btn').classList.toggle('hidden', !canTrigger || getTokens().length === 0);
+      if (run && run.status !== 'completed') setTimeout(loadSync, 60000);
+    } catch (e) {
+      $('sync-status').textContent = '读取覆写脚本同步状态失败：' + e.message;
+    }
+  }
+  $('sync-btn').onclick = async () => {
+    $('sync-btn').disabled = true;
+    try {
+      await api('POST', `/subs/${getTokens()[0]}/sync-scripts`);
+      toast('已开始同步，约 1 分钟后完成；上游有更新时会自动重新部署');
+      setTimeout(loadSync, 5000);
+    } catch (e) { toast(e.message, 'err'); }
+    finally { setTimeout(() => ($('sync-btn').disabled = false), 5000); }
+  };
+
   // 网址带 #import=<TOKEN>（浏览器打开订阅链接、客户端的「首页」按钮会跳到这里）就自动导入
   const fromHash = new URLSearchParams(location.hash.slice(1));
   if (fromHash.has('import')) {
@@ -846,7 +884,8 @@
     const script = fromHash.get('script');
     importFrom(fromHash.get('import') + (script ? `?script=${script}` : ''));
   }
-  loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; });
+  // 等列表清掉失效的 TOKEN 后再读同步状态，「立即同步」才不会用到失效的 TOKEN
+  loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; }).finally(loadSync);
 })();
 </script>
 </body>
