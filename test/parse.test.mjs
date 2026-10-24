@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { MIUI_RULESET, REGION_TEST_URLS, TEST_URLS, parseHosts, patchScript } from '../scripts/sync-scripts.mjs';
+import { BASE_TEST_INTERVAL, BASE_TEST_URL, MIUI_RULESET, REGION_TEST_URLS, TEST_URLS, parseHosts, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -166,9 +166,10 @@ for (const file of ['script.js', 'script-full.js']) {
     // 台湾地区组（含自动选择组）用 Claude 的测速网址
     assert.equal(REGION_TEST_URLS.台湾, TEST_URLS.AI);
     for (const name of ['台湾', '台湾-自动选择']) assert.equal(groups.get(name).url, TEST_URLS.AI, name);
-    // 其他组维持上游的通用测速网址
+    // 其他组用通用测速网址与间隔
     for (const name of ['默认代理', '香港', '香港-自动选择', '漏网之鱼']) {
-      assert.equal(groups.get(name).url, 'https://www.apple.com/library/test/success.html', name);
+      assert.equal(groups.get(name).url, BASE_TEST_URL, name);
+      assert.equal(groups.get(name).interval, BASE_TEST_INTERVAL, name);
     }
 
     const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
