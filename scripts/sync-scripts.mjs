@@ -20,8 +20,12 @@ const MIUI_HOSTS_FILES = ['MIhosts', 'Fhosts'];
 export const MIUI_RULESET = 'public/rules/fuck-you-miui';
 const MIUI_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${MIUI_RULESET}.mrs`;
 
+// 通用测速网址与间隔（groupBaseOption），对标 NIVA Network 订阅的「自动选择」组
+export const BASE_TEST_URL = 'http://connectivitycheck.gstatic.com/generate_204';
+export const BASE_TEST_INTERVAL = 300;
+
 // 分流组的测速网址，全部取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
-// Bettbox 没检测的服务不列在这里，维持上游的通用测速网址
+// Bettbox 没检测的服务不列在这里，用通用测速网址 BASE_TEST_URL
 export const TEST_URLS = {
   YouTube: 'https://www.youtube.com/premium',
   Google: 'https://www.google.com/generate_204',
@@ -40,7 +44,7 @@ export const TEST_URLS = {
   EHentai: 'https://e-hentai.org/cdn-cgi/trace',
 };
 
-// 地区组（连同「<地区>-自动选择」）的测速网址；没列的维持上游的通用测速网址
+// 地区组（连同「<地区>-自动选择」）的测速网址；没列的用通用测速网址 BASE_TEST_URL
 export const REGION_TEST_URLS = {
   // 台湾节点主要拿来用 Claude，按 Claude 的连通性挑节点
   台湾: TEST_URLS.AI,
@@ -84,6 +88,7 @@ export function patchScript(source, file) {
     s,
     ' * 友情推荐',
     ` * 本文件由 exusiai-team/MyClash 的 scripts/sync-scripts.mjs 从 ${file} 生成（MIT License, Copyright (c) 2026 AIsouler），改动：
+ * - 通用测速网址改为 connectivitycheck.gstatic.com/generate_204，测速间隔改为 300 秒
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
@@ -114,6 +119,7 @@ export function patchScript(source, file) {
     'AI 默认选择',
   );
   s = s.slice(0, start) + block + s.slice(end);
+  s = setBaseTestOption(s);
   s = addRegionTestUrls(s);
   s = addIpv6Group(s);
   s = reduceMemory(s);
@@ -142,6 +148,20 @@ export function addMiuiBlocklist(source) {
     "rules: ['RULE-SET,category-ads,AdBlock', 'RULE-SET,fuck-you-miui,AdBlock'],",
     'AdBlock 规则',
   );
+}
+
+// groupBaseOption 改用 BASE_TEST_URL 与 BASE_TEST_INTERVAL
+export function setBaseTestOption(source) {
+  const start = source.indexOf('const groupBaseOption = {');
+  const end = source.indexOf('\n};', start);
+  if (start === -1 || end === -1) throw new Error('找不到 groupBaseOption，上游脚本可能改版了');
+  let block = source.slice(start, end);
+  block = block.replace(/\n  interval: \d+,\n/, `\n  interval: ${BASE_TEST_INTERVAL},\n`);
+  block = block.replace(/\n  url: '[^']*',\n/, `\n  url: '${BASE_TEST_URL}',\n`);
+  if (!block.includes(`interval: ${BASE_TEST_INTERVAL},`) || !block.includes(`url: '${BASE_TEST_URL}',`)) {
+    throw new Error('找不到 groupBaseOption 的 interval 或 url，上游脚本可能改版了');
+  }
+  return source.slice(0, start) + block + source.slice(end);
 }
 
 // 地区组按 REGION_TEST_URLS 改用各自的测速网址，手动选择组与自动选择组都改

@@ -4,6 +4,7 @@
  * 源仓库：https://github.com/AIsouler/MyClash
  * 脚本链接：https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/Script.js
  * 本文件由 exusiai-team/MyClash 的 scripts/sync-scripts.mjs 从 Script.js 生成（MIT License, Copyright (c) 2026 AIsouler），改动：
+ * - 通用测速网址改为 connectivitycheck.gstatic.com/generate_204，测速间隔改为 300 秒
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
@@ -304,9 +305,9 @@ const baseRuleProviders = {
 
 // 策略组公共配置
 const groupBaseOption = {
-  interval: 600,
+  interval: 300,
   timeout: 3000,
-  url: 'https://www.apple.com/library/test/success.html',
+  url: 'http://connectivitycheck.gstatic.com/generate_204',
   lazy: true,
   'max-failed-times': 3,
   'empty-fallback': 'REJECT',
