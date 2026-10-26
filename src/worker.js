@@ -107,7 +107,7 @@ async function serveSubscription(env, token, origin, script) {
   const headers = {
     'Content-Type': 'text/yaml; charset=utf-8',
     'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`,
-    'Profile-Update-Interval': '2',
+    'Profile-Update-Interval': '6',
     // 客户端订阅卡片上的「首页」按钮，打开管理页并自动导入这个订阅
     'Profile-Web-Page-Url': `${origin}/#${importHash(token, script)}`,
     'Cache-Control': 'no-store',
