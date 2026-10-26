@@ -333,7 +333,7 @@ const baseRuleProviders = {
 const groupBaseOption = {
   interval: 300,
   timeout: 3000,
-  url: 'http://connectivitycheck.gstatic.com/generate_204',
+  url: 'https://connectivitycheck.gstatic.com/generate_204',
   lazy: true,
   'max-failed-times': 3,
   'empty-fallback': 'REJECT',

@@ -236,7 +236,7 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 test('Fuck-you-MIUI 规则集：清单与 mrs 都在仓库里', () => {
-  const domains = fs.readFileSync(new URL(`../${MIUI_RULESET}.txt`, import.meta.url), 'utf8').trim().split('\n');
+  const domains = fs.readFileSync(new URL(`../${MIUI_RULESET}.txt`, import.meta.url), 'utf8').trim().split(/\r?\n/);
   for (const domain of ['tracking.miui.com', 'data.mistat.xiaomi.com', 'adv.sec.miui.com']) assert.ok(domains.includes(domain), domain);
   assert.ok(!domains.includes('pdc.micloud.xiaomi.net')); // 上游注释掉的不收
   assert.ok(fs.statSync(new URL(`../${MIUI_RULESET}.mrs`, import.meta.url)).size > 0);

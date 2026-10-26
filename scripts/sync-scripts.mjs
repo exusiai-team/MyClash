@@ -21,7 +21,7 @@ export const MIUI_RULESET = 'public/rules/fuck-you-miui';
 const MIUI_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${MIUI_RULESET}.mrs`;
 
 // 通用测速网址与间隔（groupBaseOption），对标 NIVA Network 订阅的「自动选择」组
-export const BASE_TEST_URL = 'http://connectivitycheck.gstatic.com/generate_204';
+export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
 export const BASE_TEST_INTERVAL = 300;
 
 // 分流组的测速网址，全部取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
