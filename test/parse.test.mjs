@@ -179,6 +179,16 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：地区组与默认代理默认选自动选择`, () => {
+    const node = (name) => ({ name, type: 'ss', server: 'a.example', port: 1, cipher: 'aes-128-gcm', password: 'x' });
+    const out = runScript(file, [node('🇭🇰 香港 01'), node('🇯🇵 日本 01')]);
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    for (const name of ['香港', '日本']) assert.equal(groups.get(name).proxies[0], `${name}-自动选择`, name);
+    assert.equal(groups.get('默认代理').proxies[0], '自动选择');
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
   test(`覆写脚本 public/${file}：IPv6 节点组加进默认代理`, () => {
     const node = (name, server) => ({ name, type: 'ss', server, port: 1, cipher: 'aes-128-gcm', password: 'x' });
     const groups = (out) => new Map(out['proxy-groups'].map((g) => [g.name, g]));
@@ -192,7 +202,7 @@ for (const file of ['script.js', 'script-full.js']) {
       node('🇭🇰 香港 02', '2001:db8::1'),
       node('🇸🇬 新加坡 dev602', 'sg.example'),
     ]));
-    assert.deepEqual([...out.get('IPv6').proxies], ['🇯🇵 日本 IPv6 02', '🇺🇸 美国 v6-03', '🇭🇰 香港 02', 'IPv6-自动选择']);
+    assert.deepEqual([...out.get('IPv6').proxies], ['IPv6-自动选择', '🇯🇵 日本 IPv6 02', '🇺🇸 美国 v6-03', '🇭🇰 香港 02']);
     assert.equal(out.get('IPv6-自动选择').type, 'url-test');
     assert.ok(out.get('默认代理').proxies.includes('IPv6'));
     // 节点仍留在原本的地区组

@@ -12,6 +12,7 @@
  * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
+ * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
 
@@ -644,7 +645,7 @@ function createRegionGroup(name, icon, proxies) {
         ...selectBaseOption,
         name,
         icon,
-        proxies: [...proxies, urlTestName],
+        proxies: [urlTestName, ...proxies],
         hidden: hideManualSelectGroupEnabled,
       },
     ];
@@ -792,7 +793,7 @@ function buildFunctionalGroups(filteredProxies, generatedRegionGroups, customize
     const defaultGroup = {
       ...selectBaseOption,
       name: '默认代理',
-      proxies: [...allProxiesNames, ...(autoSelectGroupEnabled ? ['自动选择'] : [])],
+      proxies: [...(autoSelectGroupEnabled ? ['自动选择'] : []), ...allProxiesNames],
       icon: `${iconBaseUrl}Proxy.svg`,
     };
 
@@ -830,7 +831,7 @@ function buildFunctionalGroups(filteredProxies, generatedRegionGroups, customize
   functionalGroups.push({
     ...selectBaseOption,
     name: '默认代理',
-    proxies: [...groupNamesOfSelect, ...baseGroupNames, ...customGroupNames],
+    proxies: [...baseGroupNames.filter((n) => n === '自动选择'), ...groupNamesOfSelect, ...baseGroupNames.filter((n) => n !== '自动选择'), ...customGroupNames],
     icon: `${iconBaseUrl}Proxy.svg`,
   });
 

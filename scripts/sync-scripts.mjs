@@ -96,6 +96,7 @@ export function patchScript(source, file) {
  * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
+ * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
  * 友情推荐`,
     '文件开头注释',
   );
@@ -123,6 +124,7 @@ export function patchScript(source, file) {
   s = addRegionTestUrls(s);
   s = addIpv6Group(s);
   s = reduceMemory(s);
+  s = defaultToAuto(s);
 
   return replaceOnce(
     s,
@@ -221,6 +223,25 @@ export function reduceMemory(source) {
   let s = replaceOnce(source, "  newConfig['log-level'] = 'info';\n", "  newConfig['log-level'] = 'warning';\n", '日志级别');
   const anchor = "const prefixRules = [\n  // 规则集下载域名";
   return replaceOnce(s, anchor, `const prefixRules = [\n${LOCAL_PROXY_CORE_RULES}  // 规则集下载域名`, '前置规则');
+}
+
+// select 组默认选第一个节点，所以把自动选择排到最前：
+// - 地区组（含 IPv6、其他节点）默认选「<地区>-自动选择」
+// - 「默认代理」默认选全局的「自动选择」
+export function defaultToAuto(source) {
+  let s = replaceOnce(source, 'proxies: [...proxies, urlTestName],', 'proxies: [urlTestName, ...proxies],', '地区组节点顺序');
+  s = replaceOnce(
+    s,
+    "proxies: [...allProxiesNames, ...(autoSelectGroupEnabled ? ['自动选择'] : [])],",
+    "proxies: [...(autoSelectGroupEnabled ? ['自动选择'] : []), ...allProxiesNames],",
+    '极简模式默认代理节点顺序',
+  );
+  return replaceOnce(
+    s,
+    'proxies: [...groupNamesOfSelect, ...baseGroupNames, ...customGroupNames],',
+    "proxies: [...baseGroupNames.filter((n) => n === '自动选择'), ...groupNamesOfSelect, ...baseGroupNames.filter((n) => n !== '自动选择'), ...customGroupNames],",
+    '默认代理节点顺序',
+  );
 }
 
 async function fetchText(url) {
