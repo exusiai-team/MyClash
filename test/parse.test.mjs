@@ -162,7 +162,8 @@ for (const file of ['script.js', 'script-full.js']) {
     for (const [name, url] of Object.entries(TEST_URLS)) {
       if (groups.has(name)) assert.equal(groups.get(name).url, url, name);
     }
-    for (const name of ['Google', 'AI', 'Telegram', 'Steam']) assert.ok(groups.has(name), name);
+    for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.has(name), name);
+    assert.ok(out.rules.includes('RULE-SET,apple,Apple'));
     // 台湾地区组（含自动选择组）用 Claude 的测速网址
     assert.equal(REGION_TEST_URLS.台湾, TEST_URLS.AI);
     for (const name of ['台湾', '台湾-自动选择']) assert.equal(groups.get(name).url, TEST_URLS.AI, name);

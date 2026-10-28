@@ -244,6 +244,21 @@ export function defaultToAuto(source) {
   );
 }
 
+// 精简版从全量版搬来「Apple」分流组（连同开关），放在「Telegram」之前，跟全量版顺序一致；
+// 搬的是套用过改动的全量版，所以测速网址也一起带过来
+export function addAppleGroup(lite, full) {
+  const start = full.indexOf("  {\n    name: 'Apple',\n");
+  const end = full.indexOf('\n  },\n', start);
+  if (start === -1 || end === -1) throw new Error('全量版找不到「Apple」分流组，上游脚本可能改版了');
+  const group = full.slice(start, end + '\n  },\n'.length);
+  const option = full.match(/\n {2}Apple: true,[^\n]*\n/);
+  if (!option) throw new Error('全量版找不到「Apple」开关，上游脚本可能改版了');
+
+  let s = replaceOnce(lite, "  {\n    name: 'Telegram',\n", `${group}  {\n    name: 'Telegram',\n`, 'Telegram 分流组');
+  s = replaceOnce(s, '\n  Telegram: true,', `${option[0].slice(0, -1)}\n  Telegram: true,`, 'Telegram 开关');
+  return replaceOnce(s, ' * 友情推荐', ' * - 从全量版搬来「Apple」分流组\n * 友情推荐', '文件开头注释');
+}
+
 async function fetchText(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`抓取 ${url} 失败：HTTP ${res.status}`);
@@ -271,9 +286,12 @@ async function syncMiuiRuleset() {
 
 async function main() {
   await syncMiuiRuleset();
-  for (const { from, to } of TARGETS) {
-    const source = await fetchText(UPSTREAM + from);
-    await writeFile(new URL(`../${to}`, import.meta.url), patchScript(source, from));
+  const [lite, full] = await Promise.all(
+    TARGETS.map(async ({ from }) => patchScript(await fetchText(UPSTREAM + from), from)),
+  );
+  const outputs = [addAppleGroup(lite, full), full];
+  for (const [i, { from, to }] of TARGETS.entries()) {
+    await writeFile(new URL(`../${to}`, import.meta.url), outputs[i]);
     console.log(`${from} → ${to}`);
   }
 }
