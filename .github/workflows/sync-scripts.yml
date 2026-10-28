@@ -6,7 +6,7 @@ name: 同步上游覆写脚本
 # 上游改版导致找不到修改位置时脚本会报错，这个流程失败、不提交，GitHub 会发邮件通知
 on:
   schedule:
-    - cron: '43 18 * * *' # 每天 UTC 18:43（台湾时间 02:43），在代抓订阅缓存之前
+    - cron: '0 20 * * *' # 每天 UTC 20:00（UTC+8 04:00）
   workflow_dispatch:
 
 concurrency: sync-scripts
