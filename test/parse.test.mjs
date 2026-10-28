@@ -238,7 +238,7 @@ for (const file of ['script.js', 'script-full.js']) {
 
 test('小火箭配置：分流组与测速网址对标精简版', () => {
   const conf = fs.readFileSync(new URL('../public/shadowrocket.conf', import.meta.url), 'utf8');
-  const section = (name) => conf.split(`[${name}]`)[1].split(/\n\[/)[0].split(/\r?\n/).filter((l) => l && !l.startsWith('#'));
+  const section = (name) => conf.split(`[${name}]`)[1].split(/\n\[/)[0].split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   const groups = new Map(section('Proxy Group').map((l) => {
     const [name, value] = l.split(/ = (.*)/);
     return [name, value.split(',')];
