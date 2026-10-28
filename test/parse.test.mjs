@@ -255,6 +255,12 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
   assert.equal(groups.get('AI')[1], '台湾');
   for (const name of ['Google', 'Apple', 'Telegram', 'Steam']) assert.equal(groups.get(name)[1], '默认代理', name);
   assert.equal(groups.get('AdBlock')[1], 'REJECT');
+  // 地区组同精简版分两层：手选组默认选「<地区>-自动选择」，手动选的节点重连后不会被测速改掉
+  for (const name of ['香港', '日本', '美国', '新加坡', '台湾']) {
+    assert.deepEqual(groups.get(name).slice(0, 2), ['select', `${name}-自动选择`], name);
+    assert.equal(groups.get(`${name}-自动选择`)[0], 'url-test', name);
+    assert.equal(lite.get(name).proxies[0], `${name}-自动选择`, name);
+  }
   // 规则只能指向已定义的组或内置策略
   for (const rule of section('Rule')) {
     const policy = rule.split(',').at(-1);
