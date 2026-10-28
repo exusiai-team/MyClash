@@ -49,8 +49,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 | 订阅链接 | 来源 | 说明 |
 | --- | --- | --- |
-| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、AI、Telegram、Steam、AdBlock |
-| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Apple、Microsoft、TikTok 等 17 个分流组 |
+| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、AI、Apple、Telegram、Steam、AdBlock（Apple 从全量版搬来） |
+| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Microsoft、TikTok 等 17 个分流组 |
 | `/sub/<TOKEN>` | 不覆写 | 只合并节点；可自己在客户端加脚本覆写 `/script.js` 或 `/script-full.js` |
 
 > 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。

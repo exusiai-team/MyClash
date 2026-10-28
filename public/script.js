@@ -13,6 +13,7 @@
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
+ * - 从全量版搬来「Apple」分流组
  * 友情推荐，非常好用、省电且内存占用低的代理软件：https://github.com/appshubcc/Bettbox
  */
 
@@ -34,6 +35,7 @@ const ruleOptionsEnable = {
   // 以下为分流策略配置
   Google: true, // Google服务
   AI: true, // 国外AI服务
+  Apple: true, // Apple服务
   Telegram: true, // Telegram通讯软件
   Steam: true, // Steam游戏平台
   AdBlock: true, // 广告拦截
@@ -392,6 +394,28 @@ const serviceConfigs = [
     },
     icon: `${iconBaseUrl}OpenAI.svg`,
     rules: ['RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'],
+  },
+  {
+    name: 'Apple',
+    testUrl: 'https://gspe1-ssl.ls.apple.com/pep/gcc',
+    baseOption: selectBaseOption,
+    direct: true,
+    providers: {
+      apple: {
+        ...ruleProviderCommonDomain,
+        url: `${ruleSetBaseUrl}geosite/apple.mrs`,
+        path: './ruleset/apple.mrs',
+        'path-in-bundle': 'geo/geosite/apple.mrs',
+      },
+      apple_ip: {
+        ...ruleProviderCommonIpcidr,
+        url: `${ruleSetBaseUrl}geoip/apple.mrs`,
+        path: './ruleset/apple_ip.mrs',
+        'path-in-bundle': 'geo/geoip/apple.mrs',
+      },
+    },
+    icon: `${iconBaseUrl}Apple.svg`,
+    rules: ['RULE-SET,apple,Apple', 'RULE-SET,apple_ip,Apple,no-resolve'],
   },
   {
     name: 'Telegram',
