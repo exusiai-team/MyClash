@@ -41,7 +41,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 ## 使用
 
 1. 管理页按「生成新的订阅」，粘贴各机场订阅（可批量粘贴）并保存
-2. 在订阅卡片选覆写脚本（精简 / 全量 / 不覆写），按「复制链接」或「一键导入 Clash」
+2. 在订阅卡片选覆写脚本（精简 / 全量 / 小火箭 / 不覆写），按「复制链接」或「一键导入 Clash」（iPhone 小火箭见下方「iPhone：小火箭」）
 3. 在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端加成**远程订阅**并开启自动更新（订阅卡片上的「首页」按钮会打开管理页并自动导入这个订阅）
 4. **关闭客户端的 DNS 覆写**（MyClash 脚本要求）
 
@@ -52,6 +52,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 | `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、AI、Apple、Telegram、Steam、AdBlock（Apple 从全量版搬来） |
 | `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Microsoft、TikTok 等 17 个分流组 |
 | `/sub/<TOKEN>` | 不覆写 | 只合并节点；可自己在客户端加脚本覆写 `/script.js` 或 `/script-full.js` |
+| `/sub/<TOKEN>` + `/shadowrocket.conf` | 小火箭（iPhone） | 管理页选「小火箭」：订阅只给节点，分流用 `public/shadowrocket.conf`，见下方「iPhone：小火箭」 |
 
 > 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。
 
@@ -68,7 +69,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 
-GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（同时更新 Fuck-you-MIUI 规则集；本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
+GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（同时更新 Fuck-you-MIUI 规则集；本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
 管理页「客户端怎么用」下方显示覆写脚本最后更新时间与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
 
 **节点前缀**：区分不同机场。
@@ -83,7 +84,6 @@ GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发�
 去掉原字样后改写为 `前缀 | 2x | 原名`，例如 `美国04-1.5x |4837` → `MNKCloud | 1.5x | 美国04|4837`。
 1 倍不标；「剩余流量 / 到期」等信息节点不处理。标注后仍会被脚本归入高/低倍率组。
 
-## 管理订阅
 ## iPhone：小火箭
 
 小火箭（Shadowrocket）读不了 mihomo 的 `.mrs` 规则集，也不执行覆写脚本，所以节点和分流分开导入：
@@ -134,6 +134,7 @@ GitHub Actions 每天（台湾时间 02:43，也可在 Actions 页手动触发�
 - 配置里的自动测速间隔已设为 1800 秒（精简版为 300 秒），不要改小；首页也别开自动测延迟
 - 系统「设置 → 电池」里，小火箭的后台耗电主要来自连接时长。用按需连接或快捷指令减少连接时间，比任何参数都有效
 
+## 管理订阅
 
 每个订阅卡片可以「编辑」（名称、机场、前缀、倍率标注）、「换 TOKEN」（旧链接立即失效）、「删除」（使用这个链接的客户端无法再更新）。
 

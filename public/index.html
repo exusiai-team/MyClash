@@ -363,6 +363,7 @@
       <li>按「复制链接」或「一键导入 Clash」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。
         链接已经套用好脚本，<b>客户端不要再加脚本覆写</b>，否则会覆写两次。</li>
       <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
+      <li><b>iPhone 用小火箭</b>：订阅卡片选「小火箭」，先按「导入节点到小火箭」，再按「导入分流配置」（分流组同精简版）。详细步骤与省电设置见下方「iPhone 小火箭教程」。</li>
     </ol>
     <p class="note">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。
       已到期或流量用完的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
@@ -370,6 +371,25 @@
       <span id="sync-status">正在读取覆写脚本的同步状态…</span>
       <button class="btn sm ghost hidden" id="sync-btn" title="让 GitHub Actions 立刻从上游同步覆写脚本（10 分钟限一次）"><svg class="i"><use href="#i-refresh"/></svg>立即同步</button>
     </div>
+    <details><summary>iPhone 小火箭教程（导入与省电）</summary>
+      <p class="hint">小火箭读不了 mihomo 的规则集，所以节点和分流分开导入：订阅只给节点，分流用 <code>/shadowrocket.conf</code>。
+        这份配置的分流组同精简版，规则集改用 blackmatrix7 的小火箭 <code>.list</code>，没有 HuggingFace 分流与 Fuck-you-MIUI 清单。</p>
+      <ol class="steps">
+        <li>用非中国区的 Apple ID 在 App Store 购买安装 Shadowrocket。</li>
+        <li>用 iPhone 的 Safari 打开本页，导入订阅，订阅卡片选「<b>小火箭</b>」。</li>
+        <li>按「<b>导入节点到小火箭</b>」，确认添加订阅。也可以手动添加：首页右上角「+」，类型选 <code>Subscribe</code>，贴上订阅链接。</li>
+        <li>按「<b>导入分流配置</b>」，在小火箭「配置」页点 <code>shadowrocket.conf</code> →「使用配置」。也可以手动添加：「配置」页右上角「+」，贴上配置链接。</li>
+        <li>首页「全局路由」选「<b>配置</b>」，打开连接，第一次连接时允许添加 VPN 配置。</li>
+        <li>自动更新：「设置 → 订阅」打开「打开时更新」；配置要更新时，在「配置」页点它 →「更新」。</li>
+      </ol>
+      <p class="hint"><b>息屏断开、亮屏自动连上</b>（iOS 不允许 App 监听锁屏，这是最接近的做法）：</p>
+      <ul class="hint">
+        <li>「设置 → 按需求连接」：打开，添加「Wi-Fi」与「蜂窝网络」规则，动作选「连接」；<b>不要</b>开「始终开启」，否则按需规则不生效。</li>
+        <li>打开「睡眠时断开」：设备睡眠时断开，亮屏后有 App 联网时 iOS 会自动重连。息屏后 iOS 不一定马上睡眠，所以不是一锁屏就断；如果推送常收不到，就关掉这项。</li>
+      </ul>
+      <p class="hint"><b>更省电</b>：只在用特定 App 时开 VPN。「快捷指令 → 自动化 → App」：选 Claude、Telegram 等，「已打开」时运行「启动 Shadowrocket」，「已关闭」时运行「停止 Shadowrocket」，都设为立即运行。用这个方法就不要同时开按需求连接。
+        另外，全局路由保持「配置」，不装模块、不开 MitM；配置里的测速间隔已调成 30 分钟，不要改小。</p>
+    </details>
     <details><summary>想自己在客户端覆写？</summary>
       <p class="hint">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版或全量版：</p>
       <div class="linkbox"><code class="link" id="script-url"></code>
@@ -426,11 +446,20 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
   }
-  // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果
-  const MODES = [['lite', '精简'], ['full', '全量'], ['none', '不覆写']];
+  // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果；
+  // rocket 给 iPhone 小火箭用：订阅只取节点（同 none），分流另外导入 /shadowrocket.conf
+  const MODES = [['lite', '精简'], ['full', '全量'], ['rocket', '小火箭'], ['none', '不覆写']];
   function getMode(token) { const m = store.get('mode:' + token); return MODES.some(([x]) => x === m) ? m : 'lite'; }
   function setMode(token, mode) { store.set('mode:' + token, mode); }
-  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' ? '' : `?script=${mode}`); }
+  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' || mode === 'rocket' ? '' : `?script=${mode}`); }
+  const rocketConfUrl = () => `${workerUrl}/shadowrocket.conf`;
+  const importLabel = (mode) => (mode === 'rocket' ? '导入节点到小火箭' : '一键导入 Clash');
+  // 切换覆写版本时更新卡片：链接、导入按钮文字，以及只有小火箭才显示的配置链接
+  function applyMode(item, mode) {
+    item.querySelector('.link').textContent = subUrl(item.dataset.token, mode);
+    item.querySelector('.import-label').textContent = importLabel(mode);
+    for (const el of item.querySelectorAll('.rocket-only')) el.classList.toggle('hidden', mode !== 'rocket');
+  }
   function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : ''; }
   const pad = (n) => String(n).padStart(2, '0');
   function fmtDate(sec) { const d = new Date(sec * 1000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
@@ -491,9 +520,13 @@
           `<label><input type="radio" name="mode-${token}" value="${m}"${m === mode ? ' checked' : ''}><span>${label}</span></label>`).join('')}</div>
       </div>
       <div class="linkbox"><code class="link">${escapeHtml(subUrl(it.token, mode))}</code></div>
+      <p class="hint rocket-only${mode === 'rocket' ? '' : ' hidden'}">iPhone 小火箭：上面的订阅只含节点，分流规则用下面的配置（对标精简版）。先「导入节点到小火箭」，再「导入分流配置」，详见 README。</p>
+      <div class="linkbox rocket-only${mode === 'rocket' ? '' : ' hidden'}"><code class="link link-conf">${escapeHtml(rocketConfUrl())}</code>
+        <button class="icon-btn" data-act="copy-conf" title="复制小火箭配置链接" aria-label="复制小火箭配置链接">${icon('copy')}</button></div>
       <div class="actions">
         <button class="btn primary" data-act="copy">${icon('copy')}复制链接</button>
-        <button class="btn" data-act="import">${icon('download')}一键导入 Clash</button>
+        <button class="btn" data-act="import">${icon('download')}<span class="import-label">${importLabel(mode)}</span></button>
+        <button class="btn rocket-only${mode === 'rocket' ? '' : ' hidden'}" data-act="import-conf">${icon('download')}导入分流配置</button>
         <button class="btn ghost" data-act="preview">${icon('eye')}预览</button>
         <button class="btn ghost" data-act="edit">${icon('edit')}编辑</button>
         <span class="grow"></span>
@@ -551,7 +584,7 @@
     if (!e.target.name?.startsWith('mode-')) return;
     const item = e.target.closest('.sub');
     setMode(item.dataset.token, e.target.value);
-    item.querySelector('.link').textContent = subUrl(item.dataset.token, e.target.value);
+    applyMode(item, e.target.value);
   });
 
   $('list').addEventListener('click', async (e) => {
@@ -564,8 +597,13 @@
       switch (btn.dataset.act) {
         case 'copy': return copy(subUrl(token, mode));
         case 'import':
-          location.href = `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name)}`;
+          // 小火箭的 URL scheme 直接把网址接在路径后面，不编码
+          location.href = mode === 'rocket'
+            ? `shadowrocket://add/${subUrl(token, mode)}`
+            : `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name)}`;
           return;
+        case 'import-conf': location.href = `shadowrocket://config/add/${rocketConfUrl()}`; return;
+        case 'copy-conf': return copy(rocketConfUrl(), '小火箭配置链接');
         case 'preview': return preview(token, name, mode);
         case 'edit':
           btn.disabled = true;

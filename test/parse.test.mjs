@@ -236,6 +236,33 @@ for (const file of ['script.js', 'script-full.js']) {
   });
 }
 
+test('小火箭配置：分流组与测速网址对标精简版', () => {
+  const conf = fs.readFileSync(new URL('../public/shadowrocket.conf', import.meta.url), 'utf8');
+  const section = (name) => conf.split(`[${name}]`)[1].split(/\n\[/)[0].split(/\r?\n/).filter((l) => l && !l.startsWith('#'));
+  const groups = new Map(section('Proxy Group').map((l) => {
+    const [name, value] = l.split(/ = (.*)/);
+    return [name, value.split(',')];
+  }));
+  const lite = new Map(runScript('script.js')['proxy-groups'].map((g) => [g.name, g]));
+  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', 'AdBlock', '默认代理', '漏网之鱼', '香港', '日本', '美国', '新加坡', '台湾']) {
+    assert.ok(groups.has(name), name);
+    assert.ok(lite.has(name), name);
+  }
+  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', '台湾']) {
+    assert.ok(groups.get(name).includes(`url=${lite.get(name).url}`), name);
+  }
+  // 默认选择（第一项）同精简版
+  assert.equal(groups.get('AI')[1], '台湾');
+  for (const name of ['Google', 'Apple', 'Telegram', 'Steam']) assert.equal(groups.get(name)[1], '默认代理', name);
+  assert.equal(groups.get('AdBlock')[1], 'REJECT');
+  // 规则只能指向已定义的组或内置策略
+  for (const rule of section('Rule')) {
+    const policy = rule.split(',').at(-1);
+    assert.ok(groups.has(policy) || ['DIRECT', 'REJECT'].includes(policy), rule);
+  }
+  assert.equal(section('Rule').at(-1), 'FINAL,漏网之鱼');
+});
+
 test('Fuck-you-MIUI 规则集：清单与 mrs 都在仓库里', () => {
   const domains = fs.readFileSync(new URL(`../${MIUI_RULESET}.txt`, import.meta.url), 'utf8').trim().split(/\r?\n/);
   for (const domain of ['tracking.miui.com', 'data.mistat.xiaomi.com', 'adv.sec.miui.com']) assert.ok(domains.includes(domain), domain);
