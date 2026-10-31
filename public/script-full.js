@@ -11,6 +11,7 @@
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
+ * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
@@ -1183,6 +1184,7 @@ function buildFunctionalGroups(filteredProxies, generatedRegionGroups, customize
       ...selectBaseOption,
       name: '直连',
       proxies: [...directProxies.map((p) => p.name)],
+      url: 'https://wifi.vivo.com.cn/generate_204',
       icon: `${iconBaseUrl}China.svg`,
       hidden: true,
     };
@@ -1266,6 +1268,7 @@ function buildFunctionalGroups(filteredProxies, generatedRegionGroups, customize
     ...selectBaseOption,
     name: '直连',
     proxies: [...directProxies.map((p) => p.name)],
+    url: 'https://wifi.vivo.com.cn/generate_204',
     icon: `${iconBaseUrl}China.svg`,
     hidden: hideManualSelectGroupEnabled,
   };

@@ -51,6 +51,10 @@ export const REGION_TEST_URLS = {
   台湾: TEST_URLS.AI,
 };
 
+// 「直连」组的测速网址：要有 IPv4 和 IPv6 地址，「仅IPv6」才测得通；
+// 通用测速网址 connectivitycheck.gstatic.com 在国内 DNS 只有 IPv4 地址，「仅IPv6」解析不到会一直超时
+export const DIRECT_TEST_URL = 'https://wifi.vivo.com.cn/generate_204';
+
 const HUGGINGFACE_PROVIDER = `      // HuggingFace 也在 category-ai-!cn 里，用单独的规则集抢先分到「默认代理」
       huggingface: {
         ...ruleProviderCommonDomain,
@@ -96,6 +100,7 @@ export function patchScript(source, file) {
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
+ * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
@@ -125,6 +130,7 @@ export function patchScript(source, file) {
   s = setBaseTestOption(s);
   s = addRegionTestUrls(s);
   s = addIpv6Group(s);
+  s = addDirectTestUrl(s);
   s = reduceMemory(s);
   s = useDohBootstrap(s);
   s = defaultToAuto(s);
@@ -208,6 +214,14 @@ const IPV6_GROUP = `  // IPv6 节点：名称标有 IPv6 / v6，或 server 本�
 export function addIpv6Group(source) {
   const anchor = "  if (otherProxies.length > 0) {\n    generatedRegionGroups.push(...createRegionGroup('其他节点'";
   return replaceOnce(source, anchor, IPV6_GROUP + anchor, '其他节点组生成代码');
+}
+
+// 「直连」组（极简模式与完整模式各一处）改用 DIRECT_TEST_URL
+export function addDirectTestUrl(source) {
+  const re = /\n( +)name: '直连',\n\1proxies: \[\.\.\.directProxies\.map\(\(p\) => p\.name\)\],\n/g;
+  const count = (source.match(re) || []).length;
+  if (count !== 2) throw new Error(`「直连」组应有 2 处，找到 ${count} 处，上游脚本可能改版了`);
+  return source.replace(re, (m, indent) => `${m}${indent}url: '${DIRECT_TEST_URL}',\n`);
 }
 
 // 减少 mihomo 内存与日志量：
