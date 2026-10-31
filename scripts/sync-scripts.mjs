@@ -6,6 +6,7 @@
 // 上游改版导致找不到要改的位置时直接报错，不会写出半成品。用法：node scripts/sync-scripts.mjs
 import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const UPSTREAM = 'https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/';
 const TARGETS = [
@@ -96,6 +97,7 @@ export function patchScript(source, file) {
  * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
+ * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
  * 友情推荐`,
     '文件开头注释',
@@ -124,6 +126,7 @@ export function patchScript(source, file) {
   s = addRegionTestUrls(s);
   s = addIpv6Group(s);
   s = reduceMemory(s);
+  s = useDohBootstrap(s);
   s = defaultToAuto(s);
 
   return replaceOnce(
@@ -225,6 +228,21 @@ export function reduceMemory(source) {
   return replaceOnce(s, anchor, `const prefixRules = [\n${LOCAL_PROXY_CORE_RULES}  // 规则集下载域名`, '前置规则');
 }
 
+// 上游 default-nameserver / proxy-server-nameserver 是「114 明文 UDP + DoT + DoH」三个一起竞速：
+// 114 几乎总是先回，DoT 每次查询都新建连接、DoH 也来不及连上就被取消，
+// 带 #DIRECT 的拨号经过 mihomo 的连接处理，每次取消都记一条 warning，测速时节点域名集中解析就成簇刷屏。
+// 改成两个 DoH（连接可复用，连上后不再拨号）：本机实测同样 120 次查询，warning 由 18 条降到 0，中位延迟 48ms → 18ms
+const DOH_BOOTSTRAP_DNS = "['https://223.5.5.5/dns-query#DIRECT', 'https://1.12.12.12/dns-query#DIRECT']";
+
+export function useDohBootstrap(source) {
+  let s = source.replace(/^const defaultDNS = \[[^\n]*\];$/m, `const defaultDNS = ${DOH_BOOTSTRAP_DNS};`);
+  s = s.replace(/^const proxyServerDNS = \[[^\n]*\];$/m, `const proxyServerDNS = ${DOH_BOOTSTRAP_DNS};`);
+  if ((s.match(new RegExp(`= ${DOH_BOOTSTRAP_DNS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')};`, 'g')) || []).length !== 2) {
+    throw new Error('找不到 defaultDNS 或 proxyServerDNS，上游脚本可能改版了');
+  }
+  return s;
+}
+
 // select 组默认选第一个节点，所以把自动选择排到最前：
 // - 地区组（含 IPv6、其他节点）默认选「<地区>-自动选择」
 // - 「默认代理」默认选全局的「自动选择」
@@ -274,7 +292,7 @@ async function syncMiuiRuleset() {
     await writeFile(txt, text);
     const mihomo = process.env.MIHOMO || 'mihomo';
     try {
-      execFileSync(mihomo, ['convert-ruleset', 'domain', 'text', txt.pathname, txt.pathname.replace(/\.txt$/, '.mrs')], {
+      execFileSync(mihomo, ['convert-ruleset', 'domain', 'text', fileURLToPath(txt), fileURLToPath(txt).replace(/\.txt$/, '.mrs')], {
         stdio: 'inherit',
       });
     } catch (err) {
@@ -296,7 +314,8 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// 用 pathToFileURL 比较，Windows 的路径（E:\...）才对得上
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     console.error(err.message);
     process.exit(1);

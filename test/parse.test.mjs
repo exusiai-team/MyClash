@@ -225,6 +225,15 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：代理服务器域名与 DNS 本身用两个 DoH 解析`, () => {
+    const { dns } = runScript(file);
+    const doh = ['https://223.5.5.5/dns-query#DIRECT', 'https://1.12.12.12/dns-query#DIRECT'];
+    assert.deepEqual([...dns['default-nameserver']], doh);
+    assert.deepEqual([...dns['proxy-server-nameserver']], doh);
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
   test(`覆写脚本 public/${file}：Fuck-you-MIUI 的域名走 AdBlock 组（默认 REJECT）`, () => {
     const out = runScript(file);
     const miui = out['rule-providers']['fuck-you-miui'];
