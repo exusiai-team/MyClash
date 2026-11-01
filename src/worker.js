@@ -303,7 +303,7 @@ async function triggerSync(env) {
   return res;
 }
 
-// 「同步上游覆写脚本」最近一次执行，与覆写脚本最后一次有改动的提交；没设 GITHUB_TOKEN 也能读（公开仓库）
+// 「同步上游覆写脚本」最近一次执行，与 rules 分支（覆写脚本与规则集的生成物）最后一次有改动的提交；没设 GITHUB_TOKEN 也能读（公开仓库）
 async function syncStatus(env) {
   if (!env.GITHUB_REPO) throw new HttpError(501, '没有设置 GITHUB_REPO');
   const cached = await env.SUB_STORE.get(SYNC_STATUS_KEY, 'json');
@@ -317,7 +317,7 @@ async function syncStatus(env) {
   };
   const [runs, commits] = await Promise.all([
     get(`/actions/workflows/${SYNC_WORKFLOW}/runs?per_page=1`),
-    get('/commits?path=public/script.js&per_page=1'),
+    get('/commits?sha=rules&path=script.js&per_page=1'),
   ]);
   const run = runs.workflow_runs?.[0];
   const commit = commits[0];

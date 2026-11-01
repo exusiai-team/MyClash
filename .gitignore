@@ -3,3 +3,8 @@ node_modules/
 .dev.vars
 dist/
 src/overrides/
+# 由 scripts/build-overrides.mjs 从 rules 分支取来（见 scripts/build-overrides.mjs），不进 main
+public/script.js
+public/script-full.js
+# scripts/sync-scripts.mjs 的输出目录，由 GitHub Actions 推到 rules 分支
+rules-out/

@@ -63,7 +63,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 「AI」组默认选「台湾」（原版为「美国」；订阅里没有台湾节点时由客户端退回第一项）
 - 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/cdn-cgi/trace`（同「AI」组），按 Claude 的连通性挑节点
 - 「AdBlock」组（默认 `REJECT`）的广告规则集由 bett-rules 的 `category-ads` 换成 [Sukka 的 Reject Base](https://ruleset.skk.moe/Clash/domainset/reject.txt)（约 14 万个域名：广告、跟踪，以及小米反诈 `flash.sec.miui.com`、`fraud-detection.engine.miui.com`、云扫描等）。
-  Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `public/rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB，不进仓库），内容变了才更新；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
+  Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
   清单比 `category-ads` 激进，碰到误杀可在 AdBlock 组改选 `PASS`（连同广告规则一起放行）
 - 新增「IPv6」节点组：名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6` 的节点归进来（同时保留在原地区组），附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
 - 「直连」组改用 vivo 的测速网址 `https://wifi.vivo.com.cn/generate_204`（同时有 IPv4 与 IPv6 地址）。通用测速网址 `connectivitycheck.gstatic.com` 在国内 DNS 只有 IPv4 地址，「🇨🇳 直连 | 仅IPv6」解析不到 IPv6 地址，测速会一直超时
@@ -72,8 +72,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - `default-nameserver` 与 `proxy-server-nameserver` 由「114 明文 + 阿里 DoT + 腾讯 DoH」改为阿里、腾讯两个 DoH（`https://223.5.5.5/dns-query`、`https://1.12.12.12/dns-query`）。
   原本 114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时成簇刷屏；DoH 连接可复用，本机实测 warning 归零、解析也更快
 
-GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs` 重新生成两个文件（同时更新 Sukka 规则集；本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），有变化且测试通过就直接提交到 `main`，服务端覆写在随后的部署中自动跟着更新；上游改版导致找不到修改位置时脚本会报错、流程失败且不提交，需要手动调整 `scripts/sync-scripts.mjs`。本机也可以直接执行同一个命令。
-管理页「客户端怎么用」下方显示覆写脚本最后更新时间与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
+GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/sukka-reject.mrs`，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 的服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本；脚本有改动时，流程在 `main` 上会用 `CLOUDFLARE_DEPLOY_TOKEN`（权限含 Workers 脚本编辑，另需 `CLOUDFLARE_ACCOUNT_ID`）重新部署，没设就要等下次部署才生效；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
+管理页「客户端怎么用」下方显示 `rules` 分支最后更新时间（脚本或规则集有变化才会更新）与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
 
 **节点前缀**：区分不同机场。
 
@@ -215,7 +215,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `GET /api/subs/<TOKEN>/status` | 即时检查每个机场：`{ checkedAt, sources: [{ url, name, error, directError, cachedAt, info: { upload, download, total, expire }, blocked: null \| "expired" \| "exhausted" }] }` |
 | `POST /api/subs/<TOKEN>/rotate` | 换新 TOKEN |
 | `POST /api/subs/<TOKEN>/refresh` | 触发代抓缓存（需 `GITHUB_TOKEN`，1 分钟限一次） |
-| `GET /api/scripts` | 覆写脚本同步状态：`{ run: { status, conclusion, event, createdAt, url } \| null, updated: { at, message, url } \| null, canTrigger }`（「同步上游覆写脚本」最近一次执行，与 `public/script.js` 最后一次改动的提交；在 KV 存 5 分钟） |
+| `GET /api/scripts` | 覆写脚本同步状态：`{ run: { status, conclusion, event, createdAt, url } \| null, updated: { at, message, url } \| null, canTrigger }`（「同步上游覆写脚本」最近一次执行，与 `rules` 分支最后一次更新的提交；在 KV 存 5 分钟） |
 | `POST /api/subs/<TOKEN>/sync-scripts` | 触发「同步上游覆写脚本」（需 `GITHUB_TOKEN`，10 分钟限一次） |
 
 | 文件 | 说明 |
@@ -225,10 +225,10 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `src/cache.js` | 代抓缓存的 KV 键名 |
 | `scripts/refresh-cache.mjs` | GitHub Actions 代抓脚本 |
 | `public/index.html` | 管理页 |
-| `public/script.js`、`public/script-full.js` | 修改版 MyClash 覆写脚本（由 `scripts/sync-scripts.mjs` 生成） |
-| `public/rules/sukka-reject.mrs` | Sukka Reject Base 规则集（由 `scripts/sync-scripts.mjs` 生成） |
+| `public/script.js`、`public/script-full.js` | 修改版 MyClash 覆写脚本（不进 git，部署 / 测试前由 `scripts/build-overrides.mjs` 从 `rules` 分支取来；`rules` 分支上叫 `script.js`、`script-full.js`，由 `scripts/sync-scripts.mjs` 生成） |
+| `rules` 分支的 `rules/sukka-reject.mrs` | Sukka Reject Base 规则集（由 `scripts/sync-scripts.mjs` 生成，不在 `main` 上） |
 | `scripts/sync-scripts.mjs` | 从上游同步覆写脚本并套用改动 （`.github/workflows/sync-scripts.yml` 每天自动执行） |
-| `scripts/build-overrides.mjs` | 部署 / 测试前把上面两个脚本包成 ES module（`src/overrides/`，不进 git），给服务端覆写用 |
+| `scripts/build-overrides.mjs` | 部署 / 测试前从 `rules` 分支取最新覆写脚本放进 `public/`，再包成 ES module（`src/overrides/`，都不进 git），给服务端覆写用；本机没网时沿用 `public/` 里已有的文件，设 `GENERATED_DIR` 可改用本机目录 |
 
 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)。
 
