@@ -1,7 +1,7 @@
 name: 同步上游覆写脚本
 
 # 每天从 AIsouler/MyClash 抓一次覆写脚本，套用本项目的改动（scripts/sync-scripts.mjs），
-# 并更新 Fuck-you-MIUI 的 mrs 规则集；
+# 并更新 Sukka Reject Base 的 mrs 规则集；
 # 有变化且测试通过就直接提交到 main，Cloudflare 再自动重新部署。
 # 上游改版导致找不到修改位置时脚本会报错，这个流程失败、不提交，GitHub 会发邮件通知
 on:
@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: latest
           cache: npm
-      # sync-scripts 用 mihomo 把 Fuck-you-MIUI 清单转成 mrs 规则集；每次都下载最新正式版
+      # sync-scripts 用 mihomo 把 Sukka 的 Reject Base 清单转成 mrs 规则集；每次都下载最新正式版
       - run: |
           V=$(gh api repos/MetaCubeX/mihomo/releases/latest --jq .tag_name)
           echo "mihomo $V"

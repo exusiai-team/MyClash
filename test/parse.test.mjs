@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, MIUI_RULESET, REGION_TEST_URLS, TEST_URLS, parseHosts, patchScript } from '../scripts/sync-scripts.mjs';
+import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -236,13 +236,17 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
-  test(`覆写脚本 public/${file}：Fuck-you-MIUI 的域名走 AdBlock 组（默认 REJECT）`, () => {
+  test(`覆写脚本 public/${file}：AdBlock 组用 Sukka 的 Reject Base（默认 REJECT），不再用 category-ads 与 Fuck-you-MIUI`, () => {
     const out = runScript(file);
-    const miui = out['rule-providers']['fuck-you-miui'];
-    assert.equal(miui.format, 'mrs');
-    assert.equal(miui.behavior, 'domain');
-    assert.equal(miui.url, `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${MIUI_RULESET}.mrs`);
-    assert.ok(out.rules.includes('RULE-SET,fuck-you-miui,AdBlock'));
+    const sukka = out['rule-providers']['sukka-reject'];
+    assert.equal(sukka.format, 'mrs');
+    assert.equal(sukka.behavior, 'domain');
+    assert.equal(sukka.url, `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${SUKKA_RULESET}.mrs`);
+    assert.ok(out.rules.includes('RULE-SET,sukka-reject,AdBlock'));
+    for (const name of ['category-ads', 'fuck-you-miui']) {
+      assert.ok(!(name in out['rule-providers']), name);
+      assert.ok(!out.rules.includes(`RULE-SET,${name},AdBlock`), name);
+    }
     assert.equal(out['proxy-groups'].find((g) => g.name === 'AdBlock').proxies[0], 'REJECT');
   });
 }
@@ -280,18 +284,9 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
   assert.equal(section('Rule').at(-1), 'FINAL,漏网之鱼');
 });
 
-test('Fuck-you-MIUI 规则集：清单与 mrs 都在仓库里', () => {
-  const domains = fs.readFileSync(new URL(`../${MIUI_RULESET}.txt`, import.meta.url), 'utf8').trim().split(/\r?\n/);
-  for (const domain of ['tracking.miui.com', 'data.mistat.xiaomi.com', 'adv.sec.miui.com']) assert.ok(domains.includes(domain), domain);
-  assert.ok(!domains.includes('pdc.micloud.xiaomi.net')); // 上游注释掉的不收
-  assert.ok(fs.statSync(new URL(`../${MIUI_RULESET}.mrs`, import.meta.url)).size > 0);
-});
-
-test('sync-scripts：hosts 只取没注释掉的域名并去重，不是域名就报错', () => {
-  const hosts = '#注释\n0.0.0.0 a.miui.com\n\n#127.0.0.1 off.miui.com\n127.0.0.1 b.xiaomi.com # 行尾注释\n127.0.0.1 A.miui.com\n127.0.0.1 *.rdt.tfogc.com\n';
-  assert.deepEqual(parseHosts(hosts, '127.0.0.1 b.xiaomi.com'), ['a.miui.com', 'b.xiaomi.com', '*.rdt.tfogc.com']);
-  assert.throws(() => parseHosts("127.0.0.1 x.com',evil"), /不是域名/);
-  assert.throws(() => parseHosts('# 空的'), /上游清单可能改版/);
+test('Sukka 规则集：mrs 在仓库里，大小合理', () => {
+  const size = fs.statSync(new URL(`../${SUKKA_RULESET}.mrs`, import.meta.url)).size;
+  assert.ok(size > 500_000, `${size} 字节`); // 约 14 万个域名；太小说明转换出了问题
 });
 
 test('sync-scripts：上游改版找不到修改位置时报错', () => {
