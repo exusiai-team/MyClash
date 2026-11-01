@@ -1,11 +1,13 @@
 // 从 AIsouler/MyClash 抓精简版与全量版覆写脚本，套用本项目的改动后写进 public/：
 //   public/script.js       ← Script/Script.js（精简版，管理页默认）
 //   public/script-full.js  ← Script/mihomoScript.js（全量版）
-// 同时抓 LoopDns/Fuck-you-MIUI 的 hosts 清单，用 mihomo 转成 public/rules/fuck-you-miui.mrs，加进两个脚本的「AdBlock」组。
+// 同时抓 Sukka 的 Reject Base 域名集（ruleset.skk.moe），用 mihomo 转成 public/rules/sukka-reject.mrs，换掉两个脚本「AdBlock」组原来的 category-ads。
 // 需要 mihomo（PATH 里，或用 MIHOMO 环境变量指定路径）。
 // 上游改版导致找不到要改的位置时直接报错，不会写出半成品。用法：node scripts/sync-scripts.mjs
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const UPSTREAM = 'https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/';
@@ -14,12 +16,13 @@ const TARGETS = [
   { from: 'mihomoScript.js', to: 'public/script-full.js' },
 ];
 
-// LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），
-// 转成 mrs 规则集放在本仓库，经 CDN 下载，加进「AdBlock」组（默认 REJECT）
-const MIUI_HOSTS_UPSTREAM = 'https://raw.githubusercontent.com/LoopDns/Fuck-you-MIUI/main/';
-const MIUI_HOSTS_FILES = ['MIhosts', 'Fhosts'];
-export const MIUI_RULESET = 'public/rules/fuck-you-miui';
-const MIUI_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${MIUI_RULESET}.mrs`;
+// Sukka 的 Reject Base 域名集（广告、跟踪、小米反诈 / 云扫描等，每天重新生成）只发布文本，
+// 转成 mrs 放在本仓库，经 CDN 下载，替换「AdBlock」组原来的 category-ads（默认 REJECT）。
+// 清单原文有 3 MB、约 14 万个域名，不进仓库（只留 mrs），内容真的变了才会改 mrs
+const SUKKA_REJECT_URL = 'https://ruleset.skk.moe/Clash/domainset/reject.txt';
+const SUKKA_MIN_DOMAINS = 50000; // 少于这个数说明上游改版或抓到的不是清单
+export const SUKKA_RULESET = 'public/rules/sukka-reject';
+const SUKKA_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${SUKKA_RULESET}.mrs`;
 
 // 通用测速网址与间隔（groupBaseOption），对标 NIVA Network 订阅的「自动选择」组
 export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
@@ -64,21 +67,6 @@ const HUGGINGFACE_PROVIDER = `      // HuggingFace 也在 category-ai-!cn 里，
       },
 `;
 
-// 从 hosts 文件取出被屏蔽的域名（跳过注释掉的行），去重；格式不对就报错
-export function parseHosts(...texts) {
-  const domains = new Set();
-  for (const text of texts) {
-    for (const line of text.split('\n')) {
-      const [ip, domain] = line.replace(/#.*/, '').trim().split(/\s+/);
-      if (!domain) continue;
-      if (!/^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain)) throw new Error(`hosts 里的「${ip} ${domain}」不是域名`);
-      domains.add(domain.toLowerCase());
-    }
-  }
-  if (domains.size === 0) throw new Error('hosts 里没有域名，上游清单可能改版了');
-  return [...domains];
-}
-
 function replaceOnce(source, search, replacement, what) {
   const i = source.indexOf(search);
   if (i === -1 || source.indexOf(search, i + search.length) !== -1) {
@@ -98,7 +86,7 @@ export function patchScript(source, file) {
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
- * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
+ * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，转成 mrs，含小米反诈 / 云扫描等域名）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
@@ -118,7 +106,7 @@ export function patchScript(source, file) {
     if (block.includes(line)) block = replaceOnce(block, line, `${line}    testUrl: '${url}',\n`, `${name} 分流组`);
   }
   block = replaceOnce(block, "      ai: {\n", `${HUGGINGFACE_PROVIDER}      ai: {\n`, 'AI 规则集');
-  block = addMiuiBlocklist(block);
+  block = useSukkaReject(block);
   block = replaceOnce(block, "rules: ['RULE-SET,ai,AI'],", "rules: ['RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'],", 'AI 规则');
   block = replaceOnce(
     block,
@@ -143,22 +131,25 @@ export function patchScript(source, file) {
   );
 }
 
-// 「AdBlock」组加上 Fuck-you-MIUI 的 mrs 规则集
-export function addMiuiBlocklist(source) {
-  const provider = `      // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），由本仓库转成 mrs
-      'fuck-you-miui': {
+// 「AdBlock」组的 category-ads 换成 Sukka 的 mrs 规则集
+const CATEGORY_ADS_PROVIDER =
+  "      'category-ads': {\n" +
+  "        ...ruleProviderCommonDomain,\n" +
+  "        url: `${ruleSetBaseUrl}geosite/category-ads.mrs`,\n" +
+  "        path: './ruleset/category-ads.mrs',\n" +
+  "        'path-in-bundle': 'geo/geosite/category-ads.mrs',\n" +
+  "      },\n";
+
+export function useSukkaReject(source) {
+  const provider = `      // Sukka 的 Reject Base（广告、跟踪、小米反诈 / 云扫描等），由本仓库转成 mrs
+      'sukka-reject': {
         ...ruleProviderCommonDomain,
-        url: '${MIUI_RULESET_URL}',
-        path: './ruleset/fuck-you-miui.mrs',
+        url: '${SUKKA_RULESET_URL}',
+        path: './ruleset/sukka-reject.mrs',
       },
 `;
-  let s = replaceOnce(source, "      'category-ads': {\n", `${provider}      'category-ads': {\n`, 'AdBlock 规则集');
-  return replaceOnce(
-    s,
-    "rules: ['RULE-SET,category-ads,AdBlock'],",
-    "rules: ['RULE-SET,category-ads,AdBlock', 'RULE-SET,fuck-you-miui,AdBlock'],",
-    'AdBlock 规则',
-  );
+  const s = replaceOnce(source, CATEGORY_ADS_PROVIDER, provider, 'AdBlock 规则集');
+  return replaceOnce(s, "rules: ['RULE-SET,category-ads,AdBlock'],", "rules: ['RULE-SET,sukka-reject,AdBlock'],", 'AdBlock 规则');
 }
 
 // groupBaseOption 改用 BASE_TEST_URL 与 BASE_TEST_INTERVAL
@@ -297,27 +288,40 @@ async function fetchText(url) {
   return res.text();
 }
 
-// 清单写成 .txt（一行一个域名，方便看差异），有变化才用 mihomo 转成 .mrs
-async function syncMiuiRuleset() {
-  const domains = parseHosts(...(await Promise.all(MIUI_HOSTS_FILES.map((f) => fetchText(MIUI_HOSTS_UPSTREAM + f)))));
-  const txt = new URL(`../${MIUI_RULESET}.txt`, import.meta.url);
-  const text = domains.join('\n') + '\n';
-  if ((await readFile(txt, 'utf8').catch(() => '')) !== text) {
-    await writeFile(txt, text);
-    const mihomo = process.env.MIHOMO || 'mihomo';
-    try {
-      execFileSync(mihomo, ['convert-ruleset', 'domain', 'text', fileURLToPath(txt), fileURLToPath(txt).replace(/\.txt$/, '.mrs')], {
-        stdio: 'inherit',
-      });
-    } catch (err) {
-      throw new Error(`用 ${mihomo} 转换 mrs 失败（需要安装 mihomo，或用 MIHOMO 环境变量指定路径）：${err.message}`);
-    }
+function convertToMrs(txt, mrs) {
+  const mihomo = process.env.MIHOMO || 'mihomo';
+  try {
+    execFileSync(mihomo, ['convert-ruleset', 'domain', 'text', txt, mrs], { stdio: 'inherit' });
+  } catch (err) {
+    throw new Error(`用 ${mihomo} 转换 mrs 失败（需要安装 mihomo，或用 MIHOMO 环境变量指定路径）：${err.message}`);
   }
-  console.log(`Fuck-you-MIUI：${domains.length} 个域名 → ${MIUI_RULESET}.mrs`);
+}
+
+// 清单只在临时目录转换，转出来的 mrs 跟仓库里的不一样才覆盖（清单开头的「Last Updated」不影响 mrs）
+async function syncSukkaRuleset() {
+  const text = await fetchText(SUKKA_REJECT_URL);
+  const count = text.split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('#')).length;
+  if (count < SUKKA_MIN_DOMAINS) throw new Error(`Sukka 的清单只有 ${count} 个域名，上游可能改版了`);
+  const dir = await mkdtemp(join(tmpdir(), 'sukka-reject-'));
+  try {
+    const txt = join(dir, 'reject.txt');
+    const mrs = join(dir, 'reject.mrs');
+    await writeFile(txt, text);
+    convertToMrs(txt, mrs);
+    const target = new URL(`../${SUKKA_RULESET}.mrs`, import.meta.url);
+    const [fresh, old] = await Promise.all([readFile(mrs), readFile(target).catch(() => Buffer.alloc(0))]);
+    if (!fresh.equals(old)) {
+      await mkdir(dirname(fileURLToPath(target)), { recursive: true });
+      await copyFile(mrs, target);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  console.log(`Sukka Reject Base：${count} 个域名 → ${SUKKA_RULESET}.mrs`);
 }
 
 async function main() {
-  await syncMiuiRuleset();
+  await syncSukkaRuleset();
   const [lite, full] = await Promise.all(
     TARGETS.map(async ({ from }) => patchScript(await fetchText(UPSTREAM + from), from)),
   );

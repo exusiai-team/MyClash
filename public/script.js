@@ -9,7 +9,7 @@
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
- * - 「AdBlock」组加上 LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK）
+ * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，转成 mrs，含小米反诈 / 云扫描等域名）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
@@ -74,6 +74,7 @@ const prefixRules = [
   // 国内直连
   'RULE-SET,geolocation-cn,直连',
   'RULE-SET,games_cn,直连', // 已包含 steam 下载域名
+  'RULE-SET,synology,直连',
   'RULE-SET,apple_cn,直连',
   'RULE-SET,microsoft_cn,直连',
   'DOMAIN,fsend.cn,直连',
@@ -250,6 +251,12 @@ const baseRuleProviders = {
     url: `${ruleSetBaseUrl}geosite/category-games@cn.mrs`,
     path: './ruleset/category-games@cn.mrs',
     'path-in-bundle': 'geo/geosite/category-games@cn.mrs',
+  },
+  synology: {
+    ...ruleProviderCommonDomain,
+    url: `${ruleSetBaseUrl}geosite/synology.mrs`,
+    path: './ruleset/synology.mrs',
+    'path-in-bundle': 'geo/geosite/synology.mrs',
   },
   apple_cn: {
     ...ruleProviderCommonDomain,
@@ -472,21 +479,15 @@ const serviceConfigs = [
     baseOption: selectBaseOption,
     reject: true,
     providers: {
-      // LoopDns/Fuck-you-MIUI 的 hosts 屏蔽清单（小米系统跟踪器、广告与内置 SDK），由本仓库转成 mrs
-      'fuck-you-miui': {
+      // Sukka 的 Reject Base（广告、跟踪、小米反诈 / 云扫描等），由本仓库转成 mrs
+      'sukka-reject': {
         ...ruleProviderCommonDomain,
-        url: 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/rules/fuck-you-miui.mrs',
-        path: './ruleset/fuck-you-miui.mrs',
-      },
-      'category-ads': {
-        ...ruleProviderCommonDomain,
-        url: `${ruleSetBaseUrl}geosite/category-ads.mrs`,
-        path: './ruleset/category-ads.mrs',
-        'path-in-bundle': 'geo/geosite/category-ads.mrs',
+        url: 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/rules/sukka-reject.mrs',
+        path: './ruleset/sukka-reject.mrs',
       },
     },
     icon: `${iconBaseUrl}AdBlock.svg`,
-    rules: ['RULE-SET,category-ads,AdBlock', 'RULE-SET,fuck-you-miui,AdBlock'],
+    rules: ['RULE-SET,sukka-reject,AdBlock'],
   },
 ];
 
