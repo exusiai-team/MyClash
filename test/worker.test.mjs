@@ -351,7 +351,7 @@ test('覆写脚本同步状态：读最近一次执行与最后更新，存 5 �
     canTrigger: false,
   });
   assert.equal(calls[0].url, 'https://api.github.com/repos/me/repo/actions/workflows/sync-scripts.yml/runs?per_page=1');
-  assert.equal(calls[1].url, 'https://api.github.com/repos/me/repo/commits?path=public/script.js&per_page=1');
+  assert.equal(calls[1].url, 'https://api.github.com/repos/me/repo/commits?sha=rules&path=script.js&per_page=1');
   assert.equal(calls[0].init.headers.Authorization, undefined);
   // 第二次读 KV，不再打 GitHub
   await call(env, 'GET', '/api/scripts');

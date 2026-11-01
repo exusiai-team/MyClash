@@ -1,28 +1,30 @@
-// 从 AIsouler/MyClash 抓精简版与全量版覆写脚本，套用本项目的改动后写进 public/：
-//   public/script.js       ← Script/Script.js（精简版，管理页默认）
-//   public/script-full.js  ← Script/mihomoScript.js（全量版）
-// 同时抓 Sukka 的 Reject Base 域名集（ruleset.skk.moe），用 mihomo 转成 public/rules/sukka-reject.mrs，换掉两个脚本「AdBlock」组原来的 category-ads。
+// 生成物（覆写脚本与规则集）都写到输出目录 OUT_DIR（默认 rules-out/），由 GitHub Actions 推到 rules 分支，不进 main：
+//   script.js            ← 从 AIsouler/MyClash 抓 Script/Script.js（精简版，管理页默认），套用本项目的改动
+//   script-full.js       ← 同上，Script/mihomoScript.js（全量版）
+//   rules/sukka-reject.mrs ← Sukka 的 Reject Base 域名集（ruleset.skk.moe），用 mihomo 转成 mrs，
+//                           换掉两个脚本「AdBlock」组原来的 category-ads
 // 需要 mihomo（PATH 里，或用 MIHOMO 环境变量指定路径）。
 // 上游改版导致找不到要改的位置时直接报错，不会写出半成品。用法：node scripts/sync-scripts.mjs
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
+const OUT_DIR = resolve(process.env.OUT_DIR || 'rules-out');
 const UPSTREAM = 'https://raw.githubusercontent.com/AIsouler/MyClash/main/Script/';
 const TARGETS = [
-  { from: 'Script.js', to: 'public/script.js' },
-  { from: 'mihomoScript.js', to: 'public/script-full.js' },
+  { from: 'Script.js', to: 'script.js' },
+  { from: 'mihomoScript.js', to: 'script-full.js' },
 ];
 
 // Sukka 的 Reject Base 域名集（广告、跟踪、小米反诈 / 云扫描等，每天重新生成）只发布文本，
-// 转成 mrs 放在本仓库，经 CDN 下载，替换「AdBlock」组原来的 category-ads（默认 REJECT）。
-// 清单原文有 3 MB、约 14 万个域名，不进仓库（只留 mrs），内容真的变了才会改 mrs
+// 转成 mrs 放在 rules 分支，经 CDN 下载，替换「AdBlock」组原来的 category-ads（默认 REJECT）。
+// 清单原文有 3 MB、约 14 万个域名，只留转出来的 mrs
 const SUKKA_REJECT_URL = 'https://ruleset.skk.moe/Clash/domainset/reject.txt';
 const SUKKA_MIN_DOMAINS = 50000; // 少于这个数说明上游改版或抓到的不是清单
-export const SUKKA_RULESET = 'public/rules/sukka-reject';
-const SUKKA_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${SUKKA_RULESET}.mrs`;
+export const SUKKA_RULESET = 'rules/sukka-reject'; // 相对 rules 分支根目录
+export const SUKKA_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@rules/${SUKKA_RULESET}.mrs`;
 
 // 通用测速网址与间隔（groupBaseOption），对标 NIVA Network 订阅的「自动选择」组
 export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
@@ -297,7 +299,7 @@ function convertToMrs(txt, mrs) {
   }
 }
 
-// 清单只在临时目录转换，转出来的 mrs 跟仓库里的不一样才覆盖（清单开头的「Last Updated」不影响 mrs）
+// 清单只在临时目录转成 mrs，再放进输出目录（清单开头的「Last Updated」不影响 mrs，内容没变 mrs 就一样）
 async function syncSukkaRuleset() {
   const text = await fetchText(SUKKA_REJECT_URL);
   const count = text.split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('#')).length;
@@ -305,15 +307,9 @@ async function syncSukkaRuleset() {
   const dir = await mkdtemp(join(tmpdir(), 'sukka-reject-'));
   try {
     const txt = join(dir, 'reject.txt');
-    const mrs = join(dir, 'reject.mrs');
     await writeFile(txt, text);
-    convertToMrs(txt, mrs);
-    const target = new URL(`../${SUKKA_RULESET}.mrs`, import.meta.url);
-    const [fresh, old] = await Promise.all([readFile(mrs), readFile(target).catch(() => Buffer.alloc(0))]);
-    if (!fresh.equals(old)) {
-      await mkdir(dirname(fileURLToPath(target)), { recursive: true });
-      await copyFile(mrs, target);
-    }
+    await mkdir(join(OUT_DIR, 'rules'), { recursive: true });
+    convertToMrs(txt, join(OUT_DIR, `${SUKKA_RULESET}.mrs`));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -321,13 +317,16 @@ async function syncSukkaRuleset() {
 }
 
 async function main() {
-  await syncSukkaRuleset();
+  // 先在内存里把两个脚本都改好，上游改版就在这里报错，不会留下写了一半的输出目录
   const [lite, full] = await Promise.all(
     TARGETS.map(async ({ from }) => patchScript(await fetchText(UPSTREAM + from), from)),
   );
   const outputs = [addAppleGroup(lite, full), full];
+  await rm(OUT_DIR, { recursive: true, force: true });
+  await mkdir(OUT_DIR, { recursive: true });
+  await syncSukkaRuleset();
   for (const [i, { from, to }] of TARGETS.entries()) {
-    await writeFile(new URL(`../${to}`, import.meta.url), outputs[i]);
+    await writeFile(join(OUT_DIR, to), outputs[i]);
     console.log(`${from} → ${to}`);
   }
 }

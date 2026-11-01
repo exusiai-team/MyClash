@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -241,7 +241,8 @@ for (const file of ['script.js', 'script-full.js']) {
     const sukka = out['rule-providers']['sukka-reject'];
     assert.equal(sukka.format, 'mrs');
     assert.equal(sukka.behavior, 'domain');
-    assert.equal(sukka.url, `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/${SUKKA_RULESET}.mrs`);
+    assert.equal(sukka.url, SUKKA_RULESET_URL);
+    assert.ok(sukka.url.endsWith('@rules/rules/sukka-reject.mrs')); // 在 rules 分支，不在 main
     assert.ok(out.rules.includes('RULE-SET,sukka-reject,AdBlock'));
     for (const name of ['category-ads', 'fuck-you-miui']) {
       assert.ok(!(name in out['rule-providers']), name);
@@ -282,11 +283,6 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
     assert.ok(groups.has(policy) || ['DIRECT', 'REJECT'].includes(policy), rule);
   }
   assert.equal(section('Rule').at(-1), 'FINAL,漏网之鱼');
-});
-
-test('Sukka 规则集：mrs 在仓库里，大小合理', () => {
-  const size = fs.statSync(new URL(`../${SUKKA_RULESET}.mrs`, import.meta.url)).size;
-  assert.ok(size > 500_000, `${size} 字节`); // 约 14 万个域名；太小说明转换出了问题
 });
 
 test('sync-scripts：上游改版找不到修改位置时报错', () => {

@@ -1,9 +1,12 @@
 name: 同步上游覆写脚本
 
 # 每天从 AIsouler/MyClash 抓一次覆写脚本，套用本项目的改动（scripts/sync-scripts.mjs），
-# 并更新 Sukka Reject Base 的 mrs 规则集；
-# 有变化且测试通过就直接提交到 main，Cloudflare 再自动重新部署。
-# 上游改版导致找不到修改位置时脚本会报错，这个流程失败、不提交，GitHub 会发邮件通知
+# 再从 Sukka 抓 Reject Base 转成 mrs 规则集。生成物只推到 rules 分支，不进 main：
+#   script.js、script-full.js、rules/sukka-reject.mrs
+# rules 分支是孤儿分支，每次有变化就用强制推送换成只有一个提交的新历史，仓库不会越长越大。
+# 部署时 scripts/build-overrides.mjs 会从 rules 分支取最新的覆写脚本；
+# 脚本有改动且设了 CLOUDFLARE_DEPLOY_TOKEN 时，这里直接重新部署（只在 main 上跑）。
+# 上游改版导致找不到修改位置时脚本会报错，这个流程失败、不推送，GitHub 会发邮件通知
 on:
   schedule:
     - cron: '0 20 * * *' # 每天 UTC 20:00（UTC+8 04:00）
@@ -16,13 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # 可选：权限含「账户 / Workers 脚本 / 编辑」的 API 令牌，用来在脚本有改动时重新部署；没设就跳过
+      DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: latest
           cache: npm
-      # sync-scripts 用 mihomo 把 Sukka 的 Reject Base 清单转成 mrs 规则集；每次都下载最新正式版
+      # sync-scripts 用 mihomo 把 Sukka 的清单转成 mrs 规则集；每次都下载最新正式版
       - run: |
           V=$(gh api repos/MetaCubeX/mihomo/releases/latest --jq .tag_name)
           echo "mihomo $V"
@@ -32,27 +38,58 @@ jobs:
           echo "MIHOMO=$RUNNER_TEMP/mihomo" >> "$GITHUB_ENV"
         env:
           GH_TOKEN: ${{ github.token }}
+      # 生成物写到 rules-out/
       - run: node scripts/sync-scripts.mjs
+      # 跟 rules 分支现有内容比，分别看整体与两个脚本有没有变（rules 分支还不存在时算有变化）
       - id: diff
         run: |
-          if git diff --quiet -- public/; then
+          mkdir rules-old
+          if git fetch --depth=1 origin rules:refs/remotes/origin/rules; then
+            git archive refs/remotes/origin/rules | tar -x -C rules-old
+          else
+            echo "rules 分支还不存在，首次生成"
+          fi
+          if diff -r -q rules-old rules-out; then
             echo "上游没有更新"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            git diff --stat -- public/
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-      # 跟「测试」流程一样先测过再提交（用 GITHUB_TOKEN 推送不会再触发「测试」流程）
+          if cmp -s rules-old/script.js rules-out/script.js && cmp -s rules-old/script-full.js rules-out/script-full.js; then
+            echo "scripts_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "scripts_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      # 跟「测试」流程一样先测过再推送；GENERATED_DIR 让测试用刚生成的脚本，而不是 rules 分支上的旧版
       - if: steps.diff.outputs.changed == 'true'
         run: npm ci --no-audit --no-fund
       - if: steps.diff.outputs.changed == 'true'
         run: npm test
+        env:
+          GENERATED_DIR: ${{ github.workspace }}/rules-out
       - if: steps.diff.outputs.changed == 'true'
         run: npx wrangler deploy --dry-run --outdir dist
+        env:
+          GENERATED_DIR: ${{ github.workspace }}/rules-out
+      # 推到 rules 分支：每次都是只有一个提交的新历史（强制推送）
       - if: steps.diff.outputs.changed == 'true'
         run: |
+          cd rules-out
+          git init -q -b rules
           git config user.name 'github-actions[bot]'
           git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
-          git add public/
-          git commit -m 'chore(script): 同步上游覆写脚本'
-          git push
+          git add -A
+          git commit -q -m "chore(rules): 同步上游覆写脚本与规则集（$(TZ=Asia/Shanghai date +%F)）"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin rules
+        env:
+          GH_TOKEN: ${{ github.token }}
+      # 服务端覆写是打包进 Worker 的，脚本变了才需要重新部署；规则集只由客户端经 CDN 下载，不用部署
+      - if: steps.diff.outputs.scripts_changed == 'true' && github.ref == 'refs/heads/main' && env.DEPLOY_TOKEN != ''
+        run: npx wrangler deploy
+        env:
+          GENERATED_DIR: ${{ github.workspace }}/rules-out
+          CLOUDFLARE_API_TOKEN: ${{ env.DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - if: steps.diff.outputs.scripts_changed == 'true' && github.ref == 'refs/heads/main' && env.DEPLOY_TOKEN == ''
+        run: echo "::notice::覆写脚本有更新，但没设 CLOUDFLARE_DEPLOY_TOKEN，服务端覆写要等下次部署才会用上新脚本"
