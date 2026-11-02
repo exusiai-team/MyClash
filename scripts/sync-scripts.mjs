@@ -109,7 +109,7 @@ export function patchScript(source, file) {
   }
   block = replaceOnce(block, "      ai: {\n", `${HUGGINGFACE_PROVIDER}      ai: {\n`, 'AI 规则集');
   block = useSukkaReject(block);
-  block = replaceOnce(block, "rules: ['RULE-SET,ai,AI'],", "rules: ['RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'],", 'AI 规则');
+  block = replaceOnce(block, "'RULE-SET,ai,AI'", "'RULE-SET,huggingface,默认代理', 'RULE-SET,ai,AI'", 'AI 规则');
   block = replaceOnce(
     block,
     `    name: 'AI',\n    testUrl: '${TEST_URLS.AI}',\n    baseOption: selectBaseOption,\n    defaultSelected: '美国',\n`,
