@@ -57,16 +57,17 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 > 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。
 
 相对原版的改动：
-- 分流组用各自服务的测速网址，取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 AI → `https://api.anthropic.com/cdn-cgi/trace`、
+- 分流组用各自服务的测速网址，取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 Google → `https://www.google.com/generate_204`）。
+  AI 改用 `https://api.anthropic.com/v1/models`：Bettbox 的 `/cdn-cgi/trace` 由 Cloudflare 边缘节点直接回应，只测到节点到就近 Cloudflare 的延迟，到不了 Anthropic 源站，地区被封也照样通；`/v1/models` 不带 key 由源站回 401，测的是到源站的整条路径。
   Telegram 改用 `https://api.telegram.org/`：Bettbox 的 `http://91.108.56.100/` 不支持 keep-alive，开了 unified-delay 测速常报错且延迟失准）；Bettbox 没检测的服务与地区、倍率组用通用测速网址 `https://connectivitycheck.gstatic.com/generate_204`（原版为 Apple 的测速网址），测速间隔从原版的 600 秒改为 300 秒。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
 - 「AI」组默认选「台湾」（原版为「美国」；订阅里没有台湾节点时由客户端退回第一项）
-- 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/cdn-cgi/trace`（同「AI」组），按 Claude 的连通性挑节点
+- 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/v1/models`（同「AI」组），按 Claude 的连通性挑节点
 - 「AdBlock」组（默认 `REJECT`）的广告规则集由 bett-rules 的 `category-ads` 换成 [Sukka 的 Reject Base](https://ruleset.skk.moe/Clash/domainset/reject.txt)（约 14 万个域名：广告、跟踪，以及小米反诈 `flash.sec.miui.com`、`fraud-detection.engine.miui.com`、云扫描等）。
   Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
   清单比 `category-ads` 激进，碰到误杀可在 AdBlock 组改选 `PASS`（连同广告规则一起放行）
 - 新增「IPv6」节点组：名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6` 的节点归进来（同时保留在原地区组），附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
-- 「直连」组改用 vivo 的测速网址 `https://wifi.vivo.com.cn/generate_204`（同时有 IPv4 与 IPv6 地址）。通用测速网址 `connectivitycheck.gstatic.com` 在国内 DNS 只有 IPv4 地址，「🇨🇳 直连 | 仅IPv6」解析不到 IPv6 地址，测速会一直超时
+- 「直连」组改用 vivo 的测速网址 `https://wifi.vivo.com.cn/generate_204`（同时有 IPv4 与 IPv6 地址）。通用测速网址 `connectivitycheck.gstatic.com` 在国内 DNS 只有 IPv4 地址，「🇨🇳 直连 | 仅IPv6」解析不到 IPv6 地址，测速会一直超时；默认选「🇨🇳 直连 | IPv6优先」（原版默认「双栈」）
 - 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 - `default-nameserver` 与 `proxy-server-nameserver` 由「114 明文 + 阿里 DoT + 腾讯 DoH」改为阿里、腾讯两个 DoH（`https://223.5.5.5/dns-query`、`https://1.12.12.12/dns-query`）。

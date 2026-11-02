@@ -30,12 +30,14 @@ export const SUKKA_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyCl
 export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
 export const BASE_TEST_INTERVAL = 300;
 
-// 分流组的测速网址，全部取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
+// 分流组的测速网址，基本取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
 // Bettbox 没检测的服务不列在这里，用通用测速网址 BASE_TEST_URL
 export const TEST_URLS = {
   YouTube: 'https://www.youtube.com/premium',
   Google: 'https://www.google.com/generate_204',
-  AI: 'https://api.anthropic.com/cdn-cgi/trace',
+  // Bettbox 用的 /cdn-cgi/trace 由 Cloudflare 边缘节点直接回应，只测到「节点 → 就近 Cloudflare」，
+  // 到不了 Anthropic 源站，地区被封也照样 200；/v1/models 不带 key 由源站回 401，测的是 Claude Code 实际走的整条路径
+  AI: 'https://api.anthropic.com/v1/models',
   GitHub: 'https://github.com/',
   Apple: 'https://gspe1-ssl.ls.apple.com/pep/gcc',
   // Bettbox 用的 http://91.108.56.100/ 不支持 keep-alive，unified-delay 的第二次请求常失败、延迟失准
@@ -90,7 +92,7 @@ export function patchScript(source, file) {
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，转成 mrs，含小米反诈 / 云扫描等域名）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
- * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时
+ * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时；默认选「IPv6优先」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
@@ -209,12 +211,18 @@ export function addIpv6Group(source) {
   return replaceOnce(source, anchor, IPV6_GROUP + anchor, '其他节点组生成代码');
 }
 
-// 「直连」组（极简模式与完整模式各一处）改用 DIRECT_TEST_URL
+// 「直连」组（极简模式与完整模式各一处）改用 DIRECT_TEST_URL，
+// 并把「IPv6优先」排到最前（select 组默认选第一个，原版默认「双栈」）
 export function addDirectTestUrl(source) {
   const re = /\n( +)name: '直连',\n\1proxies: \[\.\.\.directProxies\.map\(\(p\) => p\.name\)\],\n/g;
   const count = (source.match(re) || []).length;
   if (count !== 2) throw new Error(`「直连」组应有 2 处，找到 ${count} 处，上游脚本可能改版了`);
-  return source.replace(re, (m, indent) => `${m}${indent}url: '${DIRECT_TEST_URL}',\n`);
+  const ipv6First =
+    "[...directProxies.filter((p) => p['ip-version'] === 'ipv6-prefer'), ...directProxies.filter((p) => p['ip-version'] !== 'ipv6-prefer')]";
+  return source.replace(
+    re,
+    (m, indent) => `\n${indent}name: '直连',\n${indent}proxies: ${ipv6First}.map((p) => p.name),\n${indent}url: '${DIRECT_TEST_URL}',\n`,
+  );
 }
 
 // 减少 mihomo 内存与日志量：

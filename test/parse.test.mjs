@@ -169,6 +169,9 @@ for (const file of ['script.js', 'script-full.js']) {
     for (const name of ['台湾', '台湾-自动选择']) assert.equal(groups.get(name).url, TEST_URLS.AI, name);
     // 直连组用有 IPv6 地址的测速网址，「仅IPv6」才测得通
     assert.equal(groups.get('直连').url, DIRECT_TEST_URL);
+    // 直连组默认选「IPv6优先」，其余直连节点都还在
+    assert.equal(groups.get('直连').proxies[0], '🇨🇳 直连 | IPv6优先');
+    assert.equal(groups.get('直连').proxies.length, 5);
     // 其他组用通用测速网址与间隔
     for (const name of ['默认代理', '香港', '香港-自动选择', '漏网之鱼']) {
       assert.equal(groups.get(name).url, BASE_TEST_URL, name);
