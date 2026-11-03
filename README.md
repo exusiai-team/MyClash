@@ -4,7 +4,7 @@
 
 - **一键合并**：Worker 地址就是管理页，粘贴多个机场订阅即生成合并链接，流量自动加总
 - **快且稳**：每个机场一份缓存，30 分钟内抓过的直接用；更旧的才连机场，最多等 2.5 秒，等不到就先用旧缓存、背景更新
-- **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时用 GitHub Actions 每 6 小时代抓的缓存
+- **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时用 GitHub Actions 每 24 小时代抓的缓存
 - **到期屏蔽**：机场订阅到期或流量用完就自动跳过，流量与到期日也不计入；编辑页显示每个机场的到期日、流量与是否屏蔽
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
 - **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
@@ -17,7 +17,7 @@ flowchart LR
   C[Clash 客户端] -- 每次更新订阅 --> W[Cloudflare Worker]
   W -- 先读 --> K[(KV 缓存<br/>每个机场一份)]
   W -- 缓存超过 30 分钟才连，抓成功就写回 --> A[各机场订阅]
-  G[GitHub Actions<br/>非 Cloudflare IP 代抓] -- 每 6 小时 / 管理页「立即刷新缓存」写入 --> K
+  G[GitHub Actions<br/>非 Cloudflare IP 代抓] -- 每 24 小时 / 管理页「立即刷新缓存」写入 --> K
   G -- 代抓 --> A
 ```
 
@@ -31,7 +31,7 @@ KV（`myclash-sub-store`）会自动创建。部署后打开 `https://myclash.<�
 
 1. Cloudflare [API 令牌](https://dash.cloudflare.com/profile/api-tokens) → 创建自定义令牌，权限 `账户 / Workers KV 存储 / 编辑`
 2. 仓库 **Settings → Secrets → Actions** 新增 `CLOUDFLARE_API_TOKEN`
-3. **Actions → 代抓订阅缓存 → Run workflow** 执行一次；之后每 6 小时自动执行，缓存保留 3 天
+3. **Actions → 代抓订阅缓存 → Run workflow** 执行一次；之后每 24 小时自动执行，缓存保留 3 天
 
 > 若提示「请在 Secrets 里直接指定」，再加 `CLOUDFLARE_ACCOUNT_ID` 与 `KV_NAMESPACE_ID`。日志不会印出订阅链接或节点。
 
@@ -199,7 +199,7 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 
 | 项目 | 时间 | 内容 |
 | --- | --- | --- |
-| 代抓订阅缓存 | 每 6 小时，或管理页触发 | `.github/workflows/refresh-cache.yml` |
+| 代抓订阅缓存 | 每 24 小时，或管理页触发 | `.github/workflows/refresh-cache.yml` |
 | 测试 | PR 与 `main` 有更新时（只改文档不跑） | 单元测试 + `wrangler deploy --dry-run` |
 | 依赖更新 | 每月 1 号 | Dependabot 合成一个 PR，测试通过后自动合并 |
 | 部署 | `main` 有更新时 | Cloudflare 自动重新部署 |
