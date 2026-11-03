@@ -125,7 +125,7 @@ test('识别机场名称：Content-Disposition 优先，其次域名', () => {
   assert.equal(detectAirportName("attachment; filename*=UTF-8''AB%7CCD", 'https://x.com'), 'AB');
   // 文件名缩完不剩东西就用域名，中文域名转回中文
   assert.equal(detectAirportName('attachment; filename="clash.yaml"', 'https://sub.mojie.net/s'), 'mojie');
-  assert.equal(detectAirportName("attachment; filename*=UTF-8''%E6%B0%B8%E4%B9%85%E5%85%8D%E8%B4%B9%E4%BA%91", 'https://xn--9kqs1lo79d.cc/s'), '吹雪云');
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''%E6%B0%B8%E4%B9%85%E5%85%8D%E8%B4%B9%E4%BA%91", 'https://xn--9kqs1lo79d.cc/s'), '吹雪');
   assert.equal(detectAirportName(null, 'https://xn--bad!.cc/s'), '');
 });
 
@@ -151,7 +151,11 @@ test('机场简称：常见机场名称按规则缩短', () => {
     iceの小店: 'iceの小店',
     猫熊网络加速器: '猫熊',
     '一元机场 - 官网 yiyuan.xyz': '一元',
-    '【良心云】官网': '良心云',
+    '【良心云】官网': '良心',
+    维云云: '维云',
+    念云: '念云',
+    '69云': '69云',
+    最萌的云: '最萌的',
     '🚀八戒机场🚀': '八戒',
     '「宝可梦」机场订阅': '宝可梦',
     Nexitally_Clash: 'Nexitally',

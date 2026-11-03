@@ -600,7 +600,8 @@ export function dumpYaml(config) {
  * 1. 文件名本身是网址就取主域名；网址、emoji、括号拆掉
  * 2. 按 | / · 、「 - 」等分隔符切段，取第一个还有内容的段，后面多半是口号或网址（一元机场 - 官网 yiyuan.xyz）
  * 3. 去掉会让覆写脚本误判节点的字（见 CONFLICT_*）
- * 4. 去掉通用词 Cloud、Net、Link、VPN、网络、加速器…，独立成词或黏在后面（FSCloud、SingLink、猫熊网络加速器）都去掉
+ * 4. 去掉通用词 Cloud、Net、Link、VPN、网络、加速器…，独立成词或黏在后面（FSCloud、SingLink、猫熊网络加速器）都去掉；
+ *    结尾的「云」剩 2 个字以上才去掉（良心云 → 良心，念云、69云不动）
  * 5. 中英并列（Nexitally 奶昔、WestData西部数据）只留中文，中文剩一个字（大机场 Big Airport）就留英文
  * 6. 显示宽度超过 MAX_NAME_WIDTH（中日韩字算 2）从后面去词
  * 全部去光或只剩一个字（clash、config、一串随机字符、永久免费云）就改用订阅域名；中文域名（xn--）转回中文
@@ -674,7 +675,10 @@ function stripWord(word) {
   if (/^\d{5,}$/.test(w) || (/^[a-z\d]{16,}$/i.test(w) && /\d/.test(w))) return '';
   // 剩一个字（XCloud → X）由 shortName 判定认不出、改用域名，简称里不留通用词
   const glued = w.match(NOISE_SUFFIX);
-  return glued ? stripWord(glued[1]) : w;
+  if (glued) return stripWord(glued[1]);
+  // 结尾的「云」也是通用词，但剩一个字或纯数字（念云、69云）就认不出，保留
+  const yun = w.match(/^(.+)[云雲]$/u);
+  return yun && [...yun[1]].length >= 2 && !/^\d+$/.test(yun[1]) ? stripWord(yun[1]) : w;
 }
 
 // 中英并列只留一种：优先中文，中文只剩一个字就留英文
