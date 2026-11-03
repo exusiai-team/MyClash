@@ -506,3 +506,35 @@ test('节点筛选：手动排除与倍率门槛在合并时生效，/nodes 列�
   }
   assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/nodes`)).status, 404);
 });
+
+test('节点筛选：每个机场可以单独设倍率门槛（跟随全局 / 不限 / 自定义）', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const { token, sources } = await (
+    await call(env, 'POST', '/api/subs', {
+      body: {
+        name: 'x',
+        excludeRate: 2,
+        sources: [
+          { name: '跟随', url: `${base}/rate` },
+          { name: '不限', url: `${base}/rate`, excludeRate: null },
+          { name: '自定', url: `${base}/rate`, excludeRate: 0.5 },
+          { name: '无效', url: `${base}/rate`, excludeRate: 'abc' },
+        ],
+      },
+    })
+  ).json();
+  assert.deepEqual(sources.map((s) => s.excludeRate), [undefined, null, 0.5, undefined]);
+  assert.equal(Object.hasOwn(sources[0], 'excludeRate'), false);
+
+  const body = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+  assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), [
+    '跟随 | 日本 01-1.0x',
+    '不限 | 香港 01 [2x]',
+    '不限 | 日本 01-1.0x',
+    '无效 | 日本 01-1.0x',
+  ]);
+  assert.match(body, /^# \[自定\] 0 个节点（已排除 2 个）$/m);
+});

@@ -73,8 +73,7 @@ async function serveSubscription(env, token, origin, script) {
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
   const mode = record.prefixMode ?? 'index';
-  const excludeRate = record.excludeRate ?? null;
-  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode, excludeRate)));
+  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode, sourceRate(source, record))));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) {
     return results.every((r) => r.blocked)
@@ -415,13 +414,26 @@ function validate(input) {
     const sourceName = String(s?.name ?? '').trim().slice(0, 20);
     const exclude = Array.isArray(s?.exclude) ? [...new Set(s.exclude.filter((n) => typeof n === 'string' && n && n.length <= MAX_NODE_NAME))] : [];
     if (exclude.length > MAX_EXCLUDE) throw new HttpError(400, `第 ${i + 1} 个机场最多排除 ${MAX_EXCLUDE} 个节点`);
-    return exclude.length ? { name: sourceName, url, exclude } : { name: sourceName, url };
+    const source = { name: sourceName, url };
+    if (exclude.length) source.exclude = exclude;
+    // 这个机场自己的倍率门槛：没有这个键就跟随全局，null 表示不限
+    if (s?.excludeRate === null) source.excludeRate = null;
+    else if (validRate(s?.excludeRate) !== null) source.excludeRate = validRate(s.excludeRate);
+    return source;
   });
   const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
-  // 倍率 ≥ excludeRate 的节点不导入；null 表示不限
-  const rate = Number(input.excludeRate);
-  const excludeRate = input.excludeRate != null && input.excludeRate !== '' && Number.isFinite(rate) && rate > 0 ? rate : null;
-  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate, sources };
+  // 全局：倍率 ≥ excludeRate 的节点不导入；null 表示不限
+  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), sources };
+}
+
+function validRate(v) {
+  const rate = typeof v === 'number' || (typeof v === 'string' && v.trim()) ? Number(v) : NaN;
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+// 机场的倍率门槛：自己设了就用自己的（null 表示不限），否则跟随全局
+function sourceRate(source, record) {
+  return Object.hasOwn(source, 'excludeRate') ? source.excludeRate : (record.excludeRate ?? null);
 }
 
 function newToken() {
