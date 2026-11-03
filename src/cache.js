@@ -1,5 +1,5 @@
-// 订阅缓存：GitHub Actions 定时代抓（scripts/refresh-cache.mjs）写进 KV，
-// Worker 直连失败（例如机场屏蔽 Cloudflare）时改用这份缓存
+// 机场订阅缓存：每个机场一份，Worker 抓成功时写回（src/worker.js 的 loadSource），
+// GitHub Actions 定时代抓（scripts/refresh-cache.mjs）也写进来，给屏蔽 Cloudflare 的机场用
 export const CACHE_PREFIX = 'cache:';
 // 缓存保留 3 天，太旧的节点就不再使用
 export const CACHE_TTL_SECONDS = 3 * 24 * 3600;

@@ -1,11 +1,17 @@
 import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
-import { cacheKey } from './cache.js';
+import { cacheKey, CACHE_TTL_SECONDS } from './cache.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
 
 const KEY_PREFIX = 'sub:';
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 10000;
 const FETCH_UA = 'clash.meta';
+// 机场订阅缓存（见 loadSource）：30 分钟内的直接用；更旧的先连机场，最多等 2.5 秒，等不到就先用旧缓存
+const FRESH_MS = 30 * 60 * 1000;
+const STALE_WAIT_MS = 2500;
+// 抓不到又没有缓存的机场记在 Worker 的内存里（不写 KV），5 分钟内不再重抓
+const FAILURE_MS = 5 * 60 * 1000;
+const recentFailures = new Map();
 const MAX_SOURCES = 30;
 // 管理页「立即刷新缓存」：触发 GitHub Actions 的代抓 workflow
 const REFRESH_WORKFLOW = 'refresh-cache.yml';
@@ -31,16 +37,16 @@ const OVERRIDES = {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (err) {
       return json({ error: err.expose ? err.message : '服务器错误' }, err.status ?? 500);
     }
   },
 };
 
-async function route(request, env) {
+async function route(request, env, ctx) {
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean);
   if (!env.SUB_STORE) return text('这个版本没有绑定 KV（预览版本），请使用正式的 Worker 地址', 503);
@@ -51,9 +57,9 @@ async function route(request, env) {
     if (request.headers.get('sec-fetch-mode') === 'navigate' && request.headers.get('accept')?.includes('text/html')) {
       return Response.redirect(`${url.origin}/#${importHash(parts[1], url.searchParams.get('script'))}`, 302);
     }
-    return serveSubscription(env, parts[1], url.origin, url.searchParams.get('script'));
+    return serveSubscription(env, ctx, parts[1], url.origin, url.searchParams.get('script'));
   }
-  if (parts[0] === 'api') return api(request, env, parts.slice(1));
+  if (parts[0] === 'api') return api(request, env, ctx, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
 
@@ -66,14 +72,14 @@ function importHash(token, script) {
   return params.toString();
 }
 
-async function serveSubscription(env, token, origin, script) {
+async function serveSubscription(env, ctx, token, origin, script) {
   const override = script === null ? null : Object.hasOwn(OVERRIDES, script) ? OVERRIDES[script] : undefined;
   if (override === undefined) return text('script 参数只能是 lite（精简）或 full（全量），不覆写请去掉这个参数', 400);
   const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
   const mode = record.prefixMode ?? 'index';
-  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode, sourceRate(source, record))));
+  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, ctx, source, i, mode, sourceRate(source, record))));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) {
     return results.every((r) => r.blocked)
@@ -123,11 +129,11 @@ async function serveSubscription(env, token, origin, script) {
   return new Response(dumpConfig(config, comments), { headers });
 }
 
-async function fetchSource(env, source, index, mode, excludeRate) {
+async function fetchSource(env, ctx, source, index, mode, excludeRate) {
   const fallback = source.name || `S${index + 1}`;
   let label = fallback;
   let prefix = mode === 'none' ? '' : fallback;
-  const got = await loadSource(env, source.url);
+  const got = await loadSource(env, ctx, source.url);
   if (!source.name) {
     const detected = detectAirportName(got.disposition, source.url);
     if (detected) {
@@ -138,7 +144,7 @@ async function fetchSource(env, source, index, mode, excludeRate) {
   if (got.error) return { label, prefix, error: got.error };
   // 到期或流量用完：节点多半已不能用，整个机场跳过（不解析节点），流量与到期日也不计入合并后的订阅
   if (got.blocked) return { label, prefix, blocked: blockReason(got), cachedAt: got.cachedAt, directError: got.directError };
-  const all = parseSubscription(got.body);
+  const all = got.parsed ?? parseSubscription(got.body);
   if (all.proxies.length === 0) return { label, prefix, parsed: all, error: '没有可用节点' };
   const { proxies, excluded } = filterProxies(all.proxies, { exclude: source.exclude, excludeRate });
   const parsed = { ...all, proxies };
@@ -147,19 +153,48 @@ async function fetchSource(env, source, index, mode, excludeRate) {
   return { label, prefix, parsed, excluded, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
 }
 
-// 直连抓取，失败就改用 GitHub Actions 代抓的缓存；顺便解析流量与到期日，blocked 为 expired（已到期）/ exhausted（流量用完）时由调用者屏蔽
-async function loadSource(env, url, { body = true } = {}) {
-  let got = await fetchUpstream(url, body);
-  if (got.error) {
-    const cached = await env.SUB_STORE.get(await cacheKey(url), 'json').catch(() => null);
-    if (cached?.body) got = { ...cached, cachedAt: cached.fetchedAt, directError: got.error };
-  }
+/**
+ * 取得机场订阅的唯一方式：每个机场一份 KV 缓存（Worker 抓成功就写回，GitHub Actions 定时代抓屏蔽 Cloudflare 的机场）。
+ * 缓存不到 FRESH_MS 就直接用，不连机场；更旧的先连机场，有旧缓存时最多等 STALE_WAIT_MS，
+ * 等不到或失败就用旧缓存（并标出 cachedAt 与 directError），背景继续抓完写回缓存。
+ * refresh = true（编辑页「重新检查」）时不用新鲜缓存。顺便解析流量与到期日，blocked 为 expired / exhausted 时由调用者屏蔽
+ */
+async function loadSource(env, ctx, url, { refresh = false } = {}) {
+  const key = await cacheKey(url);
+  const cached = await env.SUB_STORE.get(key, 'json').catch(() => null);
+  if (cached?.body && !refresh && Date.now() - cached.fetchedAt < FRESH_MS) return withStatus(cached);
+
+  // 没有缓存又刚失败过的机场，5 分钟内直接回报同一个错误，不再每次等它失败或超时
+  const failed = recentFailures.get(url);
+  if (!cached?.body && !refresh && failed && Date.now() - failed.at < FAILURE_MS) return withStatus(failed.got);
+
+  const live = fetchUpstream(url).then((got) => {
+    // 只缓存解析得出节点的内容，避免把错误页存进去
+    const parsed = got.error ? null : parseSubscription(got.body);
+    if (!parsed?.proxies.length) {
+      const failure = { disposition: got.disposition, error: got.error ?? '没有可用节点' };
+      recentFailures.set(url, { at: Date.now(), got: failure });
+      return failure;
+    }
+    recentFailures.delete(url);
+    const entry = { body: got.body, disposition: got.disposition, userinfo: got.userinfo, fetchedAt: Date.now() };
+    background(ctx, env.SUB_STORE.put(key, JSON.stringify(entry), { expirationTtl: CACHE_TTL_SECONDS }));
+    return { ...entry, parsed };
+  });
+  if (!cached?.body) return withStatus(await live);
+
+  const got = await Promise.race([live, sleep(STALE_WAIT_MS)]);
+  if (got && !got.error) return withStatus(got);
+  if (!got) background(ctx, live);
+  return withStatus({ ...cached, cachedAt: cached.fetchedAt, directError: got?.error ?? '机场回应太慢' });
+}
+
+function withStatus(got) {
   const info = parseUserinfo(got.userinfo);
   return { ...got, info, blocked: isExpired(info) ? 'expired' : isExhausted(info) ? 'exhausted' : null };
 }
 
-// body = false 时只读响应标头（流量、到期日、文件名），不下载订阅内容
-async function fetchUpstream(url, body = true) {
+async function fetchUpstream(url) {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': FETCH_UA },
@@ -167,14 +202,31 @@ async function fetchUpstream(url, body = true) {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     const disposition = res.headers.get('content-disposition');
-    if (!res.ok || !body) res.body?.cancel().catch(() => {});
-    if (!res.ok) return { disposition, error: `HTTP ${res.status}` };
-    const userinfo = res.headers.get('subscription-userinfo');
-    return body ? { disposition, userinfo, body: await res.text() } : { disposition, userinfo };
+    if (!res.ok) return { disposition, error: `HTTP ${res.status}${await refusal(res)}` };
+    return { disposition, userinfo: res.headers.get('subscription-userinfo'), body: await res.text() };
   } catch (err) {
     return { error: err?.name === 'TimeoutError' ? '超时' : '连接失败' };
   }
 }
+
+// 机场面板拒绝时常回 JSON 说明原因（例如 MNKCloud 的 {"message":"token is error"} 表示订阅链接已失效），附在错误后面
+async function refusal(res) {
+  try {
+    const data = JSON.parse((await res.text()).slice(0, 2000));
+    const reason = data?.message ?? data?.msg ?? data?.error;
+    return typeof reason === 'string' && reason.trim() ? `：${reason.trim().slice(0, 60)}` : '';
+  } catch {
+    return '';
+  }
+}
+
+// 回应送出后继续执行（背景更新缓存）；测试没有 ctx 时直接让它跑完
+function background(ctx, promise) {
+  const settled = promise.catch(() => {});
+  ctx?.waitUntil?.(settled);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(() => resolve(null), ms));
 
 function blockReason({ blocked, info }) {
   return blocked === 'expired'
@@ -206,7 +258,7 @@ class HttpError extends Error {
   }
 }
 
-async function api(request, env, parts) {
+async function api(request, env, ctx, parts) {
   const { method } = request;
   if (parts.length === 1 && parts[0] === 'scripts' && method === 'GET') return syncStatus(env);
   if (parts[0] !== 'subs') throw new HttpError(404, '找不到');
@@ -252,8 +304,9 @@ async function api(request, env, parts) {
 
   if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') return triggerRefresh(env);
   if (parts.length === 3 && parts[2] === 'sync-scripts' && method === 'POST') return triggerSync(env);
-  if (parts.length === 3 && parts[2] === 'status' && method === 'GET') return sourceStatus(env, record);
-  if (parts.length === 3 && parts[2] === 'nodes' && method === 'GET') return sourceNodes(env, record);
+  if (parts.length === 3 && parts[2] === 'sources' && method === 'GET') {
+    return sourceDetails(env, ctx, record, new URL(request.url).searchParams.get('refresh') === '1');
+  }
 
   if (parts.length === 3 && parts[2] === 'rotate' && method === 'POST') {
     const next = newToken();
@@ -346,38 +399,28 @@ async function syncStatus(env) {
   return json(status);
 }
 
-// 编辑页显示每个机场的流量、到期日与是否屏蔽：只读响应标头，不下载、不解析节点
-async function sourceStatus(env, record) {
+// 编辑页：每个机场的流量、到期日、是否屏蔽与原本的节点名称和倍率（未筛选；已屏蔽的机场也列出，续费后就照这里的选择）。
+// 跟合并订阅用同一份缓存；refresh 为「重新检查」，不用新鲜缓存
+async function sourceDetails(env, ctx, record, refresh) {
   const sources = await Promise.all(
     record.sources.map(async ({ url }) => {
-      const got = await loadSource(env, url, { body: false });
+      const got = await loadSource(env, ctx, url, { refresh });
+      // 同名节点在筛选时一起处理，只列一次
+      const names = got.body ? [...new Set((got.parsed ?? parseSubscription(got.body)).proxies.map((p) => String(p.name)))] : [];
       return {
         url,
         name: detectAirportName(got.disposition, url),
         error: got.error ?? null,
         directError: got.directError ?? null,
         cachedAt: got.cachedAt ?? null,
+        fetchedAt: got.fetchedAt ?? null,
         info: got.info,
         blocked: got.blocked,
+        nodes: names.map((name) => ({ name, rate: extractRate(name).rate })),
       };
     }),
   );
   return json({ checkedAt: Date.now(), sources });
-}
-
-// 编辑页「选择节点」：每个机场原本的节点名称与倍率（未筛选），已屏蔽的机场也列出，续费后就照这里的选择
-async function sourceNodes(env, record) {
-  const sources = await Promise.all(
-    record.sources.map(async ({ url }) => {
-      const got = await loadSource(env, url);
-      const base = { url, name: detectAirportName(got.disposition, url), blocked: got.blocked, cachedAt: got.cachedAt ?? null };
-      if (got.error) return { ...base, error: got.error, nodes: [] };
-      // 同名节点在筛选时一起处理，只列一次
-      const names = [...new Set(parseSubscription(got.body).proxies.map((p) => String(p.name)))];
-      return { ...base, error: null, nodes: names.map((name) => ({ name, rate: extractRate(name).rate })) };
-    }),
-  );
-  return json({ sources });
 }
 
 function putRecord(env, token, record) {

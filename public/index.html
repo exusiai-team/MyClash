@@ -482,7 +482,7 @@
       <div class="sec-head">
         <h2 id="sec-src"><span class="step">2</span>机场订阅 <span class="count" id="src-count"></span></h2>
         <span class="chips" id="src-summary"></span>
-        <button type="button" class="btn sm" id="check-btn" title="即时读取每个机场的流量、到期日与节点"><svg class="i"><use href="#i-refresh"/></svg>重新检查</button>
+        <button type="button" class="btn sm" id="check-btn" title="重新连每个机场，读最新的流量、到期日与节点"><svg class="i"><use href="#i-refresh"/></svg>重新检查</button>
       </div>
       <p class="hint sec-desc" id="check-hint"></p>
       <div id="sources"></div>
@@ -789,11 +789,9 @@
   // 编辑中的订阅：TOKEN（新建时为 null）与已保存的订阅链接
   let editingToken = null;
   let savedUrls = new Set();
-  // 即时检查的流量与到期日、每个机场原本的节点（都以订阅链接为键）
-  let statusByUrl = new Map();
-  let nodesByUrl = new Map();
-  let checking = false;
-  let loadingNodes = false;
+  // 每个机场的流量、到期日与原本的节点（以订阅链接为键，来自 /sources）
+  let sourceByUrl = new Map();
+  let loading = false;
   let checkSeq = 0;
   // 节点筛选：手动排除的节点名称、每个机场的倍率门槛设置、展开的机场、每个机场的导入统计
   let excludeByUrl = new Map();
@@ -844,9 +842,12 @@
     }
     if (info?.total) parts.push(`已用 ${size(used)} / ${size(info.total)}`);
     else if (used) parts.push(`已用 ${size(used)}`);
+    // 资料都来自 Worker 的缓存；cachedAt 表示这次连机场失败（或太慢），用的是旧缓存
     if (st.cachedAt) {
       parts.push(`直连失败（${st.directError}），资料来自 ${ago(st.cachedAt)}的缓存`);
       if (kind === 'ok') { kind = 'cache'; tag = '缓存'; }
+    } else if (st.fetchedAt) {
+      parts.push(`${ago(st.fetchedAt)}更新`);
     }
     return { kind, tag, text: parts.join(' · ') };
   }
@@ -855,23 +856,23 @@
     const mode = getPrefixMode();
     if (mode === 'none') return '不加前缀';
     if (mode === 'index') return `自动：S${i + 1}`;
-    const name = statusByUrl.get(url)?.name || nodesByUrl.get(url)?.name;
-    return statusByUrl.has(url) || nodesByUrl.has(url) ? `自动：${name || `S${i + 1}`}` : '自动识别（选填）';
+    const name = sourceByUrl.get(url)?.name;
+    return sourceByUrl.has(url) ? `自动：${name || `S${i + 1}`}` : '自动识别（选填）';
   }
   // 机场显示名称：自定义前缀 > 自动识别 > S1、S2…
   function airportName(url, i) {
     const row = rows().find((r) => urlOf(r) === url);
-    return row?.querySelector('.src-name').value.trim() || statusByUrl.get(url)?.name || nodesByUrl.get(url)?.name || `S${i + 1}`;
+    return row?.querySelector('.src-name').value.trim() || sourceByUrl.get(url)?.name || `S${i + 1}`;
   }
 
   function renderRow(row, i) {
     const url = urlOf(row);
-    const st = statusByUrl.get(url);
+    const st = sourceByUrl.get(url);
     row.querySelector('.src-idx').textContent = i + 1;
     row.querySelector('.src-name').placeholder = prefixPlaceholder(i, url);
     let d = null;
     if (url && editingToken) {
-      if (checking && savedUrls.has(url)) d = { kind: 'pending', tag: '检查中', text: '正在读取流量与到期日…' };
+      if (loading && savedUrls.has(url)) d = { kind: 'pending', tag: '检查中', text: '正在读取流量、到期日与节点…' };
       else if (st) d = describe(st);
       else if (!savedUrls.has(url)) d = { kind: 'idle', tag: '未检查', text: '新的链接保存后才会检查到期日与节点' };
     }
@@ -897,24 +898,25 @@
       .filter(([, tag]) => counts[tag]).map(([kind, tag]) => pill(kind, `${tag} ${counts[tag]}`)).join('');
   }
 
-  // 「重新检查」：流量与到期日（只读标头，很快）和节点（要下载订阅）同时读
-  async function checkAll() {
+  // 读每个机场的流量、到期日与节点：打开编辑页时用 Worker 的缓存（很快），「重新检查」才重新连机场
+  async function loadSources(refresh = false) {
     if (!editingToken) return;
     const seq = ++checkSeq;
-    checking = loadingNodes = true;
+    loading = true;
     $('check-btn').disabled = true;
     render();
-    const token = editingToken;
-    const status = api('GET', `/subs/${token}/status`).then(({ sources }) => {
-      if (seq === checkSeq) statusByUrl = new Map(sources.map((s) => [s.url, s]));
-    }).catch((e) => seq === checkSeq && showMsg($('edit-msg'), '检查到期日失败：' + e.message))
-      .finally(() => { if (seq === checkSeq) { checking = false; render(); } });
-    const nodes = api('GET', `/subs/${token}/nodes`).then(({ sources }) => {
-      if (seq === checkSeq) nodesByUrl = new Map(sources.map((s) => [s.url, s]));
-    }).catch((e) => seq === checkSeq && showMsg($('edit-msg'), '读取节点失败：' + e.message))
-      .finally(() => { if (seq === checkSeq) { loadingNodes = false; render(); } });
-    await Promise.allSettled([status, nodes]);
-    if (seq === checkSeq) $('check-btn').disabled = false;
+    try {
+      const { sources } = await api('GET', `/subs/${editingToken}/sources${refresh ? '?refresh=1' : ''}`);
+      if (seq === checkSeq) sourceByUrl = new Map(sources.map((s) => [s.url, s]));
+    } catch (e) {
+      if (seq === checkSeq) showMsg($('edit-msg'), '读取机场失败：' + e.message);
+    } finally {
+      if (seq === checkSeq) {
+        loading = false;
+        $('check-btn').disabled = false;
+        render();
+      }
+    }
   }
 
   // 机场的倍率门槛设置：inherit 跟随全局、none 不限、custom 自定义
@@ -942,10 +944,9 @@
   function openEditor(record) {
     editingToken = record ? record.token : null;
     savedUrls = new Set(record ? record.sources.map((s) => s.url) : []);
-    statusByUrl = new Map();
-    nodesByUrl = new Map();
+    sourceByUrl = new Map();
     statsByUrl = new Map();
-    checking = loadingNodes = false;
+    loading = false;
     checkSeq++;
     excludeByUrl = new Map((record ? record.sources : []).map((s) => [s.url, new Set(s.exclude || [])]));
     rateByUrl = new Map((record ? record.sources : []).map((s) => [s.url, fromSaved(s)]));
@@ -965,13 +966,13 @@
     $('refresh-btn').classList.toggle('hidden', !record);
     $('check-btn').classList.toggle('hidden', !record);
     $('check-hint').textContent = record
-      ? '打开编辑页时会即时检查每个机场的流量、到期日与节点；已到期或流量用完的机场合并时自动屏蔽，续费或流量重置后自动恢复。'
+      ? '显示的是 Worker 缓存的资料（30 分钟内抓过的不再连机场），按「重新检查」重新连机场；已到期或流量用完的机场合并时自动屏蔽，续费或流量重置后自动恢复。'
       : '已到期或流量用完的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日、流量与节点。';
     dirty = false;
     if (history.state?.view !== 'edit') history.pushState({ view: 'edit' }, '');
     showView('edit');
     render();
-    if (record) checkAll();
+    if (record) loadSources();
     else $('edit-name').focus();
   }
 
@@ -1028,7 +1029,7 @@
   $('add-src').onclick = () => { addSourceRow(); render(); rows().at(-1).querySelector('.src-url').focus(); };
   $('cancel-btn').onclick = leaveEditor;
   $('back-btn').onclick = leaveEditor;
-  $('check-btn').onclick = checkAll;
+  $('check-btn').onclick = () => loadSources(true);
   $('bulk-btn').onclick = () => {
     const open = $('bulk-box').hidden;
     $('bulk-box').hidden = !open;
@@ -1052,7 +1053,7 @@
   // --- 节点筛选 ---
   // 每个机场一组：标题列（展开、名称、导入统计、倍率门槛），展开后是这个机场的倍率标签与节点清单
   function groupHtml(url, i, q, acc) {
-    const src = nodesByUrl.get(url);
+    const src = sourceByUrl.get(url);
     const limit = effectiveRate(url);
     const setting = rateSetting(url);
     const global = getExcludeRate();
@@ -1069,7 +1070,7 @@
 
     if (!src || src.error) {
       const why = src ? `抓取失败：${escapeHtml(src.error)}，之前的选择保留不变`
-        : !savedUrls.has(url) ? '新的链接保存后才能选择节点' : loadingNodes ? '正在读取节点…' : '没有读到节点';
+        : !savedUrls.has(url) ? '新的链接保存后才能选择节点' : loading ? '正在读取节点…' : '没有读到节点';
       const hide = q ? ' hidden' : '';
       return `<section class="ng${hide}" data-url="${escapeHtml(url)}">${head(false, '', src ? pill('fail', '失败') : '', true)}<p class="ng-empty">${why}</p></section>`;
     }
@@ -1134,13 +1135,13 @@
 
     const parts = [acc.byRate && `倍率不导入 ${acc.byRate}`, acc.manual && `手动排除 ${acc.manual}`].filter(Boolean);
     const summary = acc.total ? `将导入 ${acc.kept} / ${acc.total} 个节点` : '';
-    $('filter-summary').textContent = summary ? summary + (parts.length ? `（${parts.join('，')}）` : '') : loadingNodes ? '正在读取节点…' : '';
-    $('bar-summary').textContent = summary || (editingToken ? (loadingNodes ? '正在读取节点…' : '') : '保存后就能看到每个机场的节点');
+    $('filter-summary').textContent = summary ? summary + (parts.length ? `（${parts.join('，')}）` : '') : loading ? '正在读取节点…' : '';
+    $('bar-summary').textContent = summary || (editingToken ? (loading ? '正在读取节点…' : '') : '保存后就能看到每个机场的节点');
     // 全局倍率标签：节点里实际出现的倍率，点一下设成全局门槛，再点一下取消；会被排除的标成删除线
     const global = getExcludeRate();
     $('rate-chips').innerHTML = [...acc.rates].sort((a, b) => a[0] - b[0]).map(([r, n]) =>
       `<button type="button" class="rate-chip${global !== null && r >= global ? ' on' : ''}" data-rate="${r}" title="全局设为倍率 ≥ ${r}x 不导入">${r}x<small>${n}</small></button>`).join('');
-    const loaded = currentUrls().filter((u) => nodesByUrl.get(u)?.nodes?.length);
+    const loaded = currentUrls().filter((u) => sourceByUrl.get(u)?.nodes?.length);
     $('expand-all').textContent = loaded.length && loaded.every((u) => expanded.has(u)) ? '全部收起' : '全部展开';
     refreshRows();
   }
@@ -1153,7 +1154,7 @@
   function pickAll(urls, picked) {
     const q = $('node-search').value.trim().toLowerCase();
     for (const url of urls) {
-      const src = nodesByUrl.get(url);
+      const src = sourceByUrl.get(url);
       if (!src?.nodes) continue;
       const limit = effectiveRate(url);
       const set = excludeSet(url);
@@ -1238,7 +1239,7 @@
   $('pick-all').onclick = () => pickAll(currentUrls(), true);
   $('pick-none').onclick = () => pickAll(currentUrls(), false);
   $('expand-all').onclick = () => {
-    const loaded = currentUrls().filter((u) => nodesByUrl.get(u)?.nodes?.length);
+    const loaded = currentUrls().filter((u) => sourceByUrl.get(u)?.nodes?.length);
     const all = loaded.every((u) => expanded.has(u));
     expanded = new Set(all ? [] : loaded);
     render();
@@ -1248,7 +1249,7 @@
   function excludeFor(url) {
     const set = excludeByUrl.get(url);
     if (!set?.size) return [];
-    const src = nodesByUrl.get(url);
+    const src = sourceByUrl.get(url);
     if (!src || src.error) return [...set];
     const names = new Set(src.nodes.map((n) => n.name));
     return [...set].filter((n) => names.has(n));

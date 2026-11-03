@@ -1,5 +1,5 @@
 // GitHub Actions 定时执行：从 GitHub 的机器（不是 Cloudflare 的 IP）抓所有机场订阅，
-// 写进 Worker 的 KV 当缓存。机场屏蔽 Cloudflare 时，Worker 就改用这份缓存。
+// 写进 Worker 的 KV 缓存（跟 Worker 抓成功时写回的是同一份）。屏蔽 Cloudflare 的机场只靠这里更新。
 // 日志只印数量，不印订阅链接与内容。
 import { parseSubscription } from '../src/parse.js';
 import { cacheKey, CACHE_TTL_SECONDS } from '../src/cache.js';

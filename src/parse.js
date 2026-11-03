@@ -321,7 +321,7 @@ export function extractRate(name) {
 }
 
 /** 节点倍率；名称没有标倍率的算 1 倍 */
-export function nodeRate(name) {
+function nodeRate(name) {
   return extractRate(name).rate ?? 1;
 }
 
