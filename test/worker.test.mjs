@@ -453,3 +453,56 @@ test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否�
   assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/status`)).status, 404);
   assert.equal((await call(env, 'POST', `/api/subs/${token}/status`)).status, 405);
 });
+
+test('节点筛选：手动排除与倍率门槛在合并时生效，/nodes 列出原本的节点', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const created = await (
+    await call(env, 'POST', '/api/subs', {
+      body: {
+        name: 'x',
+        rateTag: true,
+        excludeRate: 2,
+        sources: [
+          { name: 'A', url: `${base}/rate` },
+          { name: 'B', url: `${base}/b64`, exclude: ['美国 01', '美国 01', 3, ''] },
+        ],
+      },
+    })
+  ).json();
+  assert.equal(created.excludeRate, 2);
+  assert.deepEqual(created.sources[1].exclude, ['美国 01']);
+  assert.equal(created.sources[0].exclude, undefined);
+
+  const res = await worker.fetch(new Request(`https://w.test/sub/${created.token}`), env);
+  const body = await res.text();
+  assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['A | 日本 01', 'B | 香港 01']);
+  assert.match(body, /^# \[A\] 1 个节点（已排除 1 个）$/m);
+  assert.match(body, /^# \[B\] 1 个节点（已排除 1 个）$/m);
+  // 被排除的节点所在机场照常计入流量
+  assert.equal(res.headers.get('subscription-userinfo'), 'upload=10; download=20; total=50; expire=1900000000');
+
+  const nodes = await (await call(env, 'GET', `/api/subs/${created.token}/nodes`)).json();
+  assert.deepEqual(nodes.sources.map((s) => s.nodes), [
+    [{ name: '香港 01 [2x]', rate: 2 }, { name: '日本 01-1.0x', rate: 1 }],
+    [{ name: '美国 01', rate: null }, { name: '香港 01', rate: null }],
+  ]);
+  assert.equal(nodes.sources[0].error, null);
+
+  // 节点全被排除：该机场不计流量；全部机场都被排除时返回 502 并说明
+  await call(env, 'PUT', `/api/subs/${created.token}`, {
+    body: { name: 'x', excludeRate: 0.5, sources: [{ name: 'A', url: `${base}/rate` }, { name: 'B', url: `${base}/b64` }] },
+  });
+  const none = await worker.fetch(new Request(`https://w.test/sub/${created.token}`), env);
+  assert.equal(none.status, 502);
+  assert.match(await none.text(), /都被排除/);
+
+  // 不合法的门槛当成不限
+  for (const excludeRate of [0, -1, 'abc', '', null]) {
+    const r = await (await call(env, 'PUT', `/api/subs/${created.token}`, { body: { name: 'x', excludeRate, sources: [{ url: base }] } })).json();
+    assert.equal(r.excludeRate, null, String(excludeRate));
+  }
+  assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/nodes`)).status, 404);
+});

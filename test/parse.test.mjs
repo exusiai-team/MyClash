@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, dumpYaml, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
 import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
@@ -125,6 +125,27 @@ test('倍率提取：常见写法与分隔符清理', () => {
   for (const name of ['香港 01', 'Linux2 香港', '日本-4 (IPv6)', '剩余流量：2x', '套餐到期 x2']) {
     assert.deepEqual(extractRate(name), { rate: null, rest: name }, name);
   }
+});
+
+test('节点筛选：手动排除、倍率 ≥ 门槛不导入（没标的算 1 倍），dialer-proxy 断链的一并去掉', () => {
+  const proxies = [
+    { name: '香港 01 [2x]', type: 'ss' },
+    { name: '日本 01-0.5x', type: 'ss' },
+    { name: '美国 01', type: 'ss' },
+    { name: '台湾 01', type: 'ss', 'dialer-proxy': '香港 01 [2x]' },
+    { name: '台湾 02', type: 'ss', 'dialer-proxy': '台湾 01' },
+    { name: '剩余流量：10 GB', type: 'ss' },
+  ];
+  const names = (opts) => filterProxies(proxies, opts).proxies.map((p) => p.name);
+  assert.equal(filterProxies(proxies).proxies, proxies);
+  assert.equal(filterProxies(proxies, { exclude: ['不存在'] }).excluded, 0);
+  assert.deepEqual(names({ exclude: ['美国 01'] }), ['香港 01 [2x]', '日本 01-0.5x', '台湾 01', '台湾 02', '剩余流量：10 GB']);
+  // 2x 被排除，经由它的台湾 01、台湾 02 也去掉
+  const r = filterProxies(proxies, { excludeRate: 2 });
+  assert.deepEqual(r.proxies.map((p) => p.name), ['日本 01-0.5x', '美国 01', '剩余流量：10 GB']);
+  assert.equal(r.excluded, 3);
+  assert.deepEqual(names({ excludeRate: 1 }), ['日本 01-0.5x']);
+  assert.deepEqual(names({ excludeRate: 2.5 }), proxies.map((p) => p.name));
 });
 
 test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', () => {

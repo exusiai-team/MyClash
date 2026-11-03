@@ -7,6 +7,7 @@
 - **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时改用 GitHub Actions 代抓的缓存
 - **到期屏蔽**：机场订阅到期或流量用完就自动跳过，流量与到期日也不计入；编辑页即时显示每个机场的到期日、流量与是否屏蔽
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
+- **节点筛选**：设「倍率 ≥ X 的节点不导入」，或在编辑页逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
@@ -88,6 +89,10 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 去掉原字样后改写为 `前缀 | 2x | 原名`，例如 `美国04-1.5x |4837` → `MNKCloud | 1.5x | 美国04|4837`。
 1 倍不标；「剩余流量 / 到期」等信息节点不处理。标注后仍会被脚本归入高/低倍率组。
 
+**节点筛选**（编辑页）：「倍率 ≥ X 的节点不导入」是规则，机场之后新增的高倍率节点也会自动排除；没标倍率的节点算 1 倍。下方的倍率标签列出节点里实际出现的倍率，点一下就设成门槛。
+「选择节点」逐个勾选，保存的是**不导入**的节点（按机场原本的节点名称，不受前缀与倍率标注影响），所以机场新增的节点默认导入；机场改了节点名称，就要重新取消勾选。
+被排除的节点若是别的节点的 `dialer-proxy`，依赖它的节点也一并去掉；某个机场的节点全被排除时，它的流量与到期日不计入。
+
 ## iPhone：小火箭
 
 小火箭（Shadowrocket）读不了 mihomo 的 `.mrs` 规则集，也不执行覆写脚本，所以节点和分流分开导入：
@@ -143,7 +148,7 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 
 ## 管理订阅
 
-每个订阅卡片可以「编辑」（名称、机场、前缀、倍率标注）、「换 TOKEN」（旧链接立即失效）、「删除」（使用这个链接的客户端无法再更新）。
+每个订阅卡片可以「编辑」（名称、机场、前缀、倍率标注、节点筛选）、「换 TOKEN」（旧链接立即失效）、「删除」（使用这个链接的客户端无法再更新）。
 
 **到期屏蔽**：机场返回的 `subscription-userinfo` 标头里 `expire`（到期日）已过，或已用流量（`upload + download`）达到 `total` 的，合并时整个跳过，
 不解析节点，流量与到期日也不计入合并后的订阅（否则客户端会把整个合并订阅显示成已到期）；续费或流量重置后下次更新就自动恢复。
@@ -210,10 +215,11 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | --- | --- |
 | `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML）；`?script=lite` / `?script=full` 在服务端套用覆写脚本；浏览器网址栏打开时跳到管理页 `/#import=<TOKEN>` 自动导入 |
 | `GET /script.js`、`/script-full.js` | 修改版 MyClash 覆写脚本（精简 / 全量，静态文件） |
-| `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, sources: [{ name, url }] }` |
+| `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, excludeRate: 2 \| null, sources: [{ name, url, exclude: ["原本的节点名称"] }] }`（`excludeRate`：倍率 ≥ 这个值的节点不导入；`exclude`：这个机场不导入的节点） |
 | `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
 | `GET` / `PUT` / `DELETE /api/subs/<TOKEN>` | 查找、编辑、删除 |
 | `GET /api/subs/<TOKEN>/status` | 即时检查每个机场：`{ checkedAt, sources: [{ url, name, error, directError, cachedAt, info: { upload, download, total, expire }, blocked: null \| "expired" \| "exhausted" }] }` |
+| `GET /api/subs/<TOKEN>/nodes` | 每个机场原本的节点（未筛选）：`{ sources: [{ url, name, error, blocked, cachedAt, nodes: [{ name, rate }] }] }`，`rate` 为 null 表示没标倍率 |
 | `POST /api/subs/<TOKEN>/rotate` | 换新 TOKEN |
 | `POST /api/subs/<TOKEN>/refresh` | 触发代抓缓存（需 `GITHUB_TOKEN`，1 分钟限一次） |
 | `GET /api/scripts` | 覆写脚本同步状态：`{ run: { status, conclusion, event, createdAt, url } \| null, updated: { at, message, url } \| null, canTrigger }`（「同步上游覆写脚本」最近一次执行，与 `rules` 分支最后一次更新的提交；在 KV 存 5 分钟） |

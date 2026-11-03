@@ -1,4 +1,4 @@
-import { parseSubscription, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
+import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey } from './cache.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
@@ -21,6 +21,9 @@ const SYNC_COOLDOWN_SECONDS = 600;
 const PREFIX_MODES = ['name', 'index', 'none'];
 // 管理页一次查多个 TOKEN 的上限
 const MAX_LOOKUP = 50;
+// 每个机场最多手动排除几个节点、节点名称最长几个字
+const MAX_EXCLUDE = 2000;
+const MAX_NODE_NAME = 200;
 // /sub/<TOKEN>?script=lite|full：在服务端套用覆写脚本，客户端不用再加脚本覆写；不带参数则不覆写
 const OVERRIDES = {
   lite: { run: liteScript, label: '精简' },
@@ -70,12 +73,15 @@ async function serveSubscription(env, token, origin, script) {
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
 
   const mode = record.prefixMode ?? 'index';
-  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode)));
+  const excludeRate = record.excludeRate ?? null;
+  const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, source, i, mode, excludeRate)));
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) {
     return results.every((r) => r.blocked)
       ? text('所有机场订阅都已到期或流量用完（已自动屏蔽），请续费或在管理页更换订阅', 502)
-      : text('所有机场订阅都抓取失败、已屏蔽或没有节点，请稍后再试', 502);
+      : results.some((r) => r.excluded)
+        ? text('所有节点都被排除了（节点筛选），请在管理页调整', 502)
+        : text('所有机场订阅都抓取失败、已屏蔽或没有节点，请稍后再试', 502);
   }
 
   let config = mergeSubscriptions(
@@ -98,7 +104,7 @@ async function serveSubscription(env, token, origin, script) {
         ? `[${r.label}] 已屏蔽：${r.blocked}` +
           (r.cachedAt ? `（直连失败：${r.directError}，依 ${cacheAge(r.cachedAt)}的缓存判断）` : '')
         : r.parsed
-          ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
+          ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.excluded ? `（已排除 ${r.excluded} 个）` : ''}${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
             (r.cachedAt ? `（直连失败：${r.directError}，使用 ${cacheAge(r.cachedAt)}的缓存）` : '')
           : `[${r.label}] 失败：${r.error}`,
     ),
@@ -118,7 +124,7 @@ async function serveSubscription(env, token, origin, script) {
   return new Response(dumpConfig(config, comments), { headers });
 }
 
-async function fetchSource(env, source, index, mode) {
+async function fetchSource(env, source, index, mode, excludeRate) {
   const fallback = source.name || `S${index + 1}`;
   let label = fallback;
   let prefix = mode === 'none' ? '' : fallback;
@@ -133,9 +139,13 @@ async function fetchSource(env, source, index, mode) {
   if (got.error) return { label, prefix, error: got.error };
   // 到期或流量用完：节点多半已不能用，整个机场跳过（不解析节点），流量与到期日也不计入合并后的订阅
   if (got.blocked) return { label, prefix, blocked: blockReason(got), cachedAt: got.cachedAt, directError: got.directError };
-  const parsed = parseSubscription(got.body);
-  if (parsed.proxies.length === 0) return { label, prefix, parsed, error: '没有可用节点' };
-  return { label, prefix, parsed, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
+  const all = parseSubscription(got.body);
+  if (all.proxies.length === 0) return { label, prefix, parsed: all, error: '没有可用节点' };
+  const { proxies, excluded } = filterProxies(all.proxies, { exclude: source.exclude, excludeRate });
+  const parsed = { ...all, proxies };
+  // 节点全被排除的机场等于没用，流量与到期日也不计入
+  if (proxies.length === 0) return { label, prefix, parsed, excluded, error: `${excluded} 个节点全被排除` };
+  return { label, prefix, parsed, excluded, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
 }
 
 // 直连抓取，失败就改用 GitHub Actions 代抓的缓存；顺便解析流量与到期日，blocked 为 expired（已到期）/ exhausted（流量用完）时由调用者屏蔽
@@ -244,6 +254,7 @@ async function api(request, env, parts) {
   if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') return triggerRefresh(env);
   if (parts.length === 3 && parts[2] === 'sync-scripts' && method === 'POST') return triggerSync(env);
   if (parts.length === 3 && parts[2] === 'status' && method === 'GET') return sourceStatus(env, record);
+  if (parts.length === 3 && parts[2] === 'nodes' && method === 'GET') return sourceNodes(env, record);
 
   if (parts.length === 3 && parts[2] === 'rotate' && method === 'POST') {
     const next = newToken();
@@ -355,6 +366,21 @@ async function sourceStatus(env, record) {
   return json({ checkedAt: Date.now(), sources });
 }
 
+// 编辑页「选择节点」：每个机场原本的节点名称与倍率（未筛选），已屏蔽的机场也列出，续费后就照这里的选择
+async function sourceNodes(env, record) {
+  const sources = await Promise.all(
+    record.sources.map(async ({ url }) => {
+      const got = await loadSource(env, url);
+      const base = { url, name: detectAirportName(got.disposition, url), blocked: got.blocked, cachedAt: got.cachedAt ?? null };
+      if (got.error) return { ...base, error: got.error, nodes: [] };
+      // 同名节点在筛选时一起处理，只列一次
+      const names = [...new Set(parseSubscription(got.body).proxies.map((p) => String(p.name)))];
+      return { ...base, error: null, nodes: names.map((name) => ({ name, rate: extractRate(name).rate })) };
+    }),
+  );
+  return json({ sources });
+}
+
 function putRecord(env, token, record) {
   return env.SUB_STORE.put(KEY_PREFIX + token, JSON.stringify(record));
 }
@@ -387,10 +413,15 @@ function validate(input) {
       throw new HttpError(400, `第 ${i + 1} 个订阅链接必须是 http(s)`);
     }
     const sourceName = String(s?.name ?? '').trim().slice(0, 20);
-    return { name: sourceName, url };
+    const exclude = Array.isArray(s?.exclude) ? [...new Set(s.exclude.filter((n) => typeof n === 'string' && n && n.length <= MAX_NODE_NAME))] : [];
+    if (exclude.length > MAX_EXCLUDE) throw new HttpError(400, `第 ${i + 1} 个机场最多排除 ${MAX_EXCLUDE} 个节点`);
+    return exclude.length ? { name: sourceName, url, exclude } : { name: sourceName, url };
   });
   const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
-  return { name, prefixMode, rateTag: input.rateTag === true, sources };
+  // 倍率 ≥ excludeRate 的节点不导入；null 表示不限
+  const rate = Number(input.excludeRate);
+  const excludeRate = input.excludeRate != null && input.excludeRate !== '' && Number.isFinite(rate) && rate > 0 ? rate : null;
+  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate, sources };
 }
 
 function newToken() {

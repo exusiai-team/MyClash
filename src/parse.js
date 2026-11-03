@@ -320,6 +320,38 @@ export function extractRate(name) {
   return { rate, rest: (before + sep + after).trim() || str };
 }
 
+/** 节点倍率；名称没有标倍率的算 1 倍 */
+export function nodeRate(name) {
+  return extractRate(name).rate ?? 1;
+}
+
+/**
+ * 节点筛选：去掉手动排除的节点（按机场原本的节点名称）与倍率 ≥ excludeRate 的节点；
+ * dialer-proxy 指向被去掉的节点的，链路已断，一并去掉
+ * @param {object[]} proxies
+ * @param {{ exclude?: string[], excludeRate?: number | null }} [options]
+ * @returns {{ proxies: object[], excluded: number }}
+ */
+export function filterProxies(proxies, { exclude = [], excludeRate = null } = {}) {
+  const manual = new Set(exclude);
+  const removed = new Set();
+  for (const p of proxies) {
+    if (manual.has(p.name) || (excludeRate !== null && nodeRate(p.name) >= excludeRate)) removed.add(p.name);
+  }
+  if (removed.size === 0) return { proxies, excluded: 0 };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const p of proxies) {
+      if (!removed.has(p.name) && removed.has(p['dialer-proxy'])) {
+        removed.add(p.name);
+        changed = true;
+      }
+    }
+  }
+  const kept = proxies.filter((p) => !removed.has(p.name));
+  return { proxies: kept, excluded: proxies.length - kept.length };
+}
+
 function formatRate(rate) {
   return `${rate}x`;
 }

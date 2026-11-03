@@ -101,7 +101,7 @@
   :focus-visible { outline: none; box-shadow: var(--ring); }
 
   /* 输入框 */
-  input[type=text], input[type=url], textarea {
+  input[type=text], input[type=url], input[type=number], textarea {
     width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px;
     background: var(--field); color: var(--text); font: inherit; font-size: 14px; transition: border-color .15s, box-shadow .15s;
   }
@@ -191,6 +191,34 @@
   .src-status { grid-column: 2 / -1; display: flex; align-items: flex-start; gap: 8px; min-height: 20px; font-size: 13px; color: var(--muted); }
   .src-status:empty { display: none; }
   .src-status span:last-child { min-width: 0; }
+  /* 节点筛选 */
+  .rate-row { font-size: 14px; }
+  .rate-row input { width: 90px; }
+  .rate-chip {
+    padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--sunken); color: var(--muted);
+    font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color .15s, color .15s, border-color .15s;
+  }
+  .rate-chip:hover { color: var(--text); border-color: var(--border-strong); }
+  .rate-chip small { margin-left: 3px; opacity: .7; }
+  .rate-chip.on { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); color: var(--danger); text-decoration: line-through; }
+  .node-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  .node-tools input { flex: 1; min-width: 160px; }
+  .node-list { max-height: 440px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--sunken); }
+  .node-group-head {
+    position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 6px 10px;
+    border-bottom: 1px solid var(--border); background: var(--card); font-size: 14px;
+  }
+  .node-group + .node-group .node-group-head { border-top: 1px solid var(--border); }
+  .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 8px; padding: 6px; }
+  .node { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 6px; border-radius: 7px; font-size: 13px; cursor: pointer; user-select: none; }
+  .node:hover { background: var(--hover); }
+  .node input { flex: none; margin: 0; accent-color: var(--accent); }
+  .node .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .node .r { flex: none; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .node:has(input:not(:checked)) .n { color: var(--faint); text-decoration: line-through; }
+  .node.by-rate { cursor: default; }
+  .node.by-rate .r { color: var(--danger); }
+  .node-empty { padding: 8px 10px 10px; font-size: 13px; color: var(--muted); }
   .footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
 
   /* 预览 */
@@ -331,6 +359,25 @@
       </div>
       <p class="hint" style="margin-top:10px">自定义前缀请避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字样，否则会影响 MyClash 脚本的地区分组与节点过滤。</p>
     </div>
+    <div class="field">
+      <span class="label">节点筛选 <span class="hint" id="filter-summary"></span></span>
+      <div class="row rate-row">
+        <label for="exclude-rate">倍率 ≥</label>
+        <input type="number" id="exclude-rate" min="0" step="0.1" inputmode="decimal" placeholder="不限">
+        <span>的节点不导入</span>
+        <span class="hint">没标倍率的算 1 倍</span>
+      </div>
+      <div class="chips" id="rate-chips"></div>
+      <details id="node-picker"><summary>选择节点</summary>
+        <div class="node-tools">
+          <input type="text" id="node-search" placeholder="搜索节点，例如 香港、IPv6" aria-label="搜索节点">
+          <button class="btn sm" data-pick="1">全选</button>
+          <button class="btn sm" data-pick="0">全不选</button>
+        </div>
+        <p class="hint">勾选的才导入。全选 / 全不选只作用于搜索出来的节点，按住 Shift 点击可以连选；机场之后新增的节点默认导入。</p>
+        <div class="node-list" id="node-list"></div>
+      </details>
+    </div>
     <div class="footer">
       <button class="btn primary" id="save-btn">保存并生成链接</button>
       <button class="btn" id="cancel-btn">取消</button>
@@ -426,6 +473,12 @@
   let statusByUrl = new Map();
   let checking = false;
   let checkSeq = 0;
+  // 节点筛选：每个机场原本的节点（以订阅链接为键），与手动排除的节点名称
+  let nodesByUrl = new Map();
+  let excludeByUrl = new Map();
+  let loadingNodes = false;
+  let nodesSeq = 0;
+  let lastPick = null;
 
   // 这个浏览器生成或导入过的 TOKEN
   function getTokens() {
@@ -507,6 +560,7 @@
 
   // --- 列表 ---
   const PREFIX_LABELS = { name: '机场名称', index: 'S1、S2…', none: '不加' };
+  const excludedCount = (it) => it.sources.reduce((n, s) => n + (s.exclude?.length || 0), 0);
   function itemHtml(it) {
     const token = escapeHtml(it.token);
     const mode = getMode(it.token);
@@ -516,6 +570,8 @@
         <span class="chip">${it.sources.length} 个机场</span>
         <span class="chip">前缀：${PREFIX_LABELS[it.prefixMode || 'index']}</span>
         ${it.rateTag ? '<span class="chip">倍率标注</span>' : ''}
+        ${it.excludeRate ? `<span class="chip">不导入 ≥${it.excludeRate}x</span>` : ''}
+        ${excludedCount(it) ? `<span class="chip">手动排除 ${excludedCount(it)} 个节点</span>` : ''}
       </div>
       <div class="sub-mode">
         <span class="hint">覆写脚本</span>
@@ -738,6 +794,13 @@
     statusByUrl = new Map();
     checking = false;
     checkSeq++;
+    nodesByUrl = new Map();
+    excludeByUrl = new Map((record ? record.sources : []).map((s) => [s.url, new Set(s.exclude || [])]));
+    loadingNodes = false;
+    nodesSeq++;
+    lastPick = null;
+    $('exclude-rate').value = record?.excludeRate ?? '';
+    $('node-search').value = '';
     $('edit-title').textContent = record ? `编辑「${record.name}」` : '生成新的订阅';
     $('edit-name').value = record ? record.name : '';
     $('rate-tag').checked = record ? record.rateTag === true : true;
@@ -753,12 +816,149 @@
       : '已到期或流量用完的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日与流量。';
     $('edit-card').classList.remove('hidden');
     $('edit-card').scrollIntoView({ behavior: smooth, block: 'start' });
-    if (record) checkStatus();
+    renderNodes();
+    if (record) { checkStatus(); loadNodes(); }
   }
   function closeEditor() {
     $('edit-card').classList.add('hidden');
     editingToken = null;
     checkSeq++;
+    nodesSeq++;
+  }
+
+  // --- 节点筛选 ---
+  // 跟 Worker 一样：倍率 ≥ 门槛的不导入，没标倍率的算 1 倍
+  function getExcludeRate() {
+    const raw = $('exclude-rate').value.trim();
+    const v = Number(raw);
+    return raw !== '' && Number.isFinite(v) && v > 0 ? v : null;
+  }
+  const rateOf = (node) => node.rate ?? 1;
+
+  async function loadNodes() {
+    const seq = ++nodesSeq;
+    loadingNodes = true;
+    renderNodes();
+    try {
+      const { sources } = await api('GET', `/subs/${editingToken}/nodes`);
+      if (seq === nodesSeq) nodesByUrl = new Map(sources.map((s) => [s.url, s]));
+    } catch (e) {
+      if (seq === nodesSeq) showMsg($('edit-msg'), '读取节点失败：' + e.message);
+    } finally {
+      if (seq === nodesSeq) { loadingNodes = false; renderNodes(); }
+    }
+  }
+
+  // 编辑页目前填的机场（同一个链接只算一次）
+  function currentUrls() {
+    return [...new Set([...$('sources').children].map((r) => r.querySelector('.src-url').value.trim()).filter(Boolean))];
+  }
+
+  function nodeGroupHtml(url, i, limit, q, acc) {
+    const src = nodesByUrl.get(url);
+    const head = (extra = '') => `<div class="node-group-head"><b>${escapeHtml(src?.name || `S${i + 1}`)}</b>${extra}</div>`;
+    if (!src) {
+      const why = !savedUrls.has(url) ? '新的链接保存后才能选择节点' : loadingNodes ? '正在读取节点…' : '没有读到节点';
+      return `<section class="node-group">${head()}<p class="node-empty">${why}</p></section>`;
+    }
+    if (src.error) {
+      return `<section class="node-group">${head(pill('fail', '失败'))}<p class="node-empty">抓取失败：${escapeHtml(src.error)}，之前的选择保留不变</p></section>`;
+    }
+    const ex = excludeByUrl.get(url);
+    // 已屏蔽的机场照样可以选，但合并时整个跳过，不算进「将导入」
+    const tally = src.blocked ? { total: 0, kept: 0, byRate: 0, manual: 0 } : acc;
+    let kept = 0;
+    let shown = 0;
+    const items = src.nodes.map((node) => {
+      const r = rateOf(node);
+      acc.rates.set(r, (acc.rates.get(r) || 0) + 1);
+      const byRate = limit !== null && r >= limit;
+      const on = !byRate && !ex?.has(node.name);
+      tally.total++;
+      if (on) kept++;
+      else if (byRate) tally.byRate++;
+      else tally.manual++;
+      const name = escapeHtml(node.name);
+      const hide = q && !node.name.toLowerCase().includes(q) ? ' hidden' : '';
+      if (!hide) shown++;
+      return `<label class="node${byRate ? ' by-rate' : ''}${hide}" title="${byRate ? `倍率 ≥ ${limit}，不导入：` : ''}${name}">` +
+        `<input type="checkbox" data-name="${name}"${on ? ' checked' : ''}${byRate ? ' disabled' : ''}><span class="n">${name}</span>` +
+        (node.rate !== null ? `<span class="r">${node.rate}x</span>` : '') + '</label>';
+    });
+    tally.kept += kept;
+    const tags = (src.blocked ? pill('blocked', '已屏蔽') : '') + (src.cachedAt ? pill('cache', '缓存') : '');
+    // 搜索时没有符合的节点，整个机场先藏起来
+    return `<section class="node-group${q && !shown ? ' hidden' : ''}" data-url="${escapeHtml(url)}">${head(`${tags}<span class="hint">导入 ${kept} / ${src.nodes.length}</span>`)}` +
+      `<div class="nodes">${items.join('') || '<p class="node-empty">没有节点</p>'}</div></section>`;
+  }
+
+  // 重画节点清单、倍率标签与「将导入几个节点」；保留捲动位置与 Shift 连选的起点
+  function renderNodes() {
+    const list = $('node-list');
+    const top = list.scrollTop;
+    const last = lastPick && [lastPick.closest('.node-group').dataset.url, lastPick.dataset.name];
+    const limit = getExcludeRate();
+    const q = $('node-search').value.trim().toLowerCase();
+    const acc = { rates: new Map(), total: 0, kept: 0, byRate: 0, manual: 0 };
+    list.innerHTML = currentUrls().map((url, i) => nodeGroupHtml(url, i, limit, q, acc)).join('') ||
+      '<p class="node-empty">先在上面填机场订阅链接</p>';
+    list.scrollTop = top;
+    lastPick = last && [...list.querySelectorAll('.node-group')].find((g) => g.dataset.url === last[0])
+      ?.querySelector(`input[data-name="${CSS.escape(last[1])}"]`) || null;
+
+    const parts = [acc.byRate && `倍率不导入 ${acc.byRate}`, acc.manual && `手动排除 ${acc.manual}`].filter(Boolean);
+    $('filter-summary').textContent = acc.total
+      ? `将导入 ${acc.kept} / ${acc.total} 个节点` + (parts.length ? `（${parts.join('，')}）` : '')
+      : loadingNodes ? '正在读取节点…' : '';
+    // 节点里实际出现的倍率：点一下设成门槛，再点一下取消；会被排除的标成删除线
+    $('rate-chips').innerHTML = [...acc.rates].sort((a, b) => a[0] - b[0]).map(([r, n]) =>
+      `<button type="button" class="rate-chip${limit !== null && r >= limit ? ' on' : ''}" data-rate="${r}" title="设为倍率 ≥ ${r}x 不导入">${r}x<small>${n}</small></button>`).join('');
+  }
+
+  function setPicked(box, picked) {
+    const url = box.closest('.node-group').dataset.url;
+    if (!excludeByUrl.has(url)) excludeByUrl.set(url, new Set());
+    box.checked = picked;
+    excludeByUrl.get(url)[picked ? 'delete' : 'add'](box.dataset.name);
+  }
+  // 可以勾选的节点：符合搜索、没被倍率排除
+  const pickable = () => [...$('node-list').querySelectorAll('.node:not(.hidden) input:not(:disabled)')];
+
+  $('node-list').addEventListener('click', (e) => {
+    const box = e.target.closest('input[type=checkbox]');
+    if (!box) return;
+    // Shift 点击：上次点的到这次点的之间全部设成同样的状态
+    const boxes = pickable();
+    const a = boxes.indexOf(lastPick);
+    const b = boxes.indexOf(box);
+    if (e.shiftKey && a !== -1 && b !== -1) boxes.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => setPicked(x, box.checked));
+    else setPicked(box, box.checked);
+    lastPick = box;
+    renderNodes();
+  });
+  $('node-picker').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-pick]');
+    if (!btn) return;
+    pickable().forEach((x) => setPicked(x, btn.dataset.pick === '1'));
+    renderNodes();
+  });
+  $('node-search').addEventListener('input', renderNodes);
+  $('exclude-rate').addEventListener('input', renderNodes);
+  $('rate-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.rate-chip');
+    if (!chip) return;
+    $('exclude-rate').value = getExcludeRate() === Number(chip.dataset.rate) ? '' : chip.dataset.rate;
+    renderNodes();
+  });
+
+  // 要保存的排除清单：读到节点的机场只留现在还有的节点名称，读不到的维持原样
+  function excludeFor(url) {
+    const set = excludeByUrl.get(url);
+    if (!set?.size) return [];
+    const src = nodesByUrl.get(url);
+    if (!src || src.error) return [...set];
+    const names = new Set(src.nodes.map((n) => n.name));
+    return [...set].filter((n) => names.has(n));
   }
 
   const PREFIX_HINTS = {
@@ -779,7 +979,9 @@
     e.target.closest('.src').remove();
     if (!$('sources').children.length) addSourceRow();
     refreshRows();
+    renderNodes();
   });
+  $('sources').addEventListener('change', (e) => { if (e.target.classList.contains('src-url')) renderNodes(); });
   // 改了链接：状态改成「未检查」，改回原本的链接就显示原本的检查结果
   $('sources').addEventListener('input', (e) => { if (e.target.classList.contains('src-url')) refreshRows(); });
 
@@ -799,18 +1001,20 @@
     $('bulk-text').value = '';
     $('bulk-box').classList.add('hidden');
     refreshRows();
+    renderNodes();
   };
 
   $('save-btn').onclick = async () => {
     const name = $('edit-name').value.trim();
     const sources = [...$('sources').children]
       .map((r) => ({ name: r.querySelector('.src-name').value.trim(), url: r.querySelector('.src-url').value.trim() }))
-      .filter((s) => s.url);
+      .filter((s) => s.url)
+      .map((s) => ({ ...s, exclude: excludeFor(s.url) }));
     if (!name) return showMsg($('edit-msg'), '请填名称');
     if (!sources.length) return showMsg($('edit-msg'), '至少要填一个机场订阅链接');
     $('save-btn').disabled = true;
     try {
-      const body = { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, sources };
+      const body = { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, excludeRate: getExcludeRate(), sources };
       const saved = editingToken ? await api('PUT', '/subs/' + editingToken, body) : await api('POST', '/subs', body);
       if (!editingToken) addToken(saved.token);
       toast(editingToken ? `已保存「${saved.name}」` : `已生成「${saved.name}」，复制链接到客户端就能用`);
