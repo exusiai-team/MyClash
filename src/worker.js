@@ -109,7 +109,7 @@ async function serveSubscription(env, ctx, token, origin, script) {
         ? `[${r.label}] 已屏蔽：${r.blocked}` +
           (r.cachedAt ? `（直连失败：${r.directError}，依 ${cacheAge(r.cachedAt)}的缓存判断）` : '')
         : r.parsed
-          ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.excluded ? `（已排除 ${r.excluded} 个）` : ''}${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}` +
+          ? `[${r.label}] ${r.parsed.proxies.length} 个节点${r.excluded ? `（已排除 ${r.excluded} 个）` : ''}${r.parsed.skipped ? `（${r.parsed.skipped} 个无法解析已略过）` : ''}${r.parsed.duplicates ? `（${r.parsed.duplicates} 个重复已去掉）` : ''}` +
             (r.cachedAt ? `（直连失败：${r.directError}，使用 ${cacheAge(r.cachedAt)}的缓存）` : '')
           : `[${r.label}] 失败：${r.error}`,
     ),

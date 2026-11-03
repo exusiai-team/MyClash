@@ -5,15 +5,59 @@ export const GROUP_NAME = '节点选择';
 
 /**
  * 解析单一订阅内容（mihomo YAML 或 base64 / 纯文本 URI 列表）
- * @returns {{ proxies: object[], dns: object | null, hosts: object | null, skipped: number }}
+ * @returns {{ proxies: object[], dns: object | null, hosts: object | null, skipped: number, duplicates: number }}
  */
 export function parseSubscription(text) {
   const body = String(text ?? '').replace(/^﻿/, '').trim();
-  if (!body) return { proxies: [], dns: null, hosts: null, skipped: 0 };
+  if (!body) return { proxies: [], dns: null, hosts: null, skipped: 0, duplicates: 0 };
 
-  const fromYaml = tryParseYaml(body);
-  if (fromYaml) return fromYaml;
+  const parsed = tryParseYaml(body) ?? parseUriList(body);
+  const { proxies, duplicates } = dedupeProxies(parsed.proxies);
+  return { ...parsed, proxies, duplicates };
+}
 
+// 「剩余流量」「套餐到期」「官网」等信息节点：机场常直接复制某个真节点的设置、只改名称，排在最前面
+const INFO_NODE_RE = /剩余|到期|过期|重置|流量|官网|网站|网址|官方|套餐|订阅|客服|群/;
+
+/**
+ * 去掉除了名称以外完全相同的节点（机场常把同一个节点换几个名字重复列），保留第一个；
+ * dialer-proxy 指向被去掉的节点的，改指保留下来的那个。
+ * 信息节点不参与：不然排在前面的信息节点会顶掉跟它设置相同的真节点，信息节点之后又被覆写脚本滤掉，真节点就没了
+ */
+export function dedupeProxies(proxies) {
+  const kept = [];
+  const byConfig = new Map();
+  const renamed = new Map();
+  for (const proxy of proxies) {
+    const { name, ...rest } = proxy;
+    if (INFO_NODE_RE.test(String(name))) {
+      kept.push(proxy);
+      continue;
+    }
+    const key = stableStringify(rest);
+    const first = byConfig.get(key);
+    if (first !== undefined) {
+      renamed.set(name, first);
+      continue;
+    }
+    byConfig.set(key, name);
+    kept.push(proxy);
+  }
+  if (renamed.size === 0) return { proxies, duplicates: 0 };
+  const fixed = kept.map((p) => (renamed.has(p['dialer-proxy']) ? { ...p, 'dialer-proxy': renamed.get(p['dialer-proxy']) } : p));
+  return { proxies: fixed, duplicates: renamed.size };
+}
+
+// 物件的键排序后再序列化，键顺序不同的相同设置得到同一个字串
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (isPlainObject(value)) {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function parseUriList(body) {
   const lines = (looksLikeUriList(body) ? body : decodeBase64(body) ?? '')
     .split(/\r?\n/)
     .map((line) => line.trim())

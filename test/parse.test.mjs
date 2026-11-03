@@ -73,6 +73,24 @@ test('合并：前缀、去重、dialer-proxy 改名、dns/hosts 合并', () => 
   assert.ok(!('proxy-providers' in c));
 });
 
+test('解析：除了名称以外完全相同的节点只留第一个，dialer-proxy 改指保留的那个', () => {
+  const node = (name, extra = {}) => ({ name, type: 'ss', server: 'a.example', port: 1, cipher: 'aes-128-gcm', password: 'x', ...extra });
+  const text = yaml.dump({
+    proxies: [
+      node('剩余流量：100 GB'), // 信息节点复制了真节点的设置，不能顶掉后面的真节点
+      node('新加坡 06'),
+      { password: 'x', name: '新加坡 07', type: 'ss', port: 1, server: 'a.example', cipher: 'aes-128-gcm' }, // 键顺序不同也算重复
+      node('新加坡 08', { port: 2 }),
+      node('落地', { server: 'b.example', 'dialer-proxy': '新加坡 07' }),
+    ],
+  });
+  const parsed = parseSubscription(text);
+  assert.deepEqual(parsed.proxies.map((p) => p.name), ['剩余流量：100 GB', '新加坡 06', '新加坡 08', '落地']);
+  assert.equal(parsed.duplicates, 1);
+  assert.equal(parsed.proxies[3]['dialer-proxy'], '新加坡 06');
+  assert.equal(parseSubscription(yaml.dump({ proxies: [node('a'), node('b', { port: 2 })] })).duplicates, 0);
+});
+
 test('subscription-userinfo 加总', () => {
   assert.equal(
     sumUserinfo(['upload=1; download=2; total=10; expire=200', null, 'upload=3; download=4; total=20; expire=100', 'upload=0; download=0; total=5; expire=0']),
@@ -273,6 +291,61 @@ for (const file of ['script.js', 'script-full.js']) {
       assert.ok(!out.rules.includes(`RULE-SET,${name},AdBlock`), name);
     }
     assert.equal(out['proxy-groups'].find((g) => g.name === 'AdBlock').proxies[0], 'REJECT');
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：开启 sniffer，只拿域名匹配规则、不改目标地址`, () => {
+    const { sniffer } = runScript(file);
+    assert.equal(sniffer.enable, true);
+    assert.equal(sniffer['parse-pure-ip'], true);
+    assert.equal(sniffer['override-destination'], false);
+    for (const p of ['HTTP', 'TLS', 'QUIC']) assert.ok(sniffer.sniff[p].ports.length > 0, p);
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：广告规则排在国内直连前面，分流规则里不重复`, () => {
+    const { rules } = runScript(file);
+    const ad = rules.indexOf('RULE-SET,sukka-reject,AdBlock');
+    assert.ok(ad > rules.indexOf('RULE-SET,private,直连'));
+    assert.ok(ad < rules.indexOf('RULE-SET,geolocation-cn,直连'));
+    assert.equal(rules.filter((r) => r.endsWith(',AdBlock')).length, 1);
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：自动选择组不选 HTTP / SOCKS5、高倍率与「勿跑大流量」节点，排除后会变空的组不加`, () => {
+    const node = (name, type = 'ss') => ({ name, type, server: 'a.example', port: 1, cipher: 'aes-128-gcm', password: 'x' });
+    const out = runScript(file, [
+      node('🇭🇰 香港 02 | 2x'),
+      node('🇭🇰 香港 03 | 1.5x'),
+      node('🇭🇰 香港原生 勿跑大流量'),
+      node('🇺🇸 美国 Free-http', 'http'),
+      node('🇬🇧 英国 01 | 3x'),
+    ]);
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    // 照 mihomo 的规则算出组里实际会被测速的节点（exclude-filter 的 (?i) 换成 JS 的 i 旗标）
+    const types = new Map(out.proxies.map((p) => [p.name, p.type.toLowerCase()]));
+    const effective = (name) => {
+      const g = groups.get(name);
+      const excludeTypes = (g['exclude-type'] ?? '').toLowerCase().split('|');
+      const re = g['exclude-filter'] && new RegExp(g['exclude-filter'].replace(/^\(\?i\)/, ''), 'i');
+      return g.proxies.filter((n) => !excludeTypes.includes(types.get(n)) && !re?.test(n));
+    };
+    for (const name of out['proxy-groups'].filter((g) => g.type === 'url-test').map((g) => g.name)) {
+      assert.ok(effective(name).length > 0, `${name} 不能变空`);
+    }
+    const auto = effective('自动选择');
+    assert.ok(auto.includes('🇭🇰 香港 03 | 1.5x'));
+    for (const n of ['🇭🇰 香港 02 | 2x', '🇭🇰 香港原生 勿跑大流量', '🇺🇸 美国 Free-http', '🇬🇧 英国 01 | 3x']) assert.ok(!auto.includes(n), n);
+    assert.deepEqual([...effective('香港-自动选择')], ['🇭🇰 香港 01', '🇭🇰 香港 03 | 1.5x']);
+    // 高倍率组自己的自动选择不排除倍率
+    assert.ok(effective('高倍率节点-自动选择').includes('🇭🇰 香港 02 | 2x'));
+    // 只有高倍率节点的地区不加 exclude-filter，免得整组变空
+    const ukOnly = [...groups.values()].filter((g) => g.type === 'url-test' && g.proxies.length === 1 && g.proxies[0] === '🇬🇧 英国 01 | 3x');
+    assert.ok(ukOnly.length > 0);
+    for (const g of ukOnly) assert.equal(g['exclude-filter'], undefined, g.name);
   });
 }
 

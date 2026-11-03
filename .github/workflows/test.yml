@@ -24,7 +24,15 @@ jobs:
           node-version: latest
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # 用这次的 scripts/sync-scripts.mjs 对上游最新脚本重新生成覆写脚本再测：
+      # rules 分支上的是旧补丁生成的，改了补丁就测不到；上游改版导致补丁失效也会在这里报错
+      - run: node scripts/sync-scripts.mjs
+        env:
+          SCRIPTS_ONLY: '1'
+          OUT_DIR: ${{ runner.temp }}/rules-out
       - run: npm test
+        env:
+          GENERATED_DIR: ${{ runner.temp }}/rules-out
       - run: npx wrangler deploy --dry-run --outdir dist
 
   # Dependabot 的 PR 在测试通过后自动合并

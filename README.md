@@ -7,6 +7,7 @@
 - **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时用 GitHub Actions 每 24 小时代抓的缓存
 - **到期屏蔽**：机场订阅到期或流量用完就自动跳过，流量与到期日也不计入；编辑页显示每个机场的到期日、流量与是否屏蔽
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
+- **去掉重复节点**：除了名称以外设置完全相同的节点只留第一个；「剩余流量」「套餐到期」等信息节点常复制真节点的设置，不参与比较，免得顶掉真节点
 - **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
@@ -73,6 +74,12 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 - `default-nameserver` 与 `proxy-server-nameserver` 由「114 明文 + 阿里 DoT + 腾讯 DoH」改为阿里、腾讯两个 DoH（`https://223.5.5.5/dns-query`、`https://1.12.12.12/dns-query`）。
   原本 114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时成簇刷屏；DoH 连接可复用，本机实测 warning 归零、解析也更快
+- 开启 sniffer（原版没有，mihomo 默认关闭）：fake-ip 只能还原走系统 DNS 的连接，浏览器的安全 DNS、自带 DoH 的 App、直接连 IP 的流量进来只有 IP，`ai`、`google` 等域名规则全部失效。嗅探 HTTP / TLS / QUIC，只拿域名匹配规则，不改目标地址（`override-destination: false`）
+- 广告规则排在「私有网络直连」之后、国内直连（`geolocation-cn`）之前。原版的分流规则都排在国内直连后面，而 `geolocation-cn` 按 `baidu.com`、`miui.com` 等整个域名后缀匹配，国内厂商的广告、统计与小米反诈域名（如 `hm.baidu.com`、`flash.sec.miui.com`）先被直连，到不了 AdBlock。AdBlock 关闭或极简模式时不加这条规则
+- 自动选择组（url-test）只看延迟，所以：
+  - 不选 HTTP / SOCKS5 节点（`exclude-type: DIRECT|Http|Socks5`）：机场混进来的这类节点多是公开代理，有的还是明文
+  - 不选高倍率与「勿跑大流量」节点（`exclude-filter`）：倍率沿用原版「高倍率节点」组的判断，「高倍率节点-自动选择」本身不排除；手动选择组照样列出这些节点
+  - 排除后一个节点都不剩的组不加排除条件，免得组变空被 `empty-fallback` 设成 `REJECT`
 
 GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/sukka-reject.mrs`，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 的服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本；脚本有改动时，流程在 `main` 上会用 `CLOUDFLARE_DEPLOY_TOKEN`（权限含 Workers 脚本编辑，另需 `CLOUDFLARE_ACCOUNT_ID`）重新部署，没设就要等下次部署才生效；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
 管理页「客户端怎么用」下方显示 `rules` 分支最后更新时间（脚本或规则集有变化才会更新）与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。

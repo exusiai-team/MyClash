@@ -96,6 +96,9 @@ export function patchScript(source, file) {
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
+ * - 开启 sniffer，绕过系统 DNS（浏览器安全 DNS、直连 IP）的连接也能按域名分流
+ * - 广告规则排在国内直连前面，国内厂商的广告、统计与小米反诈等域名才拦得到
+ * - 自动选择组不选 HTTP / SOCKS5 节点（多是公开代理），也不选高倍率与「勿跑大流量」节点
  * 友情推荐`,
     '文件开头注释',
   );
@@ -126,6 +129,9 @@ export function patchScript(source, file) {
   s = reduceMemory(s);
   s = useDohBootstrap(s);
   s = defaultToAuto(s);
+  s = addSniffer(s);
+  s = adBlockFirst(s);
+  s = excludeFromAutoGroups(s);
 
   return replaceOnce(
     s,
@@ -277,6 +283,78 @@ export function defaultToAuto(source) {
   );
 }
 
+// 上游没有 sniffer（mihomo 默认关闭）：fake-ip 只还原走系统 DNS 的连接，
+// 浏览器的安全 DNS、自带 DoH 的 App、直接连 IP 的流量进来只有 IP，域名规则全部失效。
+// 不改目标地址（override-destination: false），只拿嗅探到的域名来匹配规则
+const SNIFFER = `  newConfig['sniffer'] = {
+    enable: true,
+    'force-dns-mapping': true,
+    'parse-pure-ip': true,
+    'override-destination': false,
+    sniff: {
+      HTTP: { ports: [80, '8080-8880'] },
+      TLS: { ports: [443, 8443] },
+      QUIC: { ports: [443, 8443] },
+    },
+    'skip-domain': ['Mijia Cloud', '+.push.apple.com'],
+  };
+
+`;
+
+export function addSniffer(source) {
+  return replaceOnce(source, "  newConfig['tun'] = {\n", `${SNIFFER}  newConfig['tun'] = {\n`, 'tun 设置');
+}
+
+// 上游的分流规则（含 AdBlock）都排在前置规则之后，而前置规则先把 geolocation-cn 直连了；
+// geolocation-cn 按 baidu.com、miui.com 等整个域名后缀匹配，国内厂商的广告、统计与小米反诈等域名先被直连，到不了 AdBlock。
+// 把 AdBlock 的规则搬到「私有网络直连」之后：从 functionalRules 里取，AdBlock 关闭或极简模式时就没有，不会指向不存在的组
+const RULES_START = "  newConfig['rules'] = [\n    ...prefixRules,\n";
+const AD_BLOCK_FIRST = `  // 广告规则排在国内直连前面，否则国内厂商的广告域名先被 geolocation-cn 直连
+  const adBlockRules = functionalRules.filter((rule) => rule.endsWith(',AdBlock'));
+  const afterPrivate = prefixRules.indexOf('RULE-SET,private,直连') + 1;
+  newConfig['rules'] = [
+    ...prefixRules.slice(0, afterPrivate),
+    ...adBlockRules,
+    ...prefixRules.slice(afterPrivate),
+`;
+
+export function adBlockFirst(source) {
+  replaceOnce(source, "  // 私有网络直连\n  'RULE-SET,private,直连',\n", '', '私有网络直连规则');
+  const s = replaceOnce(source, RULES_START, AD_BLOCK_FIRST, '规则组装代码');
+  return replaceOnce(
+    s,
+    '    ...functionalRules,\n',
+    '    ...functionalRules.filter((rule) => !adBlockRules.includes(rule)),\n',
+    '分流规则',
+  );
+}
+
+// 自动选择组（url-test）只看延迟：
+// - 机场混进来的 HTTP / SOCKS5 节点多是公开代理，被选中就把流量交给陌生人
+// - 高倍率与「勿跑大流量」节点被长期选中会很快耗光流量；倍率判断沿用上游「高倍率节点」组的正则。
+//   「高倍率节点-自动选择」不排除倍率，不然整组都被排掉
+// 排除后一个节点都不剩的组不加，免得组变空被 empty-fallback 设成 REJECT
+const AUTO_GROUP_EXCLUDE = `
+  // 自动选择组不选 HTTP / SOCKS5 节点（多是公开代理），也不选高倍率与「勿跑大流量」节点；排除后没有节点的组不加
+  const proxyTypes = new Map(newConfig['proxies'].map((p) => [p.name, String(p.type).toLowerCase()]));
+  const highRateRegex = rateRegionDefinitions.find((r) => r.name === highRateRegionName).regex;
+  const autoExcludeRegex = new RegExp(\`\${highRateRegex.source}|勿跑大流量\`, 'i');
+  for (const group of newConfig['proxy-groups']) {
+    if (group.type !== 'url-test') continue;
+    const proxies = group.proxies.filter((name) => !['http', 'socks5'].includes(proxyTypes.get(name)));
+    if (proxies.length === 0) continue;
+    group['exclude-type'] = 'DIRECT|Http|Socks5';
+    if (group.name === \`\${highRateRegionName}-自动选择\`) continue;
+    if (proxies.some((name) => !autoExcludeRegex.test(name))) group['exclude-filter'] = \`(?i)\${autoExcludeRegex.source}\`;
+  }
+`;
+
+export function excludeFromAutoGroups(source) {
+  replaceOnce(source, "const highRateRegionName = '高倍率节点';\n", '', '高倍率节点组名称');
+  replaceOnce(source, '  {\n    name: highRateRegionName,\n    regex:', '', '高倍率节点正则');
+  return replaceOnce(source, '    ...generatedRegionGroups,\n  ];\n', `    ...generatedRegionGroups,\n  ];\n${AUTO_GROUP_EXCLUDE}`, '策略组组装代码');
+}
+
 // 精简版从全量版搬来「Apple」分流组（连同开关），放在「Telegram」之前，跟全量版顺序一致；
 // 搬的是套用过改动的全量版，所以测速网址也一起带过来
 export function addAppleGroup(lite, full) {
@@ -332,7 +410,8 @@ async function main() {
   const outputs = [addAppleGroup(lite, full), full];
   await rm(OUT_DIR, { recursive: true, force: true });
   await mkdir(OUT_DIR, { recursive: true });
-  await syncSukkaRuleset();
+  // SCRIPTS_ONLY=1：只生成两个脚本（「测试」流程用，测的是这次改动的补丁，不需要 mihomo）
+  if (!process.env.SCRIPTS_ONLY) await syncSukkaRuleset();
   for (const [i, { from, to }] of TARGETS.entries()) {
     await writeFile(join(OUT_DIR, to), outputs[i]);
     console.log(`${from} → ${to}`);
