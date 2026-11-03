@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
 import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
@@ -117,12 +117,74 @@ test('subscription-userinfo 解析与到期判断', () => {
 
 test('识别机场名称：Content-Disposition 优先，其次域名', () => {
   assert.equal(detectAirportName("attachment; filename*=UTF-8''%E9%AD%94%E6%B3%95%E6%9C%BA%E5%9C%BA.yaml", 'https://x.com'), '魔法');
-  assert.equal(detectAirportName('attachment; filename="FlyCloud"', 'https://x.com'), 'FlyCloud');
-  assert.equal(detectAirportName('attachment; filename=Speed%20Net.yml', 'https://x.com'), 'Speed Net');
-  assert.equal(detectAirportName(null, 'https://sub.abc-cloud.com/api/v1/client?token=1'), 'abc-cloud');
+  assert.equal(detectAirportName('attachment; filename="FlyCloud"', 'https://x.com'), 'Fly');
+  assert.equal(detectAirportName('attachment; filename=Speed%20Net.yml', 'https://x.com'), 'Speed');
+  assert.equal(detectAirportName(null, 'https://sub.abc-cloud.com/api/v1/client?token=1'), 'abc');
   assert.equal(detectAirportName(null, 'https://api.foo.co.uk/s'), 'foo');
   assert.equal(detectAirportName('attachment', 'http://1.2.3.4:8080/s'), '');
-  assert.equal(detectAirportName("attachment; filename*=UTF-8''A%7CB", 'https://x.com'), 'A B');
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''AB%7CCD", 'https://x.com'), 'AB');
+  // 文件名缩完不剩东西就用域名，中文域名转回中文
+  assert.equal(detectAirportName('attachment; filename="clash.yaml"', 'https://sub.mojie.net/s'), 'mojie');
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''%E6%B0%B8%E4%B9%85%E5%85%8D%E8%B4%B9%E4%BA%91", 'https://xn--9kqs1lo79d.cc/s'), '吹雪云');
+  assert.equal(detectAirportName(null, 'https://xn--bad!.cc/s'), '');
+});
+
+test('机场简称：常见机场名称按规则缩短', () => {
+  const cases = {
+    三毛机场: '三毛',
+    MNKCloud: 'MNK',
+    FSCloud: 'FS',
+    FlyCloud: 'Fly',
+    AmyTelecom: 'Amy',
+    XCloud: '', // 只剩一个字母认不出，改用域名
+    SingLink: 'Sing',
+    nekocloud: 'neko',
+    'Speed CloudNet': 'Speed', // 通用词叠在一起也去光
+    'KTM Cloud': 'KTM',
+    'iKuuu VPN': 'iKuuu',
+    'BestVPN!': 'Best',
+    'Nexitally 奶昔': '奶昔',
+    'Kuromis 库洛米机场': '库洛米',
+    'WestData西部数据 | 稳定高速': '西部数据',
+    '大机场 Big Airport': 'Big',
+    哆啦A梦VPN: '哆啦A梦',
+    iceの小店: 'iceの小店',
+    猫熊网络加速器: '猫熊',
+    '一元机场 - 官网 yiyuan.xyz': '一元',
+    '【良心云】官网': '良心云',
+    '🚀八戒机场🚀': '八戒',
+    '「宝可梦」机场订阅': '宝可梦',
+    Nexitally_Clash: 'Nexitally',
+    'mojie.net': 'mojie',
+    '魔戒.net': '魔戒',
+    'Just My Socks': 'Just My Socks',
+    'A Very Long Airport Name Here': 'A Very Long',
+    'HK Speed': 'Speed',
+    'US Cloud': '',
+    永久免费云: '',
+    Clash_1700000000: '',
+    a8f3c9e21b7d4f60aa12: '',
+    x2Cloud: '',
+  };
+  for (const [raw, short] of Object.entries(cases)) assert.equal(shortName(raw), short, raw);
+});
+
+test('机场简称不会让覆写脚本把整个机场的节点误删或误分组', () => {
+  const ctx = vm.createContext({ console, structuredClone, URL });
+  vm.runInContext(fs.readFileSync(new URL('../public/script.js', import.meta.url), 'utf8'), ctx);
+  const filters = vm.runInContext('[excludeFilter, ...allRegionDefinitions.map((r) => r.regex)]', ctx);
+  // 覆写脚本正则里的每个中文词都拿来组名称，加上英文的地区、倍率写法
+  const words = filters.flatMap((re) => re.source.split('|')).filter((w) => /^[\p{Script=Han}]+$/u.test(w));
+  const names = [
+    ...words.flatMap((w) => [`${w}快云`, `快${w}云`, `Fast ${w}`]),
+    ...['HK', 'HKG', 'JP', 'US', 'USA', 'SG', 'TW', 'Free', 'ISP', 'RES', 'expire', 'traffic', 'HongKong', 'Japan', 'America', 'United States', 'Singapore', 'Taiwan'].map((w) => `${w} Speed`),
+    ...['x2', '2x', '0.5x', '3倍', 'x0'].map((w) => `Speed ${w}`),
+    'Speed@tg', 'Speed http://a.com', 'speed.com',
+  ];
+  for (const raw of names) {
+    const short = shortName(raw);
+    for (const re of filters) assert.ok(!re.test(`${short} | 节点`), `${raw} → ${short} 命中 ${re}`);
+  }
 });
 
 test('倍率提取：常见写法与分隔符清理', () => {

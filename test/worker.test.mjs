@@ -271,6 +271,14 @@ test('节点前缀三种模式：机场名称 / S1S2 / 不加', async (t) => {
   assert.deepEqual(none.names, ['新加坡 01', '美国 01', '香港 01', '美国 01 2', '香港 01 2']);
   assert.match(none.body, /\[飞云\] 1 个节点/);
 
+  // 同一家机场两份订阅：第二份的简称加序号
+  const { token: twice } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: 'z', prefixMode: 'name', sources: [{ url: `${base}/named` }, { url: `${base}/named` }] } })
+  ).json();
+  const twiceBody = await (await worker.fetch(new Request(`https://w.test/sub/${twice}`), env)).text();
+  assert.deepEqual(yaml.load(twiceBody).proxies.map((p) => p.name), ['飞云 | 新加坡 01', '飞云2 | 新加坡 01']);
+  assert.match(twiceBody, /\[飞云2\] 1 个节点/);
+
   const bad = await (await call(env, 'POST', '/api/subs', { body: { name: 'y', prefixMode: '??', sources: [{ url: base }] } })).json();
   assert.equal(bad.prefixMode, 'name');
 });
@@ -406,7 +414,7 @@ test('/sub/<TOKEN>：到期或流量用完的机场自动屏蔽，不计入流�
   // 只剩 A 的流量与到期日；屏蔽的机场若计入，客户端会把整个合并订阅显示成已到期或流量用完
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=1; download=2; total=100; expire=2000000000');
   const body = await res.text();
-  assert.match(body, /^# \[OldCloud\] 已屏蔽：订阅已于 2001-09-09 到期$/m);
+  assert.match(body, /^# \[Old\] 已屏蔽：订阅已于 2001-09-09 到期$/m);
   assert.match(body, /^# \[用完\] 已屏蔽：流量已用完（10\.0 GB \/ 10\.0 GB）$/m);
   assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['A | 🇭🇰 香港 01', 'A | 🇯🇵 日本 01']);
 
@@ -446,7 +454,7 @@ test('GET /api/subs/<TOKEN>/sources：每个机场的流量、到期日、是否
   assert.equal(named.name, '飞云');
   assert.equal(named.info, null);
   assert.equal(named.blocked, null);
-  assert.equal(expired.name, 'OldCloud');
+  assert.equal(expired.name, 'Old');
   assert.equal(expired.blocked, 'expired');
   assert.equal(expired.info.expire, 1000000000);
   assert.equal(failed.error, 'HTTP 500');

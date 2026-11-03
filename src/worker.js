@@ -80,6 +80,7 @@ async function serveSubscription(env, ctx, token, origin, script) {
 
   const mode = record.prefixMode ?? 'index';
   const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, ctx, source, i, mode, sourceRate(source, record))));
+  numberDuplicatePrefixes(results);
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) {
     return results.every((r) => r.blocked)
@@ -127,6 +128,20 @@ async function serveSubscription(env, ctx, token, origin, script) {
   if (userinfo) headers['Subscription-Userinfo'] = userinfo;
 
   return new Response(dumpConfig(config, comments), { headers });
+}
+
+// 同一家机场有两份订阅时简称会一样，第二份起加序号（良心云、良心云2），免得节点名称分不出来
+function numberDuplicatePrefixes(results) {
+  const seen = new Map();
+  for (const r of results) {
+    if (!r.prefix) continue;
+    const n = (seen.get(r.prefix) ?? 0) + 1;
+    seen.set(r.prefix, n);
+    if (n > 1) {
+      if (r.label === r.prefix) r.label += n;
+      r.prefix += n;
+    }
+  }
 }
 
 async function fetchSource(env, ctx, source, index, mode, excludeRate) {
