@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
+import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
 import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
@@ -73,6 +73,24 @@ test('合并：前缀、去重、dialer-proxy 改名、dns/hosts 合并', () => 
   assert.ok(!('proxy-providers' in c));
 });
 
+test('解析：除了名称以外完全相同的节点只留第一个，dialer-proxy 改指保留的那个', () => {
+  const node = (name, extra = {}) => ({ name, type: 'ss', server: 'a.example', port: 1, cipher: 'aes-128-gcm', password: 'x', ...extra });
+  const text = yaml.dump({
+    proxies: [
+      node('剩余流量：100 GB'), // 信息节点复制了真节点的设置，不能顶掉后面的真节点
+      node('新加坡 06'),
+      { password: 'x', name: '新加坡 07', type: 'ss', port: 1, server: 'a.example', cipher: 'aes-128-gcm' }, // 键顺序不同也算重复
+      node('新加坡 08', { port: 2 }),
+      node('落地', { server: 'b.example', 'dialer-proxy': '新加坡 07' }),
+    ],
+  });
+  const parsed = parseSubscription(text);
+  assert.deepEqual(parsed.proxies.map((p) => p.name), ['剩余流量：100 GB', '新加坡 06', '新加坡 08', '落地']);
+  assert.equal(parsed.duplicates, 1);
+  assert.equal(parsed.proxies[3]['dialer-proxy'], '新加坡 06');
+  assert.equal(parseSubscription(yaml.dump({ proxies: [node('a'), node('b', { port: 2 })] })).duplicates, 0);
+});
+
 test('subscription-userinfo 加总', () => {
   assert.equal(
     sumUserinfo(['upload=1; download=2; total=10; expire=200', null, 'upload=3; download=4; total=20; expire=100', 'upload=0; download=0; total=5; expire=0']),
@@ -99,12 +117,74 @@ test('subscription-userinfo 解析与到期判断', () => {
 
 test('识别机场名称：Content-Disposition 优先，其次域名', () => {
   assert.equal(detectAirportName("attachment; filename*=UTF-8''%E9%AD%94%E6%B3%95%E6%9C%BA%E5%9C%BA.yaml", 'https://x.com'), '魔法');
-  assert.equal(detectAirportName('attachment; filename="FlyCloud"', 'https://x.com'), 'FlyCloud');
-  assert.equal(detectAirportName('attachment; filename=Speed%20Net.yml', 'https://x.com'), 'Speed Net');
-  assert.equal(detectAirportName(null, 'https://sub.abc-cloud.com/api/v1/client?token=1'), 'abc-cloud');
+  assert.equal(detectAirportName('attachment; filename="FlyCloud"', 'https://x.com'), 'Fly');
+  assert.equal(detectAirportName('attachment; filename=Speed%20Net.yml', 'https://x.com'), 'Speed');
+  assert.equal(detectAirportName(null, 'https://sub.abc-cloud.com/api/v1/client?token=1'), 'abc');
   assert.equal(detectAirportName(null, 'https://api.foo.co.uk/s'), 'foo');
   assert.equal(detectAirportName('attachment', 'http://1.2.3.4:8080/s'), '');
-  assert.equal(detectAirportName("attachment; filename*=UTF-8''A%7CB", 'https://x.com'), 'A B');
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''AB%7CCD", 'https://x.com'), 'AB');
+  // 文件名缩完不剩东西就用域名，中文域名转回中文
+  assert.equal(detectAirportName('attachment; filename="clash.yaml"', 'https://sub.mojie.net/s'), 'mojie');
+  assert.equal(detectAirportName("attachment; filename*=UTF-8''%E6%B0%B8%E4%B9%85%E5%85%8D%E8%B4%B9%E4%BA%91", 'https://xn--9kqs1lo79d.cc/s'), '吹雪云');
+  assert.equal(detectAirportName(null, 'https://xn--bad!.cc/s'), '');
+});
+
+test('机场简称：常见机场名称按规则缩短', () => {
+  const cases = {
+    三毛机场: '三毛',
+    MNKCloud: 'MNK',
+    FSCloud: 'FS',
+    FlyCloud: 'Fly',
+    AmyTelecom: 'Amy',
+    XCloud: '', // 只剩一个字母认不出，改用域名
+    SingLink: 'Sing',
+    nekocloud: 'neko',
+    'Speed CloudNet': 'Speed', // 通用词叠在一起也去光
+    'KTM Cloud': 'KTM',
+    'iKuuu VPN': 'iKuuu',
+    'BestVPN!': 'Best',
+    'Nexitally 奶昔': '奶昔',
+    'Kuromis 库洛米机场': '库洛米',
+    'WestData西部数据 | 稳定高速': '西部数据',
+    '大机场 Big Airport': 'Big',
+    哆啦A梦VPN: '哆啦A梦',
+    iceの小店: 'iceの小店',
+    猫熊网络加速器: '猫熊',
+    '一元机场 - 官网 yiyuan.xyz': '一元',
+    '【良心云】官网': '良心云',
+    '🚀八戒机场🚀': '八戒',
+    '「宝可梦」机场订阅': '宝可梦',
+    Nexitally_Clash: 'Nexitally',
+    'mojie.net': 'mojie',
+    '魔戒.net': '魔戒',
+    'Just My Socks': 'Just My Socks',
+    'A Very Long Airport Name Here': 'A Very Long',
+    'HK Speed': 'Speed',
+    'US Cloud': '',
+    永久免费云: '',
+    Clash_1700000000: '',
+    a8f3c9e21b7d4f60aa12: '',
+    x2Cloud: '',
+  };
+  for (const [raw, short] of Object.entries(cases)) assert.equal(shortName(raw), short, raw);
+});
+
+test('机场简称不会让覆写脚本把整个机场的节点误删或误分组', () => {
+  const ctx = vm.createContext({ console, structuredClone, URL });
+  vm.runInContext(fs.readFileSync(new URL('../public/script.js', import.meta.url), 'utf8'), ctx);
+  const filters = vm.runInContext('[excludeFilter, ...allRegionDefinitions.map((r) => r.regex)]', ctx);
+  // 覆写脚本正则里的每个中文词都拿来组名称，加上英文的地区、倍率写法
+  const words = filters.flatMap((re) => re.source.split('|')).filter((w) => /^[\p{Script=Han}]+$/u.test(w));
+  const names = [
+    ...words.flatMap((w) => [`${w}快云`, `快${w}云`, `Fast ${w}`]),
+    ...['HK', 'HKG', 'JP', 'US', 'USA', 'SG', 'TW', 'Free', 'ISP', 'RES', 'expire', 'traffic', 'HongKong', 'Japan', 'America', 'United States', 'Singapore', 'Taiwan'].map((w) => `${w} Speed`),
+    ...['x2', '2x', '0.5x', '3倍', 'x0'].map((w) => `Speed ${w}`),
+    'Speed@tg', 'Speed http://a.com', 'speed.com',
+  ];
+  for (const raw of names) {
+    const short = shortName(raw);
+    for (const re of filters) assert.ok(!re.test(`${short} | 节点`), `${raw} → ${short} 命中 ${re}`);
+  }
 });
 
 test('倍率提取：常见写法与分隔符清理', () => {
@@ -273,6 +353,61 @@ for (const file of ['script.js', 'script-full.js']) {
       assert.ok(!out.rules.includes(`RULE-SET,${name},AdBlock`), name);
     }
     assert.equal(out['proxy-groups'].find((g) => g.name === 'AdBlock').proxies[0], 'REJECT');
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：开启 sniffer，只拿域名匹配规则、不改目标地址`, () => {
+    const { sniffer } = runScript(file);
+    assert.equal(sniffer.enable, true);
+    assert.equal(sniffer['parse-pure-ip'], true);
+    assert.equal(sniffer['override-destination'], false);
+    for (const p of ['HTTP', 'TLS', 'QUIC']) assert.ok(sniffer.sniff[p].ports.length > 0, p);
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：广告规则排在国内直连前面，分流规则里不重复`, () => {
+    const { rules } = runScript(file);
+    const ad = rules.indexOf('RULE-SET,sukka-reject,AdBlock');
+    assert.ok(ad > rules.indexOf('RULE-SET,private,直连'));
+    assert.ok(ad < rules.indexOf('RULE-SET,geolocation-cn,直连'));
+    assert.equal(rules.filter((r) => r.endsWith(',AdBlock')).length, 1);
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：自动选择组不选 HTTP / SOCKS5、高倍率与「勿跑大流量」节点，排除后会变空的组不加`, () => {
+    const node = (name, type = 'ss') => ({ name, type, server: 'a.example', port: 1, cipher: 'aes-128-gcm', password: 'x' });
+    const out = runScript(file, [
+      node('🇭🇰 香港 02 | 2x'),
+      node('🇭🇰 香港 03 | 1.5x'),
+      node('🇭🇰 香港原生 勿跑大流量'),
+      node('🇺🇸 美国 Free-http', 'http'),
+      node('🇬🇧 英国 01 | 3x'),
+    ]);
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    // 照 mihomo 的规则算出组里实际会被测速的节点（exclude-filter 的 (?i) 换成 JS 的 i 旗标）
+    const types = new Map(out.proxies.map((p) => [p.name, p.type.toLowerCase()]));
+    const effective = (name) => {
+      const g = groups.get(name);
+      const excludeTypes = (g['exclude-type'] ?? '').toLowerCase().split('|');
+      const re = g['exclude-filter'] && new RegExp(g['exclude-filter'].replace(/^\(\?i\)/, ''), 'i');
+      return g.proxies.filter((n) => !excludeTypes.includes(types.get(n)) && !re?.test(n));
+    };
+    for (const name of out['proxy-groups'].filter((g) => g.type === 'url-test').map((g) => g.name)) {
+      assert.ok(effective(name).length > 0, `${name} 不能变空`);
+    }
+    const auto = effective('自动选择');
+    assert.ok(auto.includes('🇭🇰 香港 03 | 1.5x'));
+    for (const n of ['🇭🇰 香港 02 | 2x', '🇭🇰 香港原生 勿跑大流量', '🇺🇸 美国 Free-http', '🇬🇧 英国 01 | 3x']) assert.ok(!auto.includes(n), n);
+    assert.deepEqual([...effective('香港-自动选择')], ['🇭🇰 香港 01', '🇭🇰 香港 03 | 1.5x']);
+    // 高倍率组自己的自动选择不排除倍率
+    assert.ok(effective('高倍率节点-自动选择').includes('🇭🇰 香港 02 | 2x'));
+    // 只有高倍率节点的地区不加 exclude-filter，免得整组变空
+    const ukOnly = [...groups.values()].filter((g) => g.type === 'url-test' && g.proxies.length === 1 && g.proxies[0] === '🇬🇧 英国 01 | 3x');
+    assert.ok(ukOnly.length > 0);
+    for (const g of ukOnly) assert.equal(g['exclude-filter'], undefined, g.name);
   });
 }
 

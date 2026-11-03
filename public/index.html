@@ -2,73 +2,79 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0e1117" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1016" media="(prefers-color-scheme: dark)">
 <title>MyClash 订阅合并</title>
 <!-- 内嵌图标：浏览器就不会再请求 /favicon.ico（那会多算一次 Worker 请求） -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234f6ef7'/%3E%3Cstop offset='1' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M10 7v3c0 5 6 5 6 10v5M22 7v3c0 5-6 5-6 10' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
+  /* ---------- 设计变量：颜色、圆角、阴影；间距一律用 4 的倍数 ---------- */
   :root {
-    --bg: #f4f6fb; --glow: rgba(79, 110, 247, .14); --card: #fff; --sunken: #f6f7fa; --field: #fff; --hover: #eef1f6;
-    --text: #131a26; --muted: #5d6879; --faint: #8b94a5; --border: #e3e7ee; --border-strong: #d3d9e3;
-    --accent: #4f6ef7; --accent-hover: #3f5ee6; --accent-2: #8b5cf6; --accent-soft: rgba(79, 110, 247, .1); --accent-text: #fff;
+    --bg: #f5f7fb; --glow: rgba(79, 110, 247, .13); --card: #fff; --sunken: #f4f6f9; --field: #fff; --hover: #eef1f6;
+    --text: #111827; --muted: #5b6577; --faint: #8a93a4; --border: #e4e8ef; --border-strong: #d2d8e2;
+    --accent: #4f6ef7; --accent-hover: #3d5be6; --accent-soft: rgba(79, 110, 247, .1); --accent-text: #fff;
     --ok: #0f8a5f; --ok-soft: rgba(15, 138, 95, .1); --warn: #b45309; --warn-soft: rgba(180, 83, 9, .1);
-    --danger: #d92d20; --danger-soft: rgba(217, 45, 32, .09); --idle: #8b94a5; --idle-soft: rgba(139, 148, 165, .14);
-    --code-bg: #f6f8fa; --toast: #1d2433; --toast-text: #fff;
+    --danger: #d92d20; --danger-soft: rgba(217, 45, 32, .08); --idle: #8a93a4; --idle-soft: rgba(138, 147, 164, .14);
+    --code-bg: #f6f8fa; --toast: #1d2433; --toast-text: #fff; --scrim: rgba(15, 20, 30, .45);
     --ring: 0 0 0 3px rgba(79, 110, 247, .28);
     --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px -8px rgba(16, 24, 40, .08);
+    --shadow-lg: 0 24px 60px -12px rgba(16, 24, 40, .3);
+    --r-sm: 8px; --r: 10px; --r-lg: 14px; --r-xl: 18px;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0e1117; --glow: rgba(110, 135, 255, .16); --card: #161a22; --sunken: #1b2029; --field: #11151c; --hover: #222834;
-      --text: #e7eaf0; --muted: #9ca5b5; --faint: #6f7a8c; --border: #262c37; --border-strong: #343b48;
-      --accent: #7b93ff; --accent-hover: #93a7ff; --accent-2: #a78bfa; --accent-soft: rgba(123, 147, 255, .14); --accent-text: #0b1020;
+      --bg: #0d1016; --glow: rgba(110, 135, 255, .15); --card: #151922; --sunken: #1a1f29; --field: #10141b; --hover: #212835;
+      --text: #e8ebf1; --muted: #9ba4b4; --faint: #6d7789; --border: #252b36; --border-strong: #333a47;
+      --accent: #7b93ff; --accent-hover: #93a7ff; --accent-soft: rgba(123, 147, 255, .14); --accent-text: #0b1020;
       --ok: #3fc58a; --ok-soft: rgba(63, 197, 138, .14); --warn: #e8a23b; --warn-soft: rgba(232, 162, 59, .14);
-      --danger: #ff6b5e; --danger-soft: rgba(255, 107, 94, .13); --idle: #7c8698; --idle-soft: rgba(124, 134, 152, .16);
-      --code-bg: #0b0e14; --toast: #e7eaf0; --toast-text: #131a26;
+      --danger: #ff6b5e; --danger-soft: rgba(255, 107, 94, .12); --idle: #7c8698; --idle-soft: rgba(124, 134, 152, .16);
+      --code-bg: #0b0e14; --toast: #e8ebf1; --toast-text: #111827; --scrim: rgba(0, 0, 0, .6);
       --ring: 0 0 0 3px rgba(123, 147, 255, .35);
       --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -12px rgba(0, 0, 0, .5);
+      --shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, .7);
     }
   }
+
+  /* ---------- 基础 ---------- */
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
   /* 背景光晕只在页面顶部画一次，不用 fixed，滚动时不重绘 */
   body {
     margin: 0; color: var(--text);
     background: radial-gradient(900px 340px at 50% -140px, var(--glow), transparent 70%) no-repeat, var(--bg);
-    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   h1, h2, h3 { margin: 0; line-height: 1.3; letter-spacing: -.01em; }
-  h1 { font-size: 22px; font-weight: 700; }
+  h1 { font-size: 20px; font-weight: 700; }
   h2 { font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
   h3 { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
   p { margin: 0; }
   a { color: var(--accent); text-underline-offset: 2px; }
   code { font-family: var(--mono); font-size: .9em; }
-  .hidden { display: none !important; }
+  [hidden], .hidden { display: none !important; }
   .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .hint { color: var(--muted); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; font-weight: 400; }
   .grow { flex: 1; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-
   svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  :focus-visible { outline: none; box-shadow: var(--ring); }
 
-  .top { max-width: 880px; margin: 0 auto; padding: 36px 16px 20px; display: flex; align-items: center; gap: 14px; }
+  /* ---------- 页面框架 ---------- */
+  .top { max-width: 920px; margin: 0 auto; padding: 32px 16px 20px; display: flex; align-items: center; gap: 14px; }
   .logo {
-    flex: none; width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; color: #fff;
+    flex: none; width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; color: #fff;
     background: linear-gradient(135deg, #4f6ef7, #8b5cf6); box-shadow: 0 8px 18px -8px rgba(79, 110, 247, .7);
   }
-  .logo svg.i { width: 26px; height: 26px; stroke-width: 2.4; }
+  .logo svg.i { width: 24px; height: 24px; stroke-width: 2.4; }
   .top p { color: var(--muted); font-size: 14px; margin-top: 2px; }
-  main { max-width: 880px; margin: 0 auto; padding: 0 16px 64px; }
+  main { max-width: 920px; margin: 0 auto; padding: 0 16px 48px; }
 
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-xl); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
   .count {
     display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
@@ -76,10 +82,10 @@
   }
   .count:empty { display: none; }
 
-  /* 按钮 */
+  /* ---------- 按钮 ---------- */
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px;
-    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--card); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--card); color: var(--text);
     font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
     transition: background-color .15s, border-color .15s, color .15s;
   }
@@ -91,29 +97,34 @@
   .btn.ghost:hover { background: var(--hover); color: var(--text); }
   .btn.danger, .icon-btn.danger { color: var(--danger); }
   .btn.danger:hover, .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
-  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; border-radius: 8px; }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; border-radius: var(--r-sm); }
   .btn:disabled, .icon-btn:disabled { opacity: .5; cursor: default; transform: none; }
   .icon-btn {
-    display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px;
+    display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--r);
     background: transparent; color: var(--muted); cursor: pointer; transition: background-color .15s, color .15s;
   }
   .icon-btn:hover { background: var(--hover); color: var(--text); }
-  :focus-visible { outline: none; box-shadow: var(--ring); }
+  .link-btn {
+    display: inline-flex; align-items: center; gap: 2px; padding: 0; border: 0; background: none; color: var(--accent);
+    font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; border-radius: 4px;
+  }
+  .link-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .link-btn svg.i { width: 14px; height: 14px; }
 
-  /* 输入框 */
-  input[type=text], input[type=url], input[type=number], textarea {
-    width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px;
+  /* ---------- 表单 ---------- */
+  input[type=text], input[type=url], input[type=number], select, textarea {
+    width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--r);
     background: var(--field); color: var(--text); font: inherit; font-size: 14px; transition: border-color .15s, box-shadow .15s;
   }
+  select { width: auto; padding-right: 8px; cursor: pointer; }
   textarea { height: auto; min-height: 120px; padding: 10px 12px; font-family: var(--mono); font-size: 13px; resize: vertical; }
   input::placeholder, textarea::placeholder { color: var(--faint); }
-  input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
-  .field { margin-top: 18px; }
-  .field > label, .label { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-  .field > label .hint, .label .hint { font-weight: 400; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  .field + .field { margin-top: 20px; }
+  .label { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 
   /* 分段选择（单选按钮） */
-  .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--sunken); }
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--sunken); }
   .seg label { position: relative; cursor: pointer; }
   .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
   .seg span { display: block; padding: 4px 12px; white-space: nowrap; border-radius: 7px; color: var(--muted); font-size: 13.5px; transition: background-color .15s, color .15s; }
@@ -122,7 +133,7 @@
   .seg input:focus-visible + span { box-shadow: var(--ring); }
 
   /* 开关 */
-  .switch { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; cursor: pointer; font-size: 14px; }
+  .switch { position: relative; display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 14px; }
   .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
   .track { position: relative; flex: none; width: 38px; height: 22px; margin-top: 1px; border-radius: 999px; background: var(--border-strong); transition: background-color .2s; }
   .track::after {
@@ -133,36 +144,44 @@
   .switch input:checked + .track::after { transform: translateX(16px); }
   .switch input:focus-visible + .track { box-shadow: var(--ring); }
 
-  /* 状态标签 */
+  /* ---------- 标签 ---------- */
   .pill {
     --c: var(--ok); --c-soft: var(--ok-soft);
     display: inline-flex; align-items: center; gap: 5px; flex: none; height: 20px; padding: 0 8px; border-radius: 999px;
     background: var(--c-soft); color: var(--c); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
   }
-  .src-status .pill { margin-top: 1px; }
   .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .pill.cache, .pill.warn { --c: var(--warn); --c-soft: var(--warn-soft); }
   .pill.blocked, .pill.fail { --c: var(--danger); --c-soft: var(--danger-soft); }
   .pill.idle, .pill.pending { --c: var(--idle); --c-soft: var(--idle-soft); }
   .pill.pending::before { animation: pulse 1s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .25; } }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--sunken); color: var(--muted); font-size: 12.5px; }
+  .chip.accent { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
+  .rate-chip {
+    padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--sunken); color: var(--muted);
+    font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color .15s, color .15s, border-color .15s;
+  }
+  .rate-chip:hover { color: var(--text); border-color: var(--border-strong); }
+  .rate-chip small { margin-left: 3px; opacity: .7; font-size: 11px; }
+  .rate-chip.on { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); color: var(--danger); text-decoration: line-through; }
 
-  .msg { margin-top: 10px; font-size: 14px; }
+  .msg { font-size: 14px; }
   .msg:empty { display: none; }
   .msg.err { color: var(--danger); } .msg.ok { color: var(--ok); }
 
-  /* 订阅清单 */
-  .sub { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  /* ---------- 订阅清单 ---------- */
+  .sub { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; }
   .sub + .sub { margin-top: 12px; }
   .sub.flash { animation: flash 1.8s ease-out; }
   @keyframes flash { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
   .sub-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .chip { padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--sunken); color: var(--muted); font-size: 12.5px; }
+  .sub .chips { margin-top: 8px; }
   .sub-mode { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
   .linkbox {
     display: flex; align-items: center; gap: 4px; min-height: 40px; margin: 12px 0; padding: 4px 4px 4px 12px;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--sunken);
+    border: 1px solid var(--border); border-radius: var(--r); background: var(--sunken);
   }
   .linkbox:not(:has(.icon-btn)) { padding-right: 12px; }
   .link { flex: 1; min-width: 0; padding: 4px 0; font: 12.5px/1.5 var(--mono); overflow-wrap: anywhere; }
@@ -172,14 +191,24 @@
   .import { display: flex; gap: 8px; margin-top: 16px; }
   .import input { flex: 1; min-width: 0; }
 
-  /* 编辑页 */
-  .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-  .label-row .label { margin: 0; }
-  #src-summary { display: inline-flex; gap: 6px; flex-wrap: wrap; }
-  #sources { display: grid; gap: 8px; margin: 10px 0; }
+  /* ---------- 编辑页 ---------- */
+  .edit-head { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; }
+  .edit-head h2 { font-size: 19px; min-width: 0; overflow-wrap: anywhere; }
+  .sec-head { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .sec-head h2 { margin-right: auto; }
+  .step {
+    display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
+  }
+  .sec-desc { margin: -8px 0 16px; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .two .field + .field { margin-top: 0; }
+
+  /* 机场订阅列 */
+  #sources { display: grid; gap: 8px; margin-bottom: 10px; }
   .src {
-    display: grid; grid-template-columns: 26px 168px minmax(0, 1fr) 36px; gap: 6px 8px; align-items: center;
-    padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--sunken);
+    display: grid; grid-template-columns: 26px 160px minmax(0, 1fr) 36px; gap: 6px 8px; align-items: center;
+    padding: 10px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--sunken);
     transition: border-color .15s, background-color .15s;
   }
   .src[data-kind=blocked], .src[data-kind=fail] { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: var(--danger-soft); }
@@ -188,29 +217,44 @@
     display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
     background: var(--card); border: 1px solid var(--border); color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
   }
-  .src-status { grid-column: 2 / -1; display: flex; align-items: flex-start; gap: 8px; min-height: 20px; font-size: 13px; color: var(--muted); }
+  .src-status { grid-column: 2 / -1; display: flex; align-items: flex-start; gap: 4px 8px; flex-wrap: wrap; min-height: 20px; font-size: 13px; color: var(--muted); }
   .src-status:empty { display: none; }
-  .src-status span:last-child { min-width: 0; }
+  .src-status .pill { margin-top: 1px; }
+  .src-status .text { flex: 1; min-width: 200px; }
+  .bulk { margin-top: 10px; }
+
   /* 节点筛选 */
-  .rate-row { font-size: 14px; }
-  .rate-row input { width: 90px; }
-  .rate-chip {
-    padding: 1px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--sunken); color: var(--muted);
-    font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color .15s, color .15s, border-color .15s;
+  .global-rate { padding: 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--sunken); }
+  .rate-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+  .rate-row input[type=number] { width: 88px; }
+  .global-rate .chips { margin-top: 10px; }
+  .node-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 16px 0 8px; }
+  .search { position: relative; flex: 1; min-width: 180px; }
+  .search svg.i { position: absolute; left: 11px; top: 11px; color: var(--faint); pointer-events: none; }
+  .search input { padding-left: 34px; }
+  #node-groups { display: grid; gap: 8px; margin-top: 12px; }
+  .ng { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); overflow: hidden; }
+  .ng.blocked { background: var(--sunken); }
+  .ng-head { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; padding: 8px 10px 8px 6px; }
+  .ng-toggle {
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; border: 0; border-radius: var(--r-sm);
+    background: none; color: var(--text); font: inherit; font-size: 14.5px; cursor: pointer;
   }
-  .rate-chip:hover { color: var(--text); border-color: var(--border-strong); }
-  .rate-chip small { margin-left: 3px; opacity: .7; }
-  .rate-chip.on { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); color: var(--danger); text-decoration: line-through; }
-  .node-tools { display: flex; gap: 8px; flex-wrap: wrap; }
-  .node-tools input { flex: 1; min-width: 160px; }
-  .node-list { max-height: 440px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--sunken); }
-  .node-group-head {
-    position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; padding: 6px 10px;
-    border-bottom: 1px solid var(--border); background: var(--card); font-size: 14px;
-  }
-  .node-group + .node-group .node-group-head { border-top: 1px solid var(--border); }
-  .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 8px; padding: 6px; }
-  .node { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 6px; border-radius: 7px; font-size: 13px; cursor: pointer; user-select: none; }
+  .ng-toggle:hover:not(:disabled) { background: var(--hover); }
+  .ng-toggle:disabled { cursor: default; }
+  .ng-toggle svg.i { color: var(--muted); transition: transform .15s; }
+  .ng-toggle[aria-expanded=true] svg.i { transform: rotate(90deg); }
+  .ng-toggle b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ng-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ng-rate { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; color: var(--muted); }
+  .ng-rate select { height: 30px; font-size: 13px; border-radius: var(--r-sm); }
+  .ng-rate input[type=number] { width: 72px; height: 30px; padding: 0 8px; font-size: 13px; border-radius: var(--r-sm); }
+  .ng-body { border-top: 1px solid var(--border); background: var(--sunken); }
+  .ng-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px 4px; }
+  .ng-tools .chips { flex: 1; }
+  .ng-empty { padding: 4px 16px 12px 40px; font-size: 13px; color: var(--muted); }
+  .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0 8px; padding: 6px; }
+  .node { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; border-radius: 7px; font-size: 13px; cursor: pointer; user-select: none; }
   .node:hover { background: var(--hover); }
   .node input { flex: none; margin: 0; accent-color: var(--accent); }
   .node .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -218,23 +262,41 @@
   .node:has(input:not(:checked)) .n { color: var(--faint); text-decoration: line-through; }
   .node.by-rate { cursor: default; }
   .node.by-rate .r { color: var(--danger); }
-  .node-empty { padding: 8px 10px 10px; font-size: 13px; color: var(--muted); }
-  .footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .node-empty { padding: 12px; font-size: 13px; color: var(--muted); }
 
-  /* 预览 */
+  /* 底部固定的操作列 */
+  .actionbar {
+    position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap;
+    margin: 0 -4px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border: 1px solid var(--border); border-radius: var(--r-xl) var(--r-xl) 0 0;
+    background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 -8px 24px -16px rgba(16, 24, 40, .25);
+  }
+  .actionbar .info { flex: 1; min-width: 180px; display: grid; gap: 2px; font-size: 13.5px; }
+  .actionbar .info b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ---------- 预览（对话框） ---------- */
+  dialog {
+    width: min(860px, calc(100% - 24px)); max-height: calc(100% - 48px); padding: 0; border: 1px solid var(--border); border-radius: var(--r-xl);
+    background: var(--card); color: var(--text); box-shadow: var(--shadow-lg);
+  }
+  dialog::backdrop { background: var(--scrim); }
+  dialog[open] { display: flex; flex-direction: column; }
+  .dlg-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px 20px; border-bottom: 1px solid var(--border); }
+  .dlg-head h2 { margin-right: auto; min-width: 0; overflow-wrap: anywhere; }
+  .dlg-body { padding: 16px 20px 20px; overflow: auto; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .stat { padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--sunken); }
+  .stat { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--sunken); }
   .stat span { display: block; color: var(--muted); font-size: 12.5px; }
   .stat b { display: block; font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .status { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; font-size: 14px; }
   .status li { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
   #preview-hint { margin-bottom: 14px; }
   pre {
-    margin: 0; padding: 14px; max-height: 460px; overflow: auto; border: 1px solid var(--border); border-radius: 12px;
+    margin: 0; padding: 14px; max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-lg);
     background: var(--code-bg); font: 12.5px/1.55 var(--mono); tab-size: 2;
   }
 
-  /* 说明 */
+  /* ---------- 说明 ---------- */
   .steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
   .steps li { position: relative; padding-left: 36px; counter-increment: step; }
   .steps li::before {
@@ -243,40 +305,51 @@
   }
   .sync-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; font-size: 13.5px; color: var(--muted); }
   .sync-row a { color: inherit; }
-  .note { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--sunken); color: var(--muted); font-size: 13.5px; }
-  details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-  summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: 14px; list-style: none; }
-  summary::-webkit-details-marker { display: none; }
-  summary::before {
+  .note { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--sunken); color: var(--muted); font-size: 13.5px; }
+  details.more { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  details.more > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: 14px; list-style: none; }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more > summary::before {
     content: ""; width: 6px; height: 6px; margin: 0 2px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
     transform: rotate(-45deg); transition: transform .15s;
   }
-  details[open] > summary::before { transform: rotate(45deg); }
-  details > :not(summary) { margin-top: 10px; }
+  details.more[open] > summary::before { transform: rotate(45deg); }
+  details.more > :not(summary) { margin-top: 10px; }
 
   .toast {
-    position: fixed; left: 50%; bottom: 24px; z-index: 10; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px;
+    position: fixed; left: 50%; bottom: 24px; z-index: 20; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: var(--r);
     background: var(--toast); color: var(--toast-text); font-size: 14px; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, .35);
     opacity: 0; transform: translate(-50%, 12px); pointer-events: none; transition: opacity .2s, transform .2s;
   }
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
   .toast.err { background: var(--danger); color: #fff; }
+  /* 编辑页有底部操作列，提示往上移 */
+  body.editing .toast { bottom: 96px; }
 
-  @media (max-width: 600px) {
-    .top { padding-top: 24px; }
-    .card { padding: 16px; border-radius: 14px; }
+  /* ---------- 手机 ---------- */
+  @media (max-width: 640px) {
+    .top { padding-top: 20px; }
+    .card { padding: 16px; border-radius: var(--r-lg); }
     .sub { padding: 14px; }
+    .two { grid-template-columns: minmax(0, 1fr); }
     .src { grid-template-columns: 26px minmax(0, 1fr) 36px; }
     .src-url { grid-column: 2 / -1; grid-row: 2; }
+    .src-status .text { min-width: 0; flex-basis: 100%; }
     /* 两个主要按钮各占半行，其余四个排成一行图标按钮 */
     .actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .actions .btn:not(.ghost) { grid-column: span 2; padding: 0 8px; }
     .actions .btn.ghost { flex-direction: column; gap: 2px; height: 50px; padding: 0 4px; font-size: 12.5px; }
     .actions .grow { display: none; }
     .seg { display: flex; }
-    .sub-mode .seg { flex: 1; }
+    .sub-mode .seg, #prefix-mode { flex: 1; }
     .seg label { flex: 1; text-align: center; }
     .seg span { padding: 4px 6px; }
+    .ng-rate { margin-left: 34px; }
+    .nodes { grid-template-columns: minmax(0, 1fr); }
+    .actionbar { margin: 0 -16px; border-radius: 0; border-left: 0; border-right: 0; }
+    .actionbar .btn { flex: 1; }
+    .actionbar .info { flex-basis: 100%; }
+    .dlg-body { padding: 14px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -295,6 +368,9 @@
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
 </svg>
 
 <header class="top">
@@ -306,154 +382,174 @@
 </header>
 
 <main>
-  <section class="card" id="list-card">
-    <div class="card-head">
-      <h2>我的合并订阅 <span class="count" id="count"></span></h2>
-      <button class="btn primary" id="new-btn"><svg class="i"><use href="#i-plus"/></svg>生成新的订阅</button>
-    </div>
-    <div id="list"><p class="empty muted">读取中…</p></div>
-    <div class="import">
-      <input type="text" id="import-input" placeholder="粘贴订阅链接或 TOKEN 导入" aria-label="订阅链接或 TOKEN">
-      <button class="btn" id="import-btn">导入</button>
-    </div>
-    <div class="msg" id="import-msg"></div>
-    <p class="hint" style="margin-top:10px">清单只记在这个浏览器里。换设备或清除浏览器数据后，把订阅链接贴到上面，或直接贴进浏览器网址栏打开，就会自动导入。</p>
-  </section>
+  <!-- ===== 清单 ===== -->
+  <div id="view-list">
+    <section class="card">
+      <div class="card-head">
+        <h2>我的合并订阅 <span class="count" id="count"></span></h2>
+        <button type="button" class="btn primary" id="new-btn"><svg class="i"><use href="#i-plus"/></svg>新建订阅</button>
+      </div>
+      <div id="list"><p class="empty muted">读取中…</p></div>
+      <form class="import" id="import-form">
+        <input type="text" id="import-input" placeholder="粘贴订阅链接或 TOKEN 导入" aria-label="订阅链接或 TOKEN" autocomplete="off">
+        <button class="btn">导入</button>
+      </form>
+      <p class="msg" id="import-msg" style="margin-top:8px"></p>
+      <p class="hint" style="margin-top:10px">清单只记在这个浏览器里。换设备或清除浏览器数据后，把订阅链接贴到上面，或直接贴进浏览器网址栏打开，就会自动导入。</p>
+    </section>
 
-  <section class="card hidden" id="edit-card">
-    <div class="card-head" style="margin-bottom:0">
-      <h2 id="edit-title">生成新的订阅</h2>
-      <button class="icon-btn" id="close-edit" title="关闭" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
-    </div>
-    <div class="field">
-      <label for="edit-name">名称 <span class="hint">显示在客户端的配置文件名称</span></label>
-      <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手机">
-    </div>
-    <div class="field">
-      <span class="label">节点前缀 <span class="hint">加在每个节点名称前面，用来区分不同机场</span></span>
-      <div class="seg" id="prefix-mode" role="radiogroup" aria-label="节点前缀">
-        <label><input type="radio" name="prefix-mode" value="name" checked><span>机场名称</span></label>
-        <label><input type="radio" name="prefix-mode" value="index"><span>S1、S2…</span></label>
-        <label><input type="radio" name="prefix-mode" value="none"><span>不加前缀</span></label>
+    <section class="card">
+      <div class="card-head"><h2>客户端怎么用</h2></div>
+      <ol class="steps">
+        <li>在订阅卡片选覆写脚本：<b>精简</b>（推荐，分流组：Google、AI、Apple、Telegram、Steam、AdBlock）或<b>全量</b>（另加 YouTube、Netflix、GitHub、Microsoft 等）。</li>
+        <li>按「复制链接」或「一键导入 Clash」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。
+          链接已经套用好脚本，<b>客户端不要再加脚本覆写</b>，否则会覆写两次。</li>
+        <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
+        <li><b>iPhone 用小火箭</b>：订阅卡片选「小火箭」，先按「导入节点到小火箭」，再按「导入分流配置」（分流组同精简版）。详细步骤与省电设置见下方「iPhone 小火箭教程」。</li>
+      </ol>
+      <p class="note">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。
+        已到期或流量用完的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
+      <div class="sync-row">
+        <span id="sync-status">正在读取覆写脚本的同步状态…</span>
+        <button type="button" class="btn sm ghost hidden" id="sync-btn" title="让 GitHub Actions 立刻从上游同步覆写脚本（10 分钟限一次）"><svg class="i"><use href="#i-refresh"/></svg>立即同步</button>
       </div>
-      <p class="hint" id="prefix-hint" style="margin-top:8px"></p>
+      <details class="more"><summary>iPhone 小火箭教程（导入与省电）</summary>
+        <p class="hint">小火箭读不了 mihomo 的规则集，所以节点和分流分开导入：订阅只给节点，分流用 <code>/shadowrocket.conf</code>。
+          这份配置的分流组同精简版，规则集改用 blackmatrix7 的小火箭 <code>.list</code>，没有 HuggingFace 分流，广告规则只用 AdvertisingLite。</p>
+        <ol class="steps">
+          <li>用非中国区的 Apple ID 在 App Store 购买安装 Shadowrocket。</li>
+          <li>用 iPhone 的 Safari 打开本页，导入订阅，订阅卡片选「<b>小火箭</b>」。</li>
+          <li>按「<b>导入节点到小火箭</b>」，确认添加订阅。也可以手动添加：首页右上角「+」，类型选 <code>Subscribe</code>，贴上订阅链接。</li>
+          <li>按「<b>导入分流配置</b>」，在小火箭「配置」页点 <code>shadowrocket.conf</code> →「使用配置」。也可以手动添加：「配置」页右上角「+」，贴上配置链接。</li>
+          <li>首页「全局路由」选「<b>配置</b>」，打开连接，第一次连接时允许添加 VPN 配置。</li>
+          <li>自动更新：先在系统「设置 → 通用 → 后台 App 刷新」允许 Shadowrocket；再到小火箭「设置 → 自动更新」：
+            「订阅」（即节点，小火箭叫「服务器」）间隔选 24 小时。
+            分流配置不自动更新（规则集照样会自动刷新），手选结果不会被重置；本仓库改了配置时，删掉旧的再按「导入分流配置」。</li>
+        </ol>
+        <p class="hint"><b>息屏断开、亮屏自动连上</b>（iOS 不允许 App 监听锁屏，这是最接近的做法）：</p>
+        <ul class="hint">
+          <li>「设置 → 按需求连接」：打开，添加「Wi-Fi」与「蜂窝网络」规则，动作选「连接」；<b>不要</b>开「始终开启」：它让 VPN 任何时候都保持连接、断了就自动重连，跟息屏断开省电的目的相反。</li>
+          <li>打开「睡眠时断开」：设备睡眠时断开，亮屏后有 App 联网时 iOS 会自动重连。息屏后 iOS 不一定马上睡眠，所以不是一锁屏就断；如果推送常收不到，就关掉这项。</li>
+        </ul>
+        <p class="hint"><b>更省电</b>：只在用特定 App 时开 VPN。「快捷指令 → 自动化 → App」：选 Claude、Telegram 等，「已打开」时运行「启动 Shadowrocket」，「已关闭」时运行「停止 Shadowrocket」，都设为立即运行。用这个方法就不要同时开按需求连接。
+          地区组（香港、日本…）默认选「&lt;地区&gt;-自动选择」自动挑最快的；想固定某个节点，就在地区组里直接点它，重连 VPN 也会保留。
+          另外，全局路由保持「配置」，不装模块、不开 MitM；配置里的测速间隔为 10 分钟，不要改小。</p>
+      </details>
+      <details class="more"><summary>想自己在客户端覆写？</summary>
+        <p class="hint">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版或全量版：</p>
+        <div class="linkbox"><code class="link" id="script-url"></code>
+          <button type="button" class="icon-btn" id="copy-script" title="复制精简版链接" aria-label="复制精简版链接"><svg class="i"><use href="#i-copy"/></svg></button></div>
+        <div class="linkbox"><code class="link" id="script-full-url"></code>
+          <button type="button" class="icon-btn" id="copy-script-full" title="复制全量版链接" aria-label="复制全量版链接"><svg class="i"><use href="#i-copy"/></svg></button></div>
+      </details>
+      <details class="more"><summary>安全提醒</summary>
+        <p class="hint">每个订阅链接里的 TOKEN 都等同密码，拿到的人就能用你的节点，也能编辑或删除这个订阅。如果外流了，按「换 TOKEN」，旧链接会立刻失效，再把新链接贴回客户端就好。</p>
+      </details>
+    </section>
+  </div>
+
+  <!-- ===== 编辑 ===== -->
+  <div id="view-edit" hidden>
+    <div class="edit-head">
+      <button type="button" class="icon-btn" id="back-btn" title="返回清单" aria-label="返回清单"><svg class="i"><use href="#i-back"/></svg></button>
+      <h2 id="edit-title">新建订阅</h2>
     </div>
-    <label class="switch">
-      <input type="checkbox" id="rate-tag"><span class="track"></span>
-      <span>在节点名称标示倍率 <span class="hint">例如「飞云 | 2x | 香港 01」，1 倍不标</span></span>
-    </label>
-    <div class="field">
-      <div class="label-row">
-        <span class="label">机场订阅 <span class="count" id="src-count"></span> <span id="src-summary"></span></span>
-        <button class="btn sm" id="check-btn" title="即时读取每个机场的流量与到期日"><svg class="i"><use href="#i-refresh"/></svg>重新检查</button>
+
+    <section class="card" aria-labelledby="sec-basic">
+      <div class="sec-head"><h2 id="sec-basic"><span class="step">1</span>基本设置</h2></div>
+      <div class="field">
+        <label class="label" for="edit-name">名称 <span class="hint">显示在客户端的配置文件名称</span></label>
+        <input type="text" id="edit-name" maxlength="60" placeholder="例如：我的手机" autocomplete="off">
       </div>
-      <p class="hint" id="check-hint"></p>
+      <div class="field">
+        <span class="label">节点前缀 <span class="hint">加在每个节点名称前面，用来区分不同机场</span></span>
+        <div class="seg" id="prefix-mode" role="radiogroup" aria-label="节点前缀">
+          <label><input type="radio" name="prefix-mode" value="name" checked><span>机场名称</span></label>
+          <label><input type="radio" name="prefix-mode" value="index"><span>S1、S2…</span></label>
+          <label><input type="radio" name="prefix-mode" value="none"><span>不加前缀</span></label>
+        </div>
+        <p class="hint" id="prefix-hint" style="margin-top:8px"></p>
+      </div>
+      <div class="field">
+        <label class="switch">
+          <input type="checkbox" id="rate-tag"><span class="track"></span>
+          <span>在节点名称标示倍率 <span class="hint">例如「飞云 | 2x | 香港 01」，1 倍不标</span></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="sec-src">
+      <div class="sec-head">
+        <h2 id="sec-src"><span class="step">2</span>机场订阅 <span class="count" id="src-count"></span></h2>
+        <span class="chips" id="src-summary"></span>
+        <button type="button" class="btn sm" id="check-btn" title="重新连每个机场，读最新的流量、到期日与节点"><svg class="i"><use href="#i-refresh"/></svg>重新检查</button>
+      </div>
+      <p class="hint sec-desc" id="check-hint"></p>
       <div id="sources"></div>
       <div class="row">
-        <button class="btn sm" id="add-src"><svg class="i"><use href="#i-plus"/></svg>添加一列</button>
-        <button class="btn sm" id="bulk-btn">批量粘贴</button>
+        <button type="button" class="btn sm" id="add-src"><svg class="i"><use href="#i-plus"/></svg>添加机场</button>
+        <button type="button" class="btn sm" id="bulk-btn" aria-expanded="false" aria-controls="bulk-box">批量粘贴</button>
+        <span class="grow"></span>
+        <button type="button" class="btn sm ghost hidden" id="refresh-btn" title="让 GitHub Actions 立刻重抓所有机场，更新被屏蔽 Cloudflare 的机场的缓存"><svg class="i"><use href="#i-refresh"/></svg>立即刷新缓存</button>
       </div>
-      <div id="bulk-box" class="hidden" style="margin-top:10px">
-        <textarea id="bulk-text" placeholder="一行一个订阅链接，或「名称 链接」"></textarea>
-        <div class="row" style="margin-top:8px"><button class="btn sm" id="bulk-apply"><svg class="i"><use href="#i-check"/></svg>加入</button></div>
+      <div id="bulk-box" class="bulk" hidden>
+        <textarea id="bulk-text" placeholder="一行一个订阅链接，或「名称 链接」" aria-label="批量粘贴订阅链接"></textarea>
+        <div class="row" style="margin-top:8px"><button type="button" class="btn sm" id="bulk-apply"><svg class="i"><use href="#i-check"/></svg>加入</button></div>
       </div>
-      <p class="hint" style="margin-top:10px">自定义前缀请避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字样，否则会影响 MyClash 脚本的地区分组与节点过滤。</p>
-    </div>
-    <div class="field">
-      <span class="label">节点筛选 <span class="hint" id="filter-summary"></span></span>
-      <div class="row rate-row">
-        <label for="exclude-rate">倍率 ≥</label>
-        <input type="number" id="exclude-rate" min="0" step="0.1" inputmode="decimal" placeholder="不限">
-        <span>的节点不导入</span>
-        <span class="hint">没标倍率的算 1 倍</span>
-      </div>
-      <div class="chips" id="rate-chips"></div>
-      <details id="node-picker"><summary>选择节点</summary>
-        <div class="node-tools">
-          <input type="text" id="node-search" placeholder="搜索节点，例如 香港、IPv6" aria-label="搜索节点">
-          <button class="btn sm" data-pick="1">全选</button>
-          <button class="btn sm" data-pick="0">全不选</button>
-        </div>
-        <p class="hint">勾选的才导入。全选 / 全不选只作用于搜索出来的节点，按住 Shift 点击可以连选；机场之后新增的节点默认导入。</p>
-        <div class="node-list" id="node-list"></div>
-      </details>
-    </div>
-    <div class="footer">
-      <button class="btn primary" id="save-btn">保存并生成链接</button>
-      <button class="btn" id="cancel-btn">取消</button>
-      <span class="grow"></span>
-      <button class="btn ghost hidden" id="refresh-btn" title="让 GitHub Actions 立刻重抓所有机场，更新被屏蔽 Cloudflare 的机场的缓存"><svg class="i"><use href="#i-refresh"/></svg>立即刷新缓存</button>
-    </div>
-    <div class="msg" id="edit-msg"></div>
-  </section>
+      <p class="hint" style="margin-top:12px">自定义前缀请避免「香港 / 日本 / 美国 / HK / US / JP / 机场 / 订阅」等字样，否则会影响 MyClash 脚本的地区分组与节点过滤。</p>
+    </section>
 
-  <section class="card hidden" id="preview-card">
-    <div class="card-head">
-      <h2 id="preview-title">预览</h2>
-      <div class="row">
-        <button class="btn sm" id="download-btn"><svg class="i"><use href="#i-download"/></svg>下载 YAML</button>
-        <button class="icon-btn" id="close-preview" title="关闭" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+    <section class="card" aria-labelledby="sec-nodes">
+      <div class="sec-head">
+        <h2 id="sec-nodes"><span class="step">3</span>节点筛选</h2>
+        <span class="hint" id="filter-summary"></span>
       </div>
+      <p class="hint sec-desc">先设全局倍率门槛，个别机场可以在下方单独设置；再展开机场逐个勾选。保存的是「不导入」的节点，机场之后新增的节点默认导入。</p>
+      <div class="global-rate">
+        <div class="rate-row">
+          <label for="exclude-rate"><b>全局</b>：倍率 ≥</label>
+          <input type="number" id="exclude-rate" min="0" step="0.1" inputmode="decimal" placeholder="不限">
+          <span>的节点不导入</span>
+          <span class="hint">没标倍率的算 1 倍</span>
+        </div>
+        <div class="chips" id="rate-chips"></div>
+      </div>
+      <div class="node-tools">
+        <div class="search"><svg class="i"><use href="#i-search"/></svg>
+          <input type="text" id="node-search" placeholder="搜索全部节点，例如 香港、IPv6" aria-label="搜索节点" autocomplete="off"></div>
+        <button type="button" class="btn sm" id="pick-all">全选</button>
+        <button type="button" class="btn sm" id="pick-none">全不选</button>
+        <button type="button" class="btn sm ghost" id="expand-all">全部展开</button>
+      </div>
+      <p class="hint">全选 / 全不选作用于所有机场里符合搜索的节点；展开机场后按住 Shift 点击可以连选。</p>
+      <div id="node-groups"></div>
+    </section>
+
+    <div class="actionbar">
+      <div class="info"><b id="bar-summary"></b><span class="msg" id="edit-msg"></span></div>
+      <button type="button" class="btn" id="cancel-btn">取消</button>
+      <button type="button" class="btn primary" id="save-btn">保存并生成链接</button>
     </div>
+  </div>
+</main>
+
+<!-- ===== 预览 ===== -->
+<dialog id="preview-dlg" aria-labelledby="preview-title">
+  <div class="dlg-head">
+    <h2 id="preview-title">预览</h2>
+    <button type="button" class="btn sm" id="download-btn"><svg class="i"><use href="#i-download"/></svg>下载 YAML</button>
+    <button type="button" class="icon-btn" id="close-preview" title="关闭" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="dlg-body">
     <div id="preview-info"></div>
     <ul class="status" id="preview-status"></ul>
     <p class="hint hidden" id="preview-hint">「已屏蔽」表示这个机场的订阅已到期或流量已用完，合并时自动跳过，续费或流量重置后会自动恢复；
       「缓存」表示这个机场屏蔽了 Cloudflare，节点来自 GitHub Actions 每天代抓的副本（编辑页可按「立即刷新缓存」）；
       「失败」的机场如果一直失败，请确认已按 README 设置 <code>CLOUDFLARE_API_TOKEN</code>，或到 GitHub 的 Actions 页手动执行「代抓订阅缓存」。</p>
     <pre id="preview"></pre>
-  </section>
-
-  <section class="card">
-    <div class="card-head"><h2>客户端怎么用</h2></div>
-    <ol class="steps">
-      <li>在订阅卡片选覆写脚本：<b>精简</b>（推荐，分流组：Google、AI、Apple、Telegram、Steam、AdBlock）或<b>全量</b>（另加 YouTube、Netflix、GitHub、Microsoft 等）。</li>
-      <li>按「复制链接」或「一键导入 Clash」，在 Clash Verge Rev / Mihomo Party / FlClash / Bettbox 等 mihomo 客户端添加<b>远程订阅</b>，并打开自动更新。
-        链接已经套用好脚本，<b>客户端不要再加脚本覆写</b>，否则会覆写两次。</li>
-      <li><b>关闭客户端的 DNS 覆写</b>（MyClash 脚本要求）。</li>
-      <li><b>iPhone 用小火箭</b>：订阅卡片选「小火箭」，先按「导入节点到小火箭」，再按「导入分流配置」（分流组同精简版）。详细步骤与省电设置见下方「iPhone 小火箭教程」。</li>
-    </ol>
-    <p class="note">两个版本都是 <a href="https://github.com/AIsouler/MyClash">AIsouler/MyClash</a> 脚本的修改版：分流组用各自服务的网址测速（参考 Bettbox 的服务检测），HuggingFace 不走「AI」组、改走「默认代理」。
-      已到期或流量用完的机场会在合并时自动屏蔽，客户端显示的流量与到期日也不计入它。</p>
-    <div class="sync-row">
-      <span id="sync-status">正在读取覆写脚本的同步状态…</span>
-      <button class="btn sm ghost hidden" id="sync-btn" title="让 GitHub Actions 立刻从上游同步覆写脚本（10 分钟限一次）"><svg class="i"><use href="#i-refresh"/></svg>立即同步</button>
-    </div>
-    <details><summary>iPhone 小火箭教程（导入与省电）</summary>
-      <p class="hint">小火箭读不了 mihomo 的规则集，所以节点和分流分开导入：订阅只给节点，分流用 <code>/shadowrocket.conf</code>。
-        这份配置的分流组同精简版，规则集改用 blackmatrix7 的小火箭 <code>.list</code>，没有 HuggingFace 分流，广告规则只用 AdvertisingLite。</p>
-      <ol class="steps">
-        <li>用非中国区的 Apple ID 在 App Store 购买安装 Shadowrocket。</li>
-        <li>用 iPhone 的 Safari 打开本页，导入订阅，订阅卡片选「<b>小火箭</b>」。</li>
-        <li>按「<b>导入节点到小火箭</b>」，确认添加订阅。也可以手动添加：首页右上角「+」，类型选 <code>Subscribe</code>，贴上订阅链接。</li>
-        <li>按「<b>导入分流配置</b>」，在小火箭「配置」页点 <code>shadowrocket.conf</code> →「使用配置」。也可以手动添加：「配置」页右上角「+」，贴上配置链接。</li>
-        <li>首页「全局路由」选「<b>配置</b>」，打开连接，第一次连接时允许添加 VPN 配置。</li>
-        <li>自动更新：先在系统「设置 → 通用 → 后台 App 刷新」允许 Shadowrocket；再到小火箭「设置 → 自动更新」：
-          「订阅」（即节点，小火箭叫「服务器」）间隔选 24 小时。
-          分流配置不自动更新（规则集照样会自动刷新），手选结果不会被重置；本仓库改了配置时，删掉旧的再按「导入分流配置」。</li>
-      </ol>
-      <p class="hint"><b>息屏断开、亮屏自动连上</b>（iOS 不允许 App 监听锁屏，这是最接近的做法）：</p>
-      <ul class="hint">
-        <li>「设置 → 按需求连接」：打开，添加「Wi-Fi」与「蜂窝网络」规则，动作选「连接」；<b>不要</b>开「始终开启」：它让 VPN 任何时候都保持连接、断了就自动重连，跟息屏断开省电的目的相反。</li>
-        <li>打开「睡眠时断开」：设备睡眠时断开，亮屏后有 App 联网时 iOS 会自动重连。息屏后 iOS 不一定马上睡眠，所以不是一锁屏就断；如果推送常收不到，就关掉这项。</li>
-      </ul>
-      <p class="hint"><b>更省电</b>：只在用特定 App 时开 VPN。「快捷指令 → 自动化 → App」：选 Claude、Telegram 等，「已打开」时运行「启动 Shadowrocket」，「已关闭」时运行「停止 Shadowrocket」，都设为立即运行。用这个方法就不要同时开按需求连接。
-        地区组（香港、日本…）默认选「&lt;地区&gt;-自动选择」自动挑最快的；想固定某个节点，就在地区组里直接点它，重连 VPN 也会保留。
-        另外，全局路由保持「配置」，不装模块、不开 MitM；配置里的测速间隔为 10 分钟，不要改小。</p>
-    </details>
-    <details><summary>想自己在客户端覆写？</summary>
-      <p class="hint">订阅卡片选「不覆写」，再对这个订阅添加<b>脚本覆写</b>，填入精简版或全量版：</p>
-      <div class="linkbox"><code class="link" id="script-url"></code>
-        <button class="icon-btn" id="copy-script" title="复制精简版链接" aria-label="复制精简版链接"><svg class="i"><use href="#i-copy"/></svg></button></div>
-      <div class="linkbox"><code class="link" id="script-full-url"></code>
-        <button class="icon-btn" id="copy-script-full" title="复制全量版链接" aria-label="复制全量版链接"><svg class="i"><use href="#i-copy"/></svg></button></div>
-    </details>
-    <details><summary>安全提醒</summary>
-      <p class="hint">每个订阅链接里的 TOKEN 都等同密码，拿到的人就能用你的节点，也能编辑或删除这个订阅。如果外流了，按「换 TOKEN」，旧链接会立刻失效，再把新链接贴回客户端就好。</p>
-    </details>
-  </section>
-</main>
+  </div>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -465,29 +561,8 @@
 
   // 管理页由 Worker 提供，API 与订阅链接都在同一个地址
   const workerUrl = location.origin;
-  let editingToken = null;
-  let previewText = '';
-  let previewName = '';
-  // 编辑页：已保存的订阅链接，与即时检查的结果（以订阅链接为键）
-  let savedUrls = new Set();
-  let statusByUrl = new Map();
-  let checking = false;
-  let checkSeq = 0;
-  // 节点筛选：每个机场原本的节点（以订阅链接为键），与手动排除的节点名称
-  let nodesByUrl = new Map();
-  let excludeByUrl = new Map();
-  let loadingNodes = false;
-  let nodesSeq = 0;
-  let lastPick = null;
 
-  // 这个浏览器生成或导入过的 TOKEN
-  function getTokens() {
-    try { return JSON.parse(store.get('tokens') || '[]'); } catch { return []; }
-  }
-  function saveTokens(list) { store.set('tokens', JSON.stringify([...new Set(list)])); }
-  function addToken(t) { saveTokens([t, ...getTokens()]); }
-  function removeToken(t) { saveTokens(getTokens().filter((x) => x !== t)); }
-
+  // --- 工具 ---
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -501,20 +576,6 @@
     el.className = 'toast show ' + kind;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
-  }
-  // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果；
-  // rocket 给 iPhone 小火箭用：订阅只取节点（同 none），分流另外导入 /shadowrocket.conf
-  const MODES = [['lite', '精简'], ['full', '全量'], ['rocket', '小火箭'], ['none', '不覆写']];
-  function getMode(token) { const m = store.get('mode:' + token); return MODES.some(([x]) => x === m) ? m : 'lite'; }
-  function setMode(token, mode) { store.set('mode:' + token, mode); }
-  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' || mode === 'rocket' ? '' : `?script=${mode}`); }
-  const rocketConfUrl = () => `${workerUrl}/shadowrocket.conf`;
-  const importLabel = (mode) => (mode === 'rocket' ? '导入节点到小火箭' : '一键导入 Clash');
-  // 切换覆写版本时更新卡片：链接、导入按钮文字，以及只有小火箭才显示的配置链接
-  function applyMode(item, mode) {
-    item.querySelector('.link').textContent = subUrl(item.dataset.token, mode);
-    item.querySelector('.import-label').textContent = importLabel(mode);
-    for (const el of item.querySelectorAll('.rocket-only')) el.classList.toggle('hidden', mode !== 'rocket');
   }
   function fmtTime(ms) { return ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : ''; }
   const pad = (n) => String(n).padStart(2, '0');
@@ -558,54 +619,93 @@
     toast(`已复制${what}`);
   }
 
-  // --- 列表 ---
+  // --- 这个浏览器生成或导入过的 TOKEN，与每个订阅选的覆写版本 ---
+  function getTokens() {
+    try { return JSON.parse(store.get('tokens') || '[]'); } catch { return []; }
+  }
+  function saveTokens(list) { store.set('tokens', JSON.stringify([...new Set(list)])); }
+  function addToken(t) { saveTokens([t, ...getTokens()]); }
+  function removeToken(t) { saveTokens(getTokens().filter((x) => x !== t)); }
+
+  // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果；
+  // rocket 给 iPhone 小火箭用：订阅只取节点（同 none），分流另外导入 /shadowrocket.conf
+  const MODES = [['lite', '精简'], ['full', '全量'], ['rocket', '小火箭'], ['none', '不覆写']];
+  function getMode(token) { const m = store.get('mode:' + token); return MODES.some(([x]) => x === m) ? m : 'lite'; }
+  function setMode(token, mode) { store.set('mode:' + token, mode); }
+  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' || mode === 'rocket' ? '' : `?script=${mode}`); }
+  const rocketConfUrl = () => `${workerUrl}/shadowrocket.conf`;
+  const importLabel = (mode) => (mode === 'rocket' ? '导入节点到小火箭' : '一键导入 Clash');
+  // 切换覆写版本时更新卡片：链接、导入按钮文字，以及只有小火箭才显示的配置链接
+  function applyMode(item, mode) {
+    item.querySelector('.link').textContent = subUrl(item.dataset.token, mode);
+    item.querySelector('.import-label').textContent = importLabel(mode);
+    for (const el of item.querySelectorAll('.rocket-only')) el.classList.toggle('hidden', mode !== 'rocket');
+  }
+
+  // --- 两个画面：清单 / 编辑；编辑页记在浏览记录里，浏览器的「返回」会回到清单 ---
+  function showView(view) {
+    $('view-list').hidden = view !== 'list';
+    $('view-edit').hidden = view !== 'edit';
+    document.body.classList.toggle('editing', view === 'edit');
+    window.scrollTo({ top: 0 });
+  }
+
+  // --- 清单 ---
   const PREFIX_LABELS = { name: '机场名称', index: 'S1、S2…', none: '不加' };
-  const excludedCount = (it) => it.sources.reduce((n, s) => n + (s.exclude?.length || 0), 0);
+  function filterChips(it) {
+    const chips = [];
+    if (it.excludeRate) chips.push(`不导入 ≥${it.excludeRate}x`);
+    const own = it.sources.filter((s) => Object.hasOwn(s, 'excludeRate')).length;
+    if (own) chips.push(`${own} 个机场单独设门槛`);
+    const manual = it.sources.reduce((n, s) => n + (s.exclude?.length || 0), 0);
+    if (manual) chips.push(`手动排除 ${manual} 个节点`);
+    return chips.map((c) => `<span class="chip accent">${escapeHtml(c)}</span>`).join('');
+  }
   function itemHtml(it) {
     const token = escapeHtml(it.token);
     const mode = getMode(it.token);
+    const rocket = mode === 'rocket' ? '' : ' hidden';
     return `<article class="sub" data-token="${token}" data-name="${escapeHtml(it.name)}">
       <div class="sub-head"><h3>${escapeHtml(it.name)}</h3><span class="hint">更新于 ${fmtTime(it.updatedAt)}</span></div>
       <div class="chips">
         <span class="chip">${it.sources.length} 个机场</span>
         <span class="chip">前缀：${PREFIX_LABELS[it.prefixMode || 'index']}</span>
         ${it.rateTag ? '<span class="chip">倍率标注</span>' : ''}
-        ${it.excludeRate ? `<span class="chip">不导入 ≥${it.excludeRate}x</span>` : ''}
-        ${excludedCount(it) ? `<span class="chip">手动排除 ${excludedCount(it)} 个节点</span>` : ''}
+        ${filterChips(it)}
       </div>
       <div class="sub-mode">
         <span class="hint">覆写脚本</span>
         <div class="seg" role="radiogroup" aria-label="覆写脚本">${MODES.map(([m, label]) =>
           `<label><input type="radio" name="mode-${token}" value="${m}"${m === mode ? ' checked' : ''}><span>${label}</span></label>`).join('')}</div>
       </div>
-      <div class="linkbox"><code class="link">${escapeHtml(subUrl(it.token, mode))}</code></div>
-      <p class="hint rocket-only${mode === 'rocket' ? '' : ' hidden'}">iPhone 小火箭：上面的订阅只含节点，分流规则用下面的配置（对标精简版）。先「导入节点到小火箭」，再「导入分流配置」，详见 README。</p>
-      <div class="linkbox rocket-only${mode === 'rocket' ? '' : ' hidden'}"><code class="link link-conf">${escapeHtml(rocketConfUrl())}</code>
-        <button class="icon-btn" data-act="copy-conf" title="复制小火箭配置链接" aria-label="复制小火箭配置链接">${icon('copy')}</button></div>
+      <div class="linkbox"><code class="link">${escapeHtml(subUrl(it.token, mode))}</code>
+        <button type="button" class="icon-btn" data-act="copy" title="复制订阅链接" aria-label="复制订阅链接">${icon('copy')}</button></div>
+      <p class="hint rocket-only${rocket}">iPhone 小火箭：上面的订阅只含节点，分流规则用下面的配置（对标精简版）。先「导入节点到小火箭」，再「导入分流配置」。</p>
+      <div class="linkbox rocket-only${rocket}"><code class="link link-conf">${escapeHtml(rocketConfUrl())}</code>
+        <button type="button" class="icon-btn" data-act="copy-conf" title="复制小火箭配置链接" aria-label="复制小火箭配置链接">${icon('copy')}</button></div>
       <div class="actions">
-        <button class="btn primary" data-act="copy">${icon('copy')}复制链接</button>
-        <button class="btn" data-act="import">${icon('download')}<span class="import-label">${importLabel(mode)}</span></button>
-        <button class="btn rocket-only${mode === 'rocket' ? '' : ' hidden'}" data-act="import-conf">${icon('download')}导入分流配置</button>
-        <button class="btn ghost" data-act="preview">${icon('eye')}预览</button>
-        <button class="btn ghost" data-act="edit">${icon('edit')}编辑</button>
+        <button type="button" class="btn primary" data-act="copy">${icon('copy')}复制链接</button>
+        <button type="button" class="btn" data-act="import">${icon('download')}<span class="import-label">${importLabel(mode)}</span></button>
+        <button type="button" class="btn rocket-only${rocket}" data-act="import-conf">${icon('download')}导入分流配置</button>
         <span class="grow"></span>
-        <button class="btn ghost" data-act="rotate">${icon('refresh')}换 TOKEN</button>
-        <button class="btn ghost danger" data-act="delete">${icon('trash')}删除</button>
+        <button type="button" class="btn ghost" data-act="preview">${icon('eye')}预览</button>
+        <button type="button" class="btn ghost" data-act="edit">${icon('edit')}编辑</button>
+        <button type="button" class="btn ghost" data-act="rotate">${icon('refresh')}换 TOKEN</button>
+        <button type="button" class="btn ghost danger" data-act="delete">${icon('trash')}删除</button>
       </div>
     </article>`;
   }
 
   async function loadList() {
-    const list = $('list');
     const tokens = getTokens();
     // 一次请求查完所有 TOKEN；查不到的（已删除或已更换）从清单移除
     const items = tokens.length ? (await api('POST', '/subs/lookup', { tokens })).items : [];
     saveTokens(items.map((it) => it.token));
     $('count').textContent = items.length || '';
-    list.innerHTML = items.length ? items.map(itemHtml).join('') : `<div class="empty">
+    $('list').innerHTML = items.length ? items.map(itemHtml).join('') : `<div class="empty">
       <span class="logo">${icon('merge')}</span>
       <b>还没有合并订阅</b>
-      <p class="hint">按「生成新的订阅」，把几个机场的订阅链接贴进去就好。</p>
+      <p class="hint">按「新建订阅」，把几个机场的订阅链接贴进去就好。</p>
     </div>`;
   }
 
@@ -625,10 +725,9 @@
       highlight(m[0]);
     } catch (e) { showMsg($('import-msg'), e.message); }
   }
-  $('import-btn').onclick = () => importFrom($('import-input').value);
+  $('import-form').addEventListener('submit', (e) => { e.preventDefault(); importFrom($('import-input').value); });
   // 粘贴或输入完整 TOKEN 后自动导入，不用再按按钮
   $('import-input').addEventListener('input', (e) => { if (/[a-f0-9]{32}/.test(e.target.value)) importFrom(e.target.value); });
-  $('import-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') importFrom(e.target.value); });
 
   function highlight(token) {
     const el = document.querySelector(`.sub[data-token="${token}"]`);
@@ -673,7 +772,6 @@
             const { token: next } = await api('POST', `/subs/${token}/rotate`);
             saveTokens(getTokens().map((t) => (t === token ? next : t)));
             setMode(next, mode);
-            if (editingToken === token) editingToken = next;
           }
           toast('已换新 TOKEN，记得把新链接贴回客户端');
           return loadList();
@@ -681,7 +779,6 @@
           if (!confirm(`确定删除「${name}」？使用这个链接的客户端将无法再更新。`)) return;
           await api('DELETE', '/subs/' + token);
           removeToken(token);
-          if (editingToken === token) closeEditor();
           toast(`已删除「${name}」`);
           return loadList();
       }
@@ -689,6 +786,26 @@
   });
 
   // --- 编辑 ---
+  // 编辑中的订阅：TOKEN（新建时为 null）与已保存的订阅链接
+  let editingToken = null;
+  let savedUrls = new Set();
+  // 每个机场的流量、到期日与原本的节点（以订阅链接为键，来自 /sources）
+  let sourceByUrl = new Map();
+  let loading = false;
+  let checkSeq = 0;
+  // 节点筛选：手动排除的节点名称、每个机场的倍率门槛设置、展开的机场、每个机场的导入统计
+  let excludeByUrl = new Map();
+  let rateByUrl = new Map();
+  let expanded = new Set();
+  let statsByUrl = new Map();
+  let lastPick = null;
+  let dirty = false;
+
+  const urlOf = (row) => row.querySelector('.src-url').value.trim();
+  const rows = () => [...$('sources').children];
+  // 编辑页目前填的机场（同一个链接只算一次）
+  const currentUrls = () => [...new Set(rows().map(urlOf).filter(Boolean))];
+
   function addSourceRow(src = {}) {
     const row = document.createElement('div');
     row.className = 'src';
@@ -725,244 +842,166 @@
     }
     if (info?.total) parts.push(`已用 ${size(used)} / ${size(info.total)}`);
     else if (used) parts.push(`已用 ${size(used)}`);
+    // 资料都来自 Worker 的缓存；cachedAt 表示这次连机场失败（或太慢），用的是旧缓存
     if (st.cachedAt) {
       parts.push(`直连失败（${st.directError}），资料来自 ${ago(st.cachedAt)}的缓存`);
       if (kind === 'ok') { kind = 'cache'; tag = '缓存'; }
+    } else if (st.fetchedAt) {
+      parts.push(`${ago(st.fetchedAt)}更新`);
     }
     return { kind, tag, text: parts.join(' · ') };
   }
 
-  function prefixPlaceholder(i, st) {
+  function prefixPlaceholder(i, url) {
     const mode = getPrefixMode();
     if (mode === 'none') return '不加前缀';
     if (mode === 'index') return `自动：S${i + 1}`;
-    return st ? `自动：${st.name || `S${i + 1}`}` : '自动识别（选填）';
+    const name = sourceByUrl.get(url)?.name;
+    return sourceByUrl.has(url) ? `自动：${name || `S${i + 1}`}` : '自动识别（选填）';
+  }
+  // 机场显示名称：自定义前缀 > 自动识别 > S1、S2…
+  function airportName(url, i) {
+    const row = rows().find((r) => urlOf(r) === url);
+    return row?.querySelector('.src-name').value.trim() || sourceByUrl.get(url)?.name || `S${i + 1}`;
   }
 
   function renderRow(row, i) {
-    const url = row.querySelector('.src-url').value.trim();
-    const st = statusByUrl.get(url);
+    const url = urlOf(row);
+    const st = sourceByUrl.get(url);
     row.querySelector('.src-idx').textContent = i + 1;
-    row.querySelector('.src-name').placeholder = prefixPlaceholder(i, st);
+    row.querySelector('.src-name').placeholder = prefixPlaceholder(i, url);
     let d = null;
     if (url && editingToken) {
-      if (checking && savedUrls.has(url)) d = { kind: 'pending', tag: '检查中', text: '正在读取流量与到期日…' };
+      if (loading && savedUrls.has(url)) d = { kind: 'pending', tag: '检查中', text: '正在读取流量、到期日与节点…' };
       else if (st) d = describe(st);
-      else if (!savedUrls.has(url)) d = { kind: 'idle', tag: '未检查', text: '新的链接保存后才会检查到期日' };
+      else if (!savedUrls.has(url)) d = { kind: 'idle', tag: '未检查', text: '新的链接保存后才会检查到期日与节点' };
     }
+    // 右边是这个机场的节点导入统计，点了跳到节点筛选里的这个机场
+    const stats = url && statsByUrl.get(url);
+    const go = stats ? `<button type="button" class="link-btn" data-goto="${escapeHtml(url)}">导入 ${stats.kept} / ${stats.total} 个节点${icon('chevron')}</button>` : '';
     row.dataset.kind = d?.kind || '';
-    row.querySelector('.src-status').innerHTML = d ? `${pill(d.kind, d.tag)}<span>${escapeHtml(d.text)}</span>` : '';
+    row.querySelector('.src-status').innerHTML = d || go
+      ? `${d ? pill(d.kind, d.tag) : ''}<span class="text">${d ? escapeHtml(d.text) : ''}</span>${go}`
+      : '';
     return d;
   }
 
   // 重新编号、更新前缀提示与每个机场的状态，标题旁显示屏蔽 / 即将到期 / 失败的数量
   function refreshRows() {
-    const rows = [...$('sources').children];
     const counts = {};
-    rows.forEach((row, i) => {
+    rows().forEach((row, i) => {
       const d = renderRow(row, i);
       if (d) counts[d.tag] = (counts[d.tag] || 0) + 1;
     });
-    $('src-count').textContent = rows.length;
+    $('src-count').textContent = rows().length;
     $('src-summary').innerHTML = [['blocked', '已屏蔽'], ['warn', '即将到期'], ['fail', '失败']]
       .filter(([, tag]) => counts[tag]).map(([kind, tag]) => pill(kind, `${tag} ${counts[tag]}`)).join('');
   }
 
-  async function checkStatus() {
+  // 读每个机场的流量、到期日与节点：打开编辑页时用 Worker 的缓存（很快），「重新检查」才重新连机场
+  async function loadSources(refresh = false) {
     if (!editingToken) return;
     const seq = ++checkSeq;
-    checking = true;
+    loading = true;
     $('check-btn').disabled = true;
-    refreshRows();
+    render();
     try {
-      const { sources } = await api('GET', `/subs/${editingToken}/status`);
-      if (seq === checkSeq) statusByUrl = new Map(sources.map((s) => [s.url, s]));
+      const { sources } = await api('GET', `/subs/${editingToken}/sources${refresh ? '?refresh=1' : ''}`);
+      if (seq === checkSeq) sourceByUrl = new Map(sources.map((s) => [s.url, s]));
     } catch (e) {
-      if (seq === checkSeq) showMsg($('edit-msg'), '检查到期日失败：' + e.message);
+      if (seq === checkSeq) showMsg($('edit-msg'), '读取机场失败：' + e.message);
     } finally {
       if (seq === checkSeq) {
-        checking = false;
+        loading = false;
         $('check-btn').disabled = false;
-        refreshRows();
+        render();
       }
     }
   }
 
-  function openEditor(record) {
-    editingToken = record ? record.token : null;
-    savedUrls = new Set(record ? record.sources.map((s) => s.url) : []);
-    statusByUrl = new Map();
-    checking = false;
-    checkSeq++;
-    nodesByUrl = new Map();
-    excludeByUrl = new Map((record ? record.sources : []).map((s) => [s.url, new Set(s.exclude || [])]));
-    loadingNodes = false;
-    nodesSeq++;
-    lastPick = null;
-    $('exclude-rate').value = record?.excludeRate ?? '';
-    $('node-search').value = '';
-    $('edit-title').textContent = record ? `编辑「${record.name}」` : '生成新的订阅';
-    $('edit-name').value = record ? record.name : '';
-    $('rate-tag').checked = record ? record.rateTag === true : true;
-    $('sources').innerHTML = '';
-    (record ? record.sources : [{}, {}]).forEach((s) => addSourceRow(s));
-    setPrefixMode(record ? record.prefixMode || 'index' : 'name');
-    $('edit-msg').textContent = '';
-    $('bulk-box').classList.add('hidden');
-    $('refresh-btn').classList.toggle('hidden', !record);
-    $('check-btn').classList.toggle('hidden', !record);
-    $('check-hint').textContent = record
-      ? '打开编辑页时会即时检查每个机场的流量与到期日；已到期或流量用完的机场合并时自动屏蔽，续费或流量重置后自动恢复。'
-      : '已到期或流量用完的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日与流量。';
-    $('edit-card').classList.remove('hidden');
-    $('edit-card').scrollIntoView({ behavior: smooth, block: 'start' });
-    renderNodes();
-    if (record) { checkStatus(); loadNodes(); }
+  // 机场的倍率门槛设置：inherit 跟随全局、none 不限、custom 自定义
+  function rateSetting(url) { return rateByUrl.get(url) || { mode: 'inherit', value: null }; }
+  function fromSaved(src) {
+    if (!Object.hasOwn(src, 'excludeRate')) return { mode: 'inherit', value: null };
+    return src.excludeRate === null ? { mode: 'none', value: null } : { mode: 'custom', value: src.excludeRate };
   }
-  function closeEditor() {
-    $('edit-card').classList.add('hidden');
-    editingToken = null;
-    checkSeq++;
-    nodesSeq++;
-  }
-
-  // --- 节点筛选 ---
-  // 跟 Worker 一样：倍率 ≥ 门槛的不导入，没标倍率的算 1 倍
   function getExcludeRate() {
     const raw = $('exclude-rate').value.trim();
     const v = Number(raw);
     return raw !== '' && Number.isFinite(v) && v > 0 ? v : null;
   }
+  // 跟 Worker 一样：自己设了就用自己的（自定义没填好就当跟随全局），否则跟随全局；没标倍率的节点算 1 倍
+  function effectiveRate(url) {
+    const s = rateSetting(url);
+    if (s.mode === 'none') return null;
+    if (s.mode === 'custom' && s.value > 0) return s.value;
+    return getExcludeRate();
+  }
   const rateOf = (node) => node.rate ?? 1;
+  const rateLabel = (r) => (r === null ? '不限' : `≥${r}x`);
+  const matches = (node, q) => !q || node.name.toLowerCase().includes(q);
 
-  async function loadNodes() {
-    const seq = ++nodesSeq;
-    loadingNodes = true;
-    renderNodes();
-    try {
-      const { sources } = await api('GET', `/subs/${editingToken}/nodes`);
-      if (seq === nodesSeq) nodesByUrl = new Map(sources.map((s) => [s.url, s]));
-    } catch (e) {
-      if (seq === nodesSeq) showMsg($('edit-msg'), '读取节点失败：' + e.message);
-    } finally {
-      if (seq === nodesSeq) { loadingNodes = false; renderNodes(); }
-    }
+  function openEditor(record) {
+    editingToken = record ? record.token : null;
+    savedUrls = new Set(record ? record.sources.map((s) => s.url) : []);
+    sourceByUrl = new Map();
+    statsByUrl = new Map();
+    loading = false;
+    checkSeq++;
+    excludeByUrl = new Map((record ? record.sources : []).map((s) => [s.url, new Set(s.exclude || [])]));
+    rateByUrl = new Map((record ? record.sources : []).map((s) => [s.url, fromSaved(s)]));
+    expanded = new Set();
+    lastPick = null;
+    $('edit-title').textContent = record ? `编辑「${record.name}」` : '新建订阅';
+    $('edit-name').value = record ? record.name : '';
+    $('rate-tag').checked = record ? record.rateTag === true : true;
+    $('exclude-rate').value = record?.excludeRate ?? '';
+    $('node-search').value = '';
+    $('sources').innerHTML = '';
+    (record ? record.sources : [{}, {}]).forEach((s) => addSourceRow(s));
+    setPrefixMode(record ? record.prefixMode || 'index' : 'name');
+    $('edit-msg').textContent = '';
+    $('bulk-box').hidden = true;
+    $('bulk-btn').setAttribute('aria-expanded', 'false');
+    $('refresh-btn').classList.toggle('hidden', !record);
+    $('check-btn').classList.toggle('hidden', !record);
+    $('check-hint').textContent = record
+      ? '显示的是 Worker 缓存的资料（30 分钟内抓过的不再连机场），按「重新检查」重新连机场；已到期或流量用完的机场合并时自动屏蔽，续费或流量重置后自动恢复。'
+      : '已到期或流量用完的机场会在合并时自动屏蔽；保存后再按「编辑」就能看到每个机场的到期日、流量与节点。';
+    dirty = false;
+    if (history.state?.view !== 'edit') history.pushState({ view: 'edit' }, '');
+    showView('edit');
+    render();
+    if (record) loadSources();
+    else $('edit-name').focus();
   }
 
-  // 编辑页目前填的机场（同一个链接只算一次）
-  function currentUrls() {
-    return [...new Set([...$('sources').children].map((r) => r.querySelector('.src-url').value.trim()).filter(Boolean))];
+  // 离开编辑页：有没保存的修改就先确认
+  function confirmLeave() { return !dirty || confirm('有还没保存的修改，确定要离开吗？'); }
+  function closeEditor() {
+    editingToken = null;
+    checkSeq++;
+    dirty = false;
+    showView('list');
   }
-
-  function nodeGroupHtml(url, i, limit, q, acc) {
-    const src = nodesByUrl.get(url);
-    const head = (extra = '') => `<div class="node-group-head"><b>${escapeHtml(src?.name || `S${i + 1}`)}</b>${extra}</div>`;
-    if (!src) {
-      const why = !savedUrls.has(url) ? '新的链接保存后才能选择节点' : loadingNodes ? '正在读取节点…' : '没有读到节点';
-      return `<section class="node-group">${head()}<p class="node-empty">${why}</p></section>`;
-    }
-    if (src.error) {
-      return `<section class="node-group">${head(pill('fail', '失败'))}<p class="node-empty">抓取失败：${escapeHtml(src.error)}，之前的选择保留不变</p></section>`;
-    }
-    const ex = excludeByUrl.get(url);
-    // 已屏蔽的机场照样可以选，但合并时整个跳过，不算进「将导入」
-    const tally = src.blocked ? { total: 0, kept: 0, byRate: 0, manual: 0 } : acc;
-    let kept = 0;
-    let shown = 0;
-    const items = src.nodes.map((node) => {
-      const r = rateOf(node);
-      acc.rates.set(r, (acc.rates.get(r) || 0) + 1);
-      const byRate = limit !== null && r >= limit;
-      const on = !byRate && !ex?.has(node.name);
-      tally.total++;
-      if (on) kept++;
-      else if (byRate) tally.byRate++;
-      else tally.manual++;
-      const name = escapeHtml(node.name);
-      const hide = q && !node.name.toLowerCase().includes(q) ? ' hidden' : '';
-      if (!hide) shown++;
-      return `<label class="node${byRate ? ' by-rate' : ''}${hide}" title="${byRate ? `倍率 ≥ ${limit}，不导入：` : ''}${name}">` +
-        `<input type="checkbox" data-name="${name}"${on ? ' checked' : ''}${byRate ? ' disabled' : ''}><span class="n">${name}</span>` +
-        (node.rate !== null ? `<span class="r">${node.rate}x</span>` : '') + '</label>';
-    });
-    tally.kept += kept;
-    const tags = (src.blocked ? pill('blocked', '已屏蔽') : '') + (src.cachedAt ? pill('cache', '缓存') : '');
-    // 搜索时没有符合的节点，整个机场先藏起来
-    return `<section class="node-group${q && !shown ? ' hidden' : ''}" data-url="${escapeHtml(url)}">${head(`${tags}<span class="hint">导入 ${kept} / ${src.nodes.length}</span>`)}` +
-      `<div class="nodes">${items.join('') || '<p class="node-empty">没有节点</p>'}</div></section>`;
+  function leaveEditor() {
+    if (!confirmLeave()) return;
+    closeEditor();
+    // 退回打开编辑页之前的浏览记录；编辑页已经关了，popstate 不会再处理
+    if (history.state?.view === 'edit') history.back();
   }
-
-  // 重画节点清单、倍率标签与「将导入几个节点」；保留捲动位置与 Shift 连选的起点
-  function renderNodes() {
-    const list = $('node-list');
-    const top = list.scrollTop;
-    const last = lastPick && [lastPick.closest('.node-group').dataset.url, lastPick.dataset.name];
-    const limit = getExcludeRate();
-    const q = $('node-search').value.trim().toLowerCase();
-    const acc = { rates: new Map(), total: 0, kept: 0, byRate: 0, manual: 0 };
-    list.innerHTML = currentUrls().map((url, i) => nodeGroupHtml(url, i, limit, q, acc)).join('') ||
-      '<p class="node-empty">先在上面填机场订阅链接</p>';
-    list.scrollTop = top;
-    lastPick = last && [...list.querySelectorAll('.node-group')].find((g) => g.dataset.url === last[0])
-      ?.querySelector(`input[data-name="${CSS.escape(last[1])}"]`) || null;
-
-    const parts = [acc.byRate && `倍率不导入 ${acc.byRate}`, acc.manual && `手动排除 ${acc.manual}`].filter(Boolean);
-    $('filter-summary').textContent = acc.total
-      ? `将导入 ${acc.kept} / ${acc.total} 个节点` + (parts.length ? `（${parts.join('，')}）` : '')
-      : loadingNodes ? '正在读取节点…' : '';
-    // 节点里实际出现的倍率：点一下设成门槛，再点一下取消；会被排除的标成删除线
-    $('rate-chips').innerHTML = [...acc.rates].sort((a, b) => a[0] - b[0]).map(([r, n]) =>
-      `<button type="button" class="rate-chip${limit !== null && r >= limit ? ' on' : ''}" data-rate="${r}" title="设为倍率 ≥ ${r}x 不导入">${r}x<small>${n}</small></button>`).join('');
-  }
-
-  function setPicked(box, picked) {
-    const url = box.closest('.node-group').dataset.url;
-    if (!excludeByUrl.has(url)) excludeByUrl.set(url, new Set());
-    box.checked = picked;
-    excludeByUrl.get(url)[picked ? 'delete' : 'add'](box.dataset.name);
-  }
-  // 可以勾选的节点：符合搜索、没被倍率排除
-  const pickable = () => [...$('node-list').querySelectorAll('.node:not(.hidden) input:not(:disabled)')];
-
-  $('node-list').addEventListener('click', (e) => {
-    const box = e.target.closest('input[type=checkbox]');
-    if (!box) return;
-    // Shift 点击：上次点的到这次点的之间全部设成同样的状态
-    const boxes = pickable();
-    const a = boxes.indexOf(lastPick);
-    const b = boxes.indexOf(box);
-    if (e.shiftKey && a !== -1 && b !== -1) boxes.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => setPicked(x, box.checked));
-    else setPicked(box, box.checked);
-    lastPick = box;
-    renderNodes();
+  addEventListener('popstate', () => {
+    if ($('view-edit').hidden) return;
+    if (!confirmLeave()) { history.pushState({ view: 'edit' }, ''); return; }
+    closeEditor();
   });
-  $('node-picker').addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-pick]');
-    if (!btn) return;
-    pickable().forEach((x) => setPicked(x, btn.dataset.pick === '1'));
-    renderNodes();
-  });
-  $('node-search').addEventListener('input', renderNodes);
-  $('exclude-rate').addEventListener('input', renderNodes);
-  $('rate-chips').addEventListener('click', (e) => {
-    const chip = e.target.closest('.rate-chip');
-    if (!chip) return;
-    $('exclude-rate').value = getExcludeRate() === Number(chip.dataset.rate) ? '' : chip.dataset.rate;
-    renderNodes();
-  });
-
-  // 要保存的排除清单：读到节点的机场只留现在还有的节点名称，读不到的维持原样
-  function excludeFor(url) {
-    const set = excludeByUrl.get(url);
-    if (!set?.size) return [];
-    const src = nodesByUrl.get(url);
-    if (!src || src.error) return [...set];
-    const names = new Set(src.nodes.map((n) => n.name));
-    return [...set].filter((n) => names.has(n));
-  }
+  addEventListener('beforeunload', (e) => { if (dirty && !$('view-edit').hidden) e.preventDefault(); });
+  // 编辑页里任何输入都算修改
+  $('view-edit').addEventListener('input', (e) => { if (e.target.id !== 'node-search') dirty = true; });
+  $('view-edit').addEventListener('change', (e) => { if (e.target.id !== 'node-search') dirty = true; });
 
   const PREFIX_HINTS = {
-    name: '从订阅自动读取机场名称（读不到时用订阅域名，再不行用 S1、S2…），例如「飞云 | 香港 01」。填了自定义前缀就用自定义的。',
+    name: '从订阅自动读取机场名称并缩成简称（读不到时用订阅域名，再不行用 S1、S2…），例如「飞云机场 - 官网 feiyun.com」→「飞云 | 香港 01」。填了自定义前缀就用自定义的。',
     index: '按顺序用 S1、S2…，例如「S1 | 香港 01」。填了自定义前缀就用自定义的。',
     none: '保留机场原本的节点名称；不同机场有同名节点时会自动加上 2、3… 区分。自定义前缀不会生效。',
   };
@@ -975,42 +1014,261 @@
   $('prefix-mode').addEventListener('change', () => setPrefixMode(getPrefixMode()));
 
   $('sources').addEventListener('click', (e) => {
+    const go = e.target.closest('[data-goto]');
+    if (go) return gotoGroup(go.dataset.goto);
     if (!e.target.closest('.src-del')) return;
     e.target.closest('.src').remove();
-    if (!$('sources').children.length) addSourceRow();
-    refreshRows();
-    renderNodes();
+    if (!rows().length) addSourceRow();
+    dirty = true;
+    render();
   });
-  $('sources').addEventListener('change', (e) => { if (e.target.classList.contains('src-url')) renderNodes(); });
-  // 改了链接：状态改成「未检查」，改回原本的链接就显示原本的检查结果
-  $('sources').addEventListener('input', (e) => { if (e.target.classList.contains('src-url')) refreshRows(); });
+  // 改了链接：状态改成「未检查」，改回原本的链接就显示原本的检查结果；改了前缀就更新节点筛选里的机场名称
+  $('sources').addEventListener('input', (e) => { if (e.target.matches('.src-url, .src-name')) render(); });
 
   $('new-btn').onclick = () => openEditor(null);
-  $('add-src').onclick = () => { addSourceRow(); refreshRows(); $('sources').lastElementChild.querySelector('.src-url').focus(); };
-  $('cancel-btn').onclick = closeEditor;
-  $('close-edit').onclick = closeEditor;
-  $('check-btn').onclick = checkStatus;
-  $('bulk-btn').onclick = () => { $('bulk-box').classList.toggle('hidden'); $('bulk-text').focus(); };
+  $('add-src').onclick = () => { addSourceRow(); render(); rows().at(-1).querySelector('.src-url').focus(); };
+  $('cancel-btn').onclick = leaveEditor;
+  $('back-btn').onclick = leaveEditor;
+  $('check-btn').onclick = () => loadSources(true);
+  $('bulk-btn').onclick = () => {
+    const open = $('bulk-box').hidden;
+    $('bulk-box').hidden = !open;
+    $('bulk-btn').setAttribute('aria-expanded', String(open));
+    if (open) $('bulk-text').focus();
+  };
   $('bulk-apply').onclick = () => {
-    [...$('sources').children].filter((r) => !r.querySelector('.src-url').value.trim()).forEach((r) => r.remove());
+    rows().filter((r) => !urlOf(r)).forEach((r) => r.remove());
     for (const line of $('bulk-text').value.split(/\r?\n/)) {
       const m = line.trim().match(/^(?:(.+?)\s+)?(https?:\/\/\S+)$/);
       if (m) addSourceRow({ name: (m[1] || '').trim(), url: m[2] });
     }
-    if (!$('sources').children.length) addSourceRow();
+    if (!rows().length) addSourceRow();
     $('bulk-text').value = '';
-    $('bulk-box').classList.add('hidden');
-    refreshRows();
-    renderNodes();
+    $('bulk-box').hidden = true;
+    $('bulk-btn').setAttribute('aria-expanded', 'false');
+    dirty = true;
+    render();
   };
+
+  // --- 节点筛选 ---
+  // 每个机场一组：标题列（展开、名称、导入统计、倍率门槛），展开后是这个机场的倍率标签与节点清单
+  function groupHtml(url, i, q, acc) {
+    const src = sourceByUrl.get(url);
+    const limit = effectiveRate(url);
+    const setting = rateSetting(url);
+    const global = getExcludeRate();
+    const rateCtl = `<label class="ng-rate"><span>倍率门槛</span>
+      <select data-focus="mode" aria-label="这个机场的倍率门槛">
+        <option value="inherit"${setting.mode === 'inherit' ? ' selected' : ''}>跟随全局（${rateLabel(global)}）</option>
+        <option value="none"${setting.mode === 'none' ? ' selected' : ''}>不限</option>
+        <option value="custom"${setting.mode === 'custom' ? ' selected' : ''}>自定义</option>
+      </select>${setting.mode === 'custom'
+        ? `<input type="number" data-focus="custom" min="0" step="0.1" inputmode="decimal" placeholder="倍率" aria-label="自定义倍率门槛" value="${setting.value ?? ''}"><span>x 起不导入</span>` : ''}</label>`;
+    const head = (open, count, tags = '', disabled = false) => `<div class="ng-head">
+      <button type="button" class="ng-toggle" data-focus="toggle" aria-expanded="${open}"${disabled ? ' disabled' : ''}>${icon('chevron')}<b>${escapeHtml(airportName(url, i))}</b></button>
+      ${tags}<span class="ng-count">${count}</span>${rateCtl}</div>`;
+
+    if (!src || src.error) {
+      const why = src ? `抓取失败：${escapeHtml(src.error)}，之前的选择保留不变`
+        : !savedUrls.has(url) ? '新的链接保存后才能选择节点' : loading ? '正在读取节点…' : '没有读到节点';
+      const hide = q ? ' hidden' : '';
+      return `<section class="ng${hide}" data-url="${escapeHtml(url)}">${head(false, '', src ? pill('fail', '失败') : '', true)}<p class="ng-empty">${why}</p></section>`;
+    }
+
+    // 已屏蔽的机场照样可以选，但合并时整个跳过，不算进「将导入」
+    const ex = excludeByUrl.get(url);
+    const t = { total: 0, kept: 0, byRate: 0, manual: 0, shown: 0 };
+    const rates = new Map();
+    const state = src.nodes.map((node) => {
+      const r = rateOf(node);
+      rates.set(r, (rates.get(r) || 0) + 1);
+      if (!src.blocked) acc.rates.set(r, (acc.rates.get(r) || 0) + 1);
+      const byRate = limit !== null && r >= limit;
+      const on = !byRate && !ex?.has(node.name);
+      const show = matches(node, q);
+      t.total++;
+      if (on) t.kept++; else if (byRate) t.byRate++; else t.manual++;
+      if (show) t.shown++;
+      return { node, byRate, on, show };
+    });
+    statsByUrl.set(url, t);
+    if (!src.blocked) for (const k of ['total', 'kept', 'byRate', 'manual']) acc[k] += t[k];
+
+    // 搜索时只显示有符合节点的机场，并自动展开
+    const open = q ? t.shown > 0 : expanded.has(url);
+    const tags = (src.blocked ? pill('blocked', '已屏蔽') : '') + (src.cachedAt ? pill('cache', '缓存') : '');
+    const count = `导入 ${t.kept} / ${t.total}` + (src.blocked ? '，合并时跳过' : '');
+    let body = '';
+    if (open) {
+      const chips = [...rates].sort((a, b) => a[0] - b[0]).map(([r, n]) =>
+        `<button type="button" class="rate-chip${limit !== null && r >= limit ? ' on' : ''}" data-focus="chip:${r}" data-rate="${r}" title="这个机场倍率 ≥ ${r}x 不导入">${r}x<small>${n}</small></button>`).join('');
+      const items = state.filter((s) => s.show).map(({ node, byRate, on }) => {
+        const name = escapeHtml(node.name);
+        return `<label class="node${byRate ? ' by-rate' : ''}" title="${byRate ? `倍率 ≥ ${limit}，不导入：` : ''}${name}">` +
+          `<input type="checkbox" data-focus="n:${name}" data-name="${name}"${on ? ' checked' : ''}${byRate ? ' disabled' : ''}><span class="n">${name}</span>` +
+          (node.rate !== null ? `<span class="r">${node.rate}x</span>` : '') + '</label>';
+      }).join('');
+      body = `<div class="ng-body"><div class="ng-tools"><div class="chips">${chips}</div>
+        <button type="button" class="btn sm ghost" data-focus="all" data-pick="1">全选</button>
+        <button type="button" class="btn sm ghost" data-focus="none" data-pick="0">全不选</button></div>
+        <div class="nodes">${items || '<p class="node-empty">没有节点</p>'}</div></div>`;
+    }
+    const hide = q && !t.shown ? ' hidden' : '';
+    return `<section class="ng${src.blocked ? ' blocked' : ''}${hide}" data-url="${escapeHtml(url)}">${head(open, count, tags)}${body}</section>`;
+  }
+
+  // 重画节点筛选与机场列；重画后保留焦点与 Shift 连选的起点
+  function render() {
+    const host = $('node-groups');
+    const focusEl = host.contains(document.activeElement) ? document.activeElement : null;
+    const focus = focusEl && [focusEl.closest('.ng')?.dataset.url, focusEl.dataset.focus];
+    const last = lastPick && [lastPick.closest('.ng')?.dataset.url, lastPick.dataset.name];
+    const q = $('node-search').value.trim().toLowerCase();
+    const acc = { rates: new Map(), total: 0, kept: 0, byRate: 0, manual: 0 };
+    statsByUrl = new Map();
+    host.innerHTML = currentUrls().map((url, i) => groupHtml(url, i, q, acc)).join('') ||
+      '<p class="node-empty">先在上面填机场订阅链接</p>';
+    const find = ([url, key], attr) => [...host.querySelectorAll('.ng')].find((g) => g.dataset.url === url)
+      ?.querySelector(`[${attr}="${CSS.escape(key)}"]`);
+    if (focus?.[1]) find(focus, 'data-focus')?.focus();
+    lastPick = (last && find(last, 'data-name')) || null;
+
+    const parts = [acc.byRate && `倍率不导入 ${acc.byRate}`, acc.manual && `手动排除 ${acc.manual}`].filter(Boolean);
+    const summary = acc.total ? `将导入 ${acc.kept} / ${acc.total} 个节点` : '';
+    $('filter-summary').textContent = summary ? summary + (parts.length ? `（${parts.join('，')}）` : '') : loading ? '正在读取节点…' : '';
+    $('bar-summary').textContent = summary || (editingToken ? (loading ? '正在读取节点…' : '') : '保存后就能看到每个机场的节点');
+    // 全局倍率标签：节点里实际出现的倍率，点一下设成全局门槛，再点一下取消；会被排除的标成删除线
+    const global = getExcludeRate();
+    $('rate-chips').innerHTML = [...acc.rates].sort((a, b) => a[0] - b[0]).map(([r, n]) =>
+      `<button type="button" class="rate-chip${global !== null && r >= global ? ' on' : ''}" data-rate="${r}" title="全局设为倍率 ≥ ${r}x 不导入">${r}x<small>${n}</small></button>`).join('');
+    const loaded = currentUrls().filter((u) => sourceByUrl.get(u)?.nodes?.length);
+    $('expand-all').textContent = loaded.length && loaded.every((u) => expanded.has(u)) ? '全部收起' : '全部展开';
+    refreshRows();
+  }
+
+  function excludeSet(url) {
+    if (!excludeByUrl.has(url)) excludeByUrl.set(url, new Set());
+    return excludeByUrl.get(url);
+  }
+  // 批量勾选：指定机场里符合搜索、没被倍率排除的节点
+  function pickAll(urls, picked) {
+    const q = $('node-search').value.trim().toLowerCase();
+    for (const url of urls) {
+      const src = sourceByUrl.get(url);
+      if (!src?.nodes) continue;
+      const limit = effectiveRate(url);
+      const set = excludeSet(url);
+      for (const node of src.nodes) {
+        if (!matches(node, q) || (limit !== null && rateOf(node) >= limit)) continue;
+        if (picked) set.delete(node.name); else set.add(node.name);
+      }
+    }
+    dirty = true;
+    render();
+  }
+  function setPicked(box, picked) {
+    box.checked = picked;
+    const set = excludeSet(box.closest('.ng').dataset.url);
+    if (picked) set.delete(box.dataset.name); else set.add(box.dataset.name);
+  }
+  function gotoGroup(url) {
+    $('node-search').value = '';
+    expanded.add(url);
+    render();
+    const g = [...$('node-groups').querySelectorAll('.ng')].find((x) => x.dataset.url === url);
+    g?.scrollIntoView({ behavior: smooth, block: 'start' });
+    g?.querySelector('.ng-toggle').focus({ preventScroll: true });
+  }
+
+  $('node-groups').addEventListener('click', (e) => {
+    const group = e.target.closest('.ng');
+    if (!group) return;
+    const url = group.dataset.url;
+    const toggle = e.target.closest('.ng-toggle');
+    if (toggle) {
+      if (expanded.has(url)) expanded.delete(url); else expanded.add(url);
+      return render();
+    }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) return pickAll([url], pick.dataset.pick === '1');
+    // 机场的倍率标签：设成这个机场的自定义门槛，再点一下改回跟随全局
+    const chip = e.target.closest('.rate-chip');
+    if (chip) {
+      const r = Number(chip.dataset.rate);
+      const s = rateSetting(url);
+      rateByUrl.set(url, s.mode === 'custom' && s.value === r ? { mode: 'inherit', value: null } : { mode: 'custom', value: r });
+      dirty = true;
+      return render();
+    }
+    const box = e.target.closest('input[type=checkbox]');
+    if (!box) return;
+    // Shift 点击：上次点的到这次点的之间全部设成同样的状态（可以跨机场）
+    const boxes = [...$('node-groups').querySelectorAll('.node input:not(:disabled)')];
+    const a = boxes.indexOf(lastPick);
+    const b = boxes.indexOf(box);
+    if (e.shiftKey && a !== -1 && b !== -1) boxes.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => setPicked(x, box.checked));
+    else setPicked(box, box.checked);
+    lastPick = box;
+    dirty = true;
+    render();
+  });
+  $('node-groups').addEventListener('change', (e) => {
+    if (!e.target.matches('select[data-focus=mode]')) return;
+    const url = e.target.closest('.ng').dataset.url;
+    const mode = e.target.value;
+    // 改成自定义时先填全局门槛，方便微调
+    rateByUrl.set(url, { mode, value: mode === 'custom' ? getExcludeRate() : null });
+    render();
+    if (mode === 'custom') [...$('node-groups').querySelectorAll('.ng')].find((g) => g.dataset.url === url)?.querySelector('[data-focus=custom]')?.focus();
+  });
+  $('node-groups').addEventListener('input', (e) => {
+    if (!e.target.matches('[data-focus=custom]')) return;
+    const v = Number(e.target.value);
+    rateByUrl.set(e.target.closest('.ng').dataset.url, { mode: 'custom', value: e.target.value.trim() !== '' && v > 0 ? v : null });
+    render();
+  });
+  $('node-search').addEventListener('input', render);
+  $('exclude-rate').addEventListener('input', render);
+  $('rate-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.rate-chip');
+    if (!chip) return;
+    $('exclude-rate').value = getExcludeRate() === Number(chip.dataset.rate) ? '' : chip.dataset.rate;
+    dirty = true;
+    render();
+  });
+  $('pick-all').onclick = () => pickAll(currentUrls(), true);
+  $('pick-none').onclick = () => pickAll(currentUrls(), false);
+  $('expand-all').onclick = () => {
+    const loaded = currentUrls().filter((u) => sourceByUrl.get(u)?.nodes?.length);
+    const all = loaded.every((u) => expanded.has(u));
+    expanded = new Set(all ? [] : loaded);
+    render();
+  };
+
+  // 要保存的排除清单：读到节点的机场只留现在还有的节点名称，读不到的维持原样
+  function excludeFor(url) {
+    const set = excludeByUrl.get(url);
+    if (!set?.size) return [];
+    const src = sourceByUrl.get(url);
+    if (!src || src.error) return [...set];
+    const names = new Set(src.nodes.map((n) => n.name));
+    return [...set].filter((n) => names.has(n));
+  }
+  // 机场的倍率门槛：跟随全局就不带这个键，不限为 null，自定义没填好也当跟随全局
+  function rateFor(url) {
+    const s = rateSetting(url);
+    if (s.mode === 'none') return { excludeRate: null };
+    if (s.mode === 'custom' && s.value > 0) return { excludeRate: s.value };
+    return {};
+  }
 
   $('save-btn').onclick = async () => {
     const name = $('edit-name').value.trim();
-    const sources = [...$('sources').children]
-      .map((r) => ({ name: r.querySelector('.src-name').value.trim(), url: r.querySelector('.src-url').value.trim() }))
+    const sources = rows()
+      .map((r) => ({ name: r.querySelector('.src-name').value.trim(), url: urlOf(r) }))
       .filter((s) => s.url)
-      .map((s) => ({ ...s, exclude: excludeFor(s.url) }));
-    if (!name) return showMsg($('edit-msg'), '请填名称');
+      .map((s) => ({ ...s, exclude: excludeFor(s.url), ...rateFor(s.url) }));
+    if (!name) { $('edit-name').focus(); return showMsg($('edit-msg'), '请填名称'); }
     if (!sources.length) return showMsg($('edit-msg'), '至少要填一个机场订阅链接');
     $('save-btn').disabled = true;
     try {
@@ -1018,7 +1276,8 @@
       const saved = editingToken ? await api('PUT', '/subs/' + editingToken, body) : await api('POST', '/subs', body);
       if (!editingToken) addToken(saved.token);
       toast(editingToken ? `已保存「${saved.name}」` : `已生成「${saved.name}」，复制链接到客户端就能用`);
-      closeEditor();
+      dirty = false;
+      leaveEditor();
       await loadList();
       highlight(saved.token);
     } catch (e) { showMsg($('edit-msg'), e.message); }
@@ -1029,34 +1288,39 @@
     $('refresh-btn').disabled = true;
     try {
       await api('POST', `/subs/${editingToken}/refresh`);
-      showMsg($('edit-msg'), '已开始刷新缓存，约 1 分钟后完成；之后按「预览」就能看到最新节点', true);
+      showMsg($('edit-msg'), '已开始刷新缓存，约 1 分钟后完成；之后按「重新检查」就能看到最新节点', true);
     } catch (e) { showMsg($('edit-msg'), e.message); }
     finally { setTimeout(() => ($('refresh-btn').disabled = false), 5000); }
   };
 
   // --- 预览 ---
+  let previewText = '';
+  let previewName = '';
   const stat = (label, value) => `<div class="stat"><span>${label}</span><b>${escapeHtml(value)}</b></div>`;
   async function preview(token, name, mode) {
-    $('preview-card').classList.remove('hidden');
     $('preview-title').textContent = `预览：${name}`;
     $('preview-info').innerHTML = `<p class="hint" style="margin-bottom:14px">${pill('pending', '抓取中')} 会即时抓取所有机场，可能要几秒…</p>`;
     $('preview').textContent = '';
     $('preview-status').innerHTML = '';
     $('preview-hint').classList.add('hidden');
-    $('preview-card').scrollIntoView({ behavior: smooth, block: 'start' });
+    $('download-btn').disabled = true;
+    $('preview-dlg').showModal();
     try {
       const res = await fetch(subUrl(token, mode), { cache: 'no-store' });
       previewText = await res.text();
       previewName = name;
       if (res.ok) {
         const count = [...previewText.matchAll(/\] (\d+) 个节点/g)].reduce((n, m) => n + Number(m[1]), 0);
+        const excluded = [...previewText.matchAll(/已排除 (\d+) 个/g)].reduce((n, m) => n + Number(m[1]), 0);
         const tiles = [stat('节点数', count)];
+        if (excluded) tiles.push(stat('已排除', excluded));
         const v = parseInfo(res.headers.get('subscription-userinfo'));
         if (v) {
           tiles.push(stat('已用 / 总流量', `${size(v.upload + v.download)} / ${v.total ? size(v.total) : '—'}`));
           tiles.push(stat('最早到期', v.expire ? fmtDate(v.expire) : '没有到期日'));
         }
         $('preview-info').innerHTML = `<div class="stats">${tiles.join('')}</div>`;
+        $('download-btn').disabled = false;
       } else {
         $('preview-info').innerHTML = `<p class="msg err" style="margin:0 0 14px">错误 ${res.status}：${escapeHtml(previewText)}</p>`;
       }
@@ -1069,15 +1333,17 @@
   // 每个机场的抓取结果写在配置文件开头的注释里：「# [名称] 46 个节点」「# [名称] 已屏蔽：…」「# [名称] 失败：HTTP 403」
   const TAGS = { ok: '直连', cache: '缓存', blocked: '已屏蔽', fail: '失败' };
   function renderStatus(text) {
-    const rows = [...text.matchAll(/^# \[(.+?)\] (.+)$/gm)].map(([, label, detail]) => {
+    const items = [...text.matchAll(/^# \[(.+?)\] (.+)$/gm)].map(([, label, detail]) => {
       const kind = /^已屏蔽/.test(detail) ? 'blocked' : /^失败/.test(detail) ? 'fail' : /缓存/.test(detail) ? 'cache' : 'ok';
       return { label, detail: detail.replace(/^(已屏蔽|失败)：/, ''), kind };
     });
-    $('preview-status').innerHTML = rows.map((r) =>
+    $('preview-status').innerHTML = items.map((r) =>
       `<li>${pill(r.kind, TAGS[r.kind])}<b>${escapeHtml(r.label)}</b><span class="muted">${escapeHtml(r.detail)}</span></li>`).join('');
-    $('preview-hint').classList.toggle('hidden', !rows.some((r) => r.kind !== 'ok'));
+    $('preview-hint').classList.toggle('hidden', !items.some((r) => r.kind !== 'ok'));
   }
-  $('close-preview').onclick = () => $('preview-card').classList.add('hidden');
+  $('close-preview').onclick = () => $('preview-dlg').close();
+  // 点对话框外面的遮罩也关闭
+  $('preview-dlg').addEventListener('click', (e) => { if (e.target === $('preview-dlg')) $('preview-dlg').close(); });
   $('download-btn').onclick = () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([previewText], { type: 'text/yaml' }));
@@ -1129,7 +1395,9 @@
     const script = fromHash.get('script');
     importFrom(fromHash.get('import') + (script ? `?script=${script}` : ''));
   }
-  // 等列表清掉失效的 TOKEN 后再读同步状态，「立即同步」才不会用到失效的 TOKEN
+  // 重新整理时停在编辑页的浏览记录上：回到清单
+  if (history.state?.view === 'edit') history.replaceState(null, '');
+  // 等清单清掉失效的 TOKEN 后再读同步状态，「立即同步」才不会用到失效的 TOKEN
   loadList().catch((e) => { $('list').innerHTML = '<p class="msg err">读取失败：' + escapeHtml(e.message) + '</p>'; }).finally(loadSync);
 })();
 </script>

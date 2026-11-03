@@ -5,15 +5,59 @@ export const GROUP_NAME = '节点选择';
 
 /**
  * 解析单一订阅内容（mihomo YAML 或 base64 / 纯文本 URI 列表）
- * @returns {{ proxies: object[], dns: object | null, hosts: object | null, skipped: number }}
+ * @returns {{ proxies: object[], dns: object | null, hosts: object | null, skipped: number, duplicates: number }}
  */
 export function parseSubscription(text) {
   const body = String(text ?? '').replace(/^﻿/, '').trim();
-  if (!body) return { proxies: [], dns: null, hosts: null, skipped: 0 };
+  if (!body) return { proxies: [], dns: null, hosts: null, skipped: 0, duplicates: 0 };
 
-  const fromYaml = tryParseYaml(body);
-  if (fromYaml) return fromYaml;
+  const parsed = tryParseYaml(body) ?? parseUriList(body);
+  const { proxies, duplicates } = dedupeProxies(parsed.proxies);
+  return { ...parsed, proxies, duplicates };
+}
 
+// 「剩余流量」「套餐到期」「官网」等信息节点：机场常直接复制某个真节点的设置、只改名称，排在最前面
+const INFO_NODE_RE = /剩余|到期|过期|重置|流量|官网|网站|网址|官方|套餐|订阅|客服|群/;
+
+/**
+ * 去掉除了名称以外完全相同的节点（机场常把同一个节点换几个名字重复列），保留第一个；
+ * dialer-proxy 指向被去掉的节点的，改指保留下来的那个。
+ * 信息节点不参与：不然排在前面的信息节点会顶掉跟它设置相同的真节点，信息节点之后又被覆写脚本滤掉，真节点就没了
+ */
+export function dedupeProxies(proxies) {
+  const kept = [];
+  const byConfig = new Map();
+  const renamed = new Map();
+  for (const proxy of proxies) {
+    const { name, ...rest } = proxy;
+    if (INFO_NODE_RE.test(String(name))) {
+      kept.push(proxy);
+      continue;
+    }
+    const key = stableStringify(rest);
+    const first = byConfig.get(key);
+    if (first !== undefined) {
+      renamed.set(name, first);
+      continue;
+    }
+    byConfig.set(key, name);
+    kept.push(proxy);
+  }
+  if (renamed.size === 0) return { proxies, duplicates: 0 };
+  const fixed = kept.map((p) => (renamed.has(p['dialer-proxy']) ? { ...p, 'dialer-proxy': renamed.get(p['dialer-proxy']) } : p));
+  return { proxies: fixed, duplicates: renamed.size };
+}
+
+// 物件的键排序后再序列化，键顺序不同的相同设置得到同一个字串
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (isPlainObject(value)) {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function parseUriList(body) {
   const lines = (looksLikeUriList(body) ? body : decodeBase64(body) ?? '')
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -321,7 +365,7 @@ export function extractRate(name) {
 }
 
 /** 节点倍率；名称没有标倍率的算 1 倍 */
-export function nodeRate(name) {
+function nodeRate(name) {
   return extractRate(name).rate ?? 1;
 }
 
@@ -551,16 +595,110 @@ export function dumpYaml(config) {
   return lines.join('\n') + '\n';
 }
 
-// 机场名称里这些字会被 MyClash 脚本当成「信息节点」过滤掉，所以去掉
-const NAME_NOISE = /机场|機場|订阅|訂閱|官网|官網/g;
+/*
+ * 机场简称：不逐个对照名称，只按写法规则把订阅文件名（或域名）缩成节点前缀
+ * 1. 文件名本身是网址就取主域名；网址、emoji、括号拆掉
+ * 2. 按 | / · 、「 - 」等分隔符切段，取第一个还有内容的段，后面多半是口号或网址（一元机场 - 官网 yiyuan.xyz）
+ * 3. 去掉会让覆写脚本误判节点的字（见 CONFLICT_*）
+ * 4. 去掉通用词 Cloud、Net、Link、VPN、网络、加速器…，独立成词或黏在后面（FSCloud、SingLink、猫熊网络加速器）都去掉
+ * 5. 中英并列（Nexitally 奶昔、WestData西部数据）只留中文，中文剩一个字（大机场 Big Airport）就留英文
+ * 6. 显示宽度超过 MAX_NAME_WIDTH（中日韩字算 2）从后面去词
+ * 全部去光或只剩一个字（clash、config、一串随机字符、永久免费云）就改用订阅域名；中文域名（xn--）转回中文
+ */
+
+// 覆写脚本按节点名称分类，机场简称是每个节点名称的一部分：带到这些字，整个机场的节点会被当成信息节点删掉（excludeFilter），
+// 或全被归到地区、倍率、家宽组。测试会拿覆写脚本的正则逐字核对
+const CONFLICT_CJK = new RegExp(
+  [
+    // excludeFilter
+    '群|返利|循环|官网|客服|网站|网址|获取|订阅|流量|到期|机场|下次|版本|官址|备用|过期|已用|联系|邮箱|工单|贩卖|通知|倒卖|防止|国内|地址',
+    '频道|电报|无法|说明|提示|访问|支持|教程|关注|更新|作者|加入|超时|收藏|优惠|福利|邀请|好友|失联|选择|剩余|公益|发布|通路|登录|禁止',
+    '定时|渠道|牢记|永久|余额|阁下|本站|刷新|导航|建议|重置|以下|过滤|機場|訂閱|官網',
+    // 地区
+    '香港|日本|东京|大阪|京都|美国|纽约|洛杉矶|旧金山|芝加哥|休斯顿|迈阿密|西雅图|波士顿|华盛顿|圣何塞|新加坡|狮城|台湾|台北|高雄',
+    // 倍率、家宽
+    '低倍|免费|下载|家宽|住宅|原生|家庭宽带',
+  ].join('|'),
+  'g',
+);
+const CONFLICT_LATIN = /hong\s*kong|japan|america|united\s*states|singapore|taiwan|residential|diztna|[@#]/gi;
+const CONFLICT_WORD = /^(?:hkg?|jpn?|usa?|sgp?|twn?|free|isp|res|expire|traffic)$/i;
+// 倍率写法（x2、0.5x、2倍）
+const RATE_LIKE = /[*×✕✖⨯⨉x]\d|\d(?:\.\d+)?(?:倍|[*×✕✖⨯⨉x])/i;
+
+// 通用词：独立成词或黏在名称后面（FSCloud、SingLink、猫熊网络加速器）都去掉
+const NOISE_SUFFIX = /^(.*?)(clouds?|networks?|net|telecom|links?|vpn|prox(?:y|ies)|airport|jichang|tech|加速器|网络|網絡|科技)$/i;
+// 客户端、文件名用语：只在独立成词时去掉（只剩这些就整段作废）
+const NOISE_WORDS = new Set('clash meta mihomo verge stash config sub subscribe subscription profile official www 配置 节点'.split(' '));
+
+const PART_SEP = /[|｜/\\·•,，;；:：!！?？。、()（）[\]{}<>《》【】〔〕「」『』"“”'‘’]+|\s+[-–—~]+\s+|[–—~]+/;
+const URL_LIKE = /(?:[a-z][a-z\d+.-]*:\/\/)?(?:[\p{L}\d-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?/giu;
+const DOMAIN_ONLY = /^(?:https?:\/\/)?(?:[\p{L}\d-]+\.)+[a-z]{2,}\/?$/iu;
+// 中英黏在一起（WestData西部数据）：英文至少 3 个字母、中文至少 2 个字才拆，iceの小店、哆啦A梦不拆
+const GLUED_BILINGUAL = /(?<=[a-z]{3})(?=\p{Script=Han}{2})|(?<=\p{Script=Han}{2})(?=[a-z]{3})/iu;
+const PICTOGRAPHIC = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u200d\ufe0f]/gu;
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const WIDE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+const MAX_NAME_WIDTH = 14;
 
 /**
- * 从订阅响应识别机场名称：先看 Content-Disposition 的文件名，没有就用订阅域名
+ * 从订阅响应识别机场简称：先看 Content-Disposition 的文件名，没有（或缩完不剩东西）就用订阅域名
  * @param {string | null} contentDisposition
  * @param {string} url
  */
 export function detectAirportName(contentDisposition, url) {
-  return cleanName(fileNameFrom(contentDisposition)) || cleanName(domainLabel(url)) || '';
+  return shortName(fileNameFrom(contentDisposition)) || shortName(domainLabel(url)) || '';
+}
+
+export function shortName(raw) {
+  let s = String(raw ?? '')
+    .normalize('NFKC')
+    .replace(/[\r\n\t]/g, ' ')
+    .trim()
+    .replace(/\.(ya?ml|txt|conf|json)$/i, '');
+  if (DOMAIN_ONLY.test(s)) s = domainLabel(/^https?:/i.test(s) ? s : `https://${s}`);
+  s = s.replace(URL_LIKE, ' ').replace(PICTOGRAPHIC, ' ').replace(CONFLICT_CJK, ' ').replace(CONFLICT_LATIN, ' ');
+  for (const part of s.split(PART_SEP)) {
+    const words = part.split(/[\s_-]+/).flatMap((w) => w.split(GLUED_BILINGUAL));
+    const name = fitWidth(pickScript(words.map(stripWord).filter(Boolean)));
+    // 只剩一个字（永久免费云 → 云）认不出是哪家
+    if ([...name].length >= 2) return name;
+  }
+  return '';
+}
+
+function stripWord(word) {
+  const w = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+  if (!w || NOISE_WORDS.has(w.toLowerCase()) || CONFLICT_WORD.test(w) || RATE_LIKE.test(w)) return '';
+  // 随机字符（订阅 token、时间戳）不是名称
+  if (/^\d{5,}$/.test(w) || (/^[a-z\d]{16,}$/i.test(w) && /\d/.test(w))) return '';
+  // 剩一个字（XCloud → X）由 shortName 判定认不出、改用域名，简称里不留通用词
+  const glued = w.match(NOISE_SUFFIX);
+  return glued ? stripWord(glued[1]) : w;
+}
+
+// 中英并列只留一种：优先中文，中文只剩一个字就留英文
+function pickScript(words) {
+  const cjk = words.filter((w) => CJK.test(w));
+  const latin = words.filter((w) => !CJK.test(w));
+  return (cjk.length && (displayWidth(cjk.join('')) >= 4 || !latin.length) ? cjk : latin).join(' ');
+}
+
+function fitWidth(name) {
+  const words = name.split(' ');
+  while (words.length > 1 && displayWidth(words.join(' ')) > MAX_NAME_WIDTH) words.pop();
+  let out = '';
+  for (const ch of words.join(' ')) {
+    if (displayWidth(out + ch) > MAX_NAME_WIDTH) break;
+    out += ch;
+  }
+  return out;
+}
+
+function displayWidth(s) {
+  let w = 0;
+  for (const ch of s) w += WIDE.test(ch) ? 2 : 1;
+  return w;
 }
 
 function fileNameFrom(cd) {
@@ -577,18 +715,42 @@ function domainLabel(url) {
     if (labels.length === 0 || /^\d+$/.test(labels[labels.length - 1])) return ''; // IP 不当名称
     // 取主域名，例如 sub.example.co.uk → example、api.foo.com → foo
     const tail = labels.length >= 3 && /^(com|net|org|co|ac|gov|edu)$/.test(labels[labels.length - 2]) ? 3 : 2;
-    return labels[labels.length - tail] ?? labels[0];
+    return punycodeDecode(labels[labels.length - tail] ?? labels[0]);
   } catch {
     return '';
   }
 }
 
-function cleanName(name) {
-  return String(name ?? '')
-    .replace(/\.(ya?ml|txt|conf)$/i, '')
-    .replace(NAME_NOISE, '')
-    .replace(/[|\r\n]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 20);
+// 中文域名（xn--9kqs1lo79d → 吹雪云），RFC 3492；格式不对就不当名称
+function punycodeDecode(label) {
+  if (!/^xn--/i.test(label)) return label;
+  const input = label.slice(4).toLowerCase();
+  const sep = input.lastIndexOf('-');
+  const out = sep > 0 ? [...input.slice(0, sep)].map((c) => c.codePointAt(0)) : [];
+  let n = 128;
+  let i = 0;
+  let bias = 72;
+  for (let p = sep > 0 ? sep + 1 : 0; p < input.length; ) {
+    const old = i;
+    for (let w = 1, k = 36; ; k += 36) {
+      const c = input.charCodeAt(p++);
+      const digit = c >= 48 && c <= 57 ? c - 22 : c >= 97 && c <= 122 ? c - 97 : 36;
+      if (digit >= 36) return '';
+      i += digit * w;
+      const t = k <= bias ? 1 : k >= bias + 26 ? 26 : k - bias;
+      if (digit < t) break;
+      w *= 36 - t;
+    }
+    const len = out.length + 1;
+    let delta = old === 0 ? Math.floor((i - old) / 700) : Math.floor((i - old) / 2);
+    delta += Math.floor(delta / len);
+    let k = 0;
+    for (; delta > 455; k += 36) delta = Math.floor(delta / 35);
+    bias = k + Math.floor((36 * delta) / (delta + 38));
+    n += Math.floor(i / len);
+    i %= len;
+    if (n > 0x10ffff) return '';
+    out.splice(i++, 0, n);
+  }
+  return String.fromCodePoint(...out);
 }

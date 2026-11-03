@@ -3,11 +3,12 @@
 把多个机场订阅合并成**一个**订阅链接（节点并集），并直接套用 [AIsouler/MyClash](https://github.com/AIsouler/MyClash) 覆写脚本，客户端导入就能用。
 
 - **一键合并**：Worker 地址就是管理页，粘贴多个机场订阅即生成合并链接，流量自动加总
-- **即时节点**：客户端每次更新时即时抓各机场最新节点
-- **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时改用 GitHub Actions 代抓的缓存
-- **到期屏蔽**：机场订阅到期或流量用完就自动跳过，流量与到期日也不计入；编辑页即时显示每个机场的到期日、流量与是否屏蔽
+- **快且稳**：每个机场一份缓存，30 分钟内抓过的直接用；更旧的才连机场，最多等 2.5 秒，等不到就先用旧缓存、背景更新
+- **不怕屏蔽**：机场屏蔽 Cloudflare（`HTTP 403`）时用 GitHub Actions 每 24 小时代抓的缓存
+- **到期屏蔽**：机场订阅到期或流量用完就自动跳过，流量与到期日也不计入；编辑页显示每个机场的到期日、流量与是否屏蔽
 - **倍率标注**：节点统一命名为 `飞云 | 2x | 香港 01`，1 倍不标
-- **节点筛选**：设「倍率 ≥ X 的节点不导入」，或在编辑页逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
+- **去掉重复节点**：除了名称以外设置完全相同的节点只留第一个；「剩余流量」「套餐到期」等信息节点常复制真节点的设置，不参与比较，免得顶掉真节点
+- **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
@@ -15,9 +16,9 @@
 ```mermaid
 flowchart LR
   C[Clash 客户端] -- 每次更新订阅 --> W[Cloudflare Worker]
-  W -- 直连抓取 --> A[各机场订阅]
-  W -. 直连失败时读取 .-> K[(KV 缓存)]
-  G[GitHub Actions<br/>非 Cloudflare IP 代抓] -- 每天 / 管理页「立即刷新缓存」写入 --> K
+  W -- 先读 --> K[(KV 缓存<br/>每个机场一份)]
+  W -- 缓存超过 30 分钟才连，抓成功就写回 --> A[各机场订阅]
+  G[GitHub Actions<br/>非 Cloudflare IP 代抓] -- 每 24 小时 / 管理页「立即刷新缓存」写入 --> K
   G -- 代抓 --> A
 ```
 
@@ -31,7 +32,7 @@ KV（`myclash-sub-store`）会自动创建。部署后打开 `https://myclash.<�
 
 1. Cloudflare [API 令牌](https://dash.cloudflare.com/profile/api-tokens) → 创建自定义令牌，权限 `账户 / Workers KV 存储 / 编辑`
 2. 仓库 **Settings → Secrets → Actions** 新增 `CLOUDFLARE_API_TOKEN`
-3. **Actions → 代抓订阅缓存 → Run workflow** 执行一次；之后每天自动执行，缓存保留 3 天
+3. **Actions → 代抓订阅缓存 → Run workflow** 执行一次；之后每 24 小时自动执行，缓存保留 3 天
 
 > 若提示「请在 Secrets 里直接指定」，再加 `CLOUDFLARE_ACCOUNT_ID` 与 `KV_NAMESPACE_ID`。日志不会印出订阅链接或节点。
 
@@ -73,13 +74,23 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 - `default-nameserver` 与 `proxy-server-nameserver` 由「114 明文 + 阿里 DoT + 腾讯 DoH」改为阿里、腾讯两个 DoH（`https://223.5.5.5/dns-query`、`https://1.12.12.12/dns-query`）。
   原本 114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时成簇刷屏；DoH 连接可复用，本机实测 warning 归零、解析也更快
+- 开启 sniffer（原版没有，mihomo 默认关闭）：fake-ip 只能还原走系统 DNS 的连接，浏览器的安全 DNS、自带 DoH 的 App、直接连 IP 的流量进来只有 IP，`ai`、`google` 等域名规则全部失效。嗅探 HTTP / TLS / QUIC，只拿域名匹配规则，不改目标地址（`override-destination: false`）
+- 广告规则排在「私有网络直连」之后、国内直连（`geolocation-cn`）之前。原版的分流规则都排在国内直连后面，而 `geolocation-cn` 按 `baidu.com`、`miui.com` 等整个域名后缀匹配，国内厂商的广告、统计与小米反诈域名（如 `hm.baidu.com`、`flash.sec.miui.com`）先被直连，到不了 AdBlock。AdBlock 关闭或极简模式时不加这条规则
+- 自动选择组（url-test）只看延迟，所以：
+  - 不选 HTTP / SOCKS5 节点（`exclude-type: DIRECT|Http|Socks5`）：机场混进来的这类节点多是公开代理，有的还是明文
+  - 不选高倍率与「勿跑大流量」节点（`exclude-filter`）：倍率沿用原版「高倍率节点」组的判断，「高倍率节点-自动选择」本身不排除；手动选择组照样列出这些节点
+  - 排除后一个节点都不剩的组不加排除条件，免得组变空被 `empty-fallback` 设成 `REJECT`
 
 GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/sukka-reject.mrs`，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 的服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本；脚本有改动时，流程在 `main` 上会用 `CLOUDFLARE_DEPLOY_TOKEN`（权限含 Workers 脚本编辑，另需 `CLOUDFLARE_ACCOUNT_ID`）重新部署，没设就要等下次部署才生效；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
 管理页「客户端怎么用」下方显示 `rules` 分支最后更新时间（脚本或规则集有变化才会更新）与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
 
 **节点前缀**：区分不同机场。
 
-- **机场名称**（默认）：读订阅返回的文件名，读不到用域名，例如 `飞云 | 香港 01`
+- **机场名称**（默认）：读订阅返回的文件名，读不到用域名，再按规则缩成简称，例如 `飞云 | 香港 01`
+  - 去掉网址、emoji、括号与 `|`、` - ` 后面的口号；去掉「机场、订阅、Cloud、Network、VPN、Clash」这类通用词（`MNKCloud` → `MNK`、`猫熊网络加速器` → `猫熊`）
+  - 中英并列只留中文（`Nexitally 奶昔` → `奶昔`）；中文域名转回中文
+  - 去掉会让覆写脚本误判的字（香港、US、免费、永久…），免得整个机场的节点被删掉或分错组
+  - 缩完不剩东西（`clash.yaml`）就用域名；同一家机场两份订阅，第二份加序号（`飞云2`）
 - **S1、S2…**：按顺序编号
 - **不加前缀**：保留原名，同名自动加 `2`、`3`
 
@@ -89,7 +100,8 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 去掉原字样后改写为 `前缀 | 2x | 原名`，例如 `美国04-1.5x |4837` → `MNKCloud | 1.5x | 美国04|4837`。
 1 倍不标；「剩余流量 / 到期」等信息节点不处理。标注后仍会被脚本归入高/低倍率组。
 
-**节点筛选**（编辑页）：「倍率 ≥ X 的节点不导入」是规则，机场之后新增的高倍率节点也会自动排除；没标倍率的节点算 1 倍。下方的倍率标签列出节点里实际出现的倍率，点一下就设成门槛。
+**节点筛选**（编辑页第 3 区）：「倍率 ≥ X 的节点不导入」是规则，机场之后新增的高倍率节点也会自动排除；没标倍率的节点算 1 倍。全局门槛下方的倍率标签列出节点里实际出现的倍率，点一下就设成门槛。
+每个机场一组，可以单独设门槛：「跟随全局」「不限」或「自定义」（展开后点这个机场的倍率标签也会设成自定义），适合各家倍率标准不同的情况。机场订阅列的「导入 x / y 个节点」会跳到对应的机场。
 「选择节点」逐个勾选，保存的是**不导入**的节点（按机场原本的节点名称，不受前缀与倍率标注影响），所以机场新增的节点默认导入；机场改了节点名称，就要重新取消勾选。
 被排除的节点若是别的节点的 `dialer-proxy`，依赖它的节点也一并去掉；某个机场的节点全被排除时，它的流量与到期日不计入。
 
@@ -152,16 +164,16 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 
 **到期屏蔽**：机场返回的 `subscription-userinfo` 标头里 `expire`（到期日）已过，或已用流量（`upload + download`）达到 `total` 的，合并时整个跳过，
 不解析节点，流量与到期日也不计入合并后的订阅（否则客户端会把整个合并订阅显示成已到期）；续费或流量重置后下次更新就自动恢复。
-直连失败时依代抓缓存里的资料判断。没有提供到期日或总流量（`total=0`）的机场不受影响。
+资料来自缓存时依缓存里的标头判断。没有提供到期日或总流量（`total=0`）的机场不受影响。
 
-打开「编辑」时会即时检查每个机场（只读响应标头，不下载节点），在每一列显示：
+打开「编辑」时读每个机场的缓存（30 分钟内抓过的不再连机场，很快），按「重新检查」才重新连机场；每一列显示：
 
 | 标签 | 说明 |
 | --- | --- |
-| 正常 | 到期日与剩余天数、已用 / 总流量 |
+| 正常 | 到期日与剩余天数、已用 / 总流量、资料多久前更新 |
 | 即将到期 | 7 天内到期（仍会合并） |
 | 已屏蔽 | 已到期或流量用完，合并时自动跳过 |
-| 缓存 | 直连失败，资料来自代抓缓存 |
+| 缓存 | 这次连机场失败或太慢，资料来自旧缓存；机场拒绝时附上原因，例如 `HTTP 403：token is error` 表示订阅链接已失效，要到机场复制新链接 |
 | 失败 | 抓不到且没有缓存，合并时跳过 |
 
 前缀栏会显示自动识别出的机场名称；新加或改过的链接要保存后才会检查。
@@ -187,9 +199,9 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 
   | 项目 | 免费额度（每天） | 用量 |
   | --- | --- | --- |
-  | Worker 请求 | 10 万次 | 客户端每次更新订阅算 1 次；打开编辑页检查到期日也算 1 次（管理页是静态文件，不计） |
-  | KV 读取 | 10 万次 | 每次更新读 1 次；机场直连失败时每个机场再读 1 次缓存 |
-  | KV 写入 | 1000 次 | 添加、编辑、换 TOKEN，以及代抓缓存（每个机场 1 次） |
+  | Worker 请求 | 10 万次 | 客户端每次更新订阅算 1 次；打开编辑页也算 1 次（管理页是静态文件，不计） |
+  | KV 读取 | 10 万次 | 每次更新读订阅 1 次，加每个机场的缓存各 1 次 |
+  | KV 写入 | 1000 次 | 添加、编辑、换 TOKEN；机场缓存每个机场最多每 30 分钟 1 次，加代抓每次每个机场 1 次 |
 
   没人使用的旧订阅只占 KV 约 1 KB，不消耗请求。唯一可能超额的是链接外流被大量请求：超额后当天请求失败（台湾时间 08:00 重置，免费方案不会扣款），
   客户端保留上次的配置；按「换 TOKEN」即可止血。实际用量可在 Cloudflare → Workers → myclash → 指标查看。
@@ -198,7 +210,7 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 
 | 项目 | 时间 | 内容 |
 | --- | --- | --- |
-| 代抓订阅缓存 | 每天台湾时间 03:17，或管理页触发 | `.github/workflows/refresh-cache.yml` |
+| 代抓订阅缓存 | 每 24 小时，或管理页触发 | `.github/workflows/refresh-cache.yml` |
 | 测试 | PR 与 `main` 有更新时（只改文档不跑） | 单元测试 + `wrangler deploy --dry-run` |
 | 依赖更新 | 每月 1 号 | Dependabot 合成一个 PR，测试通过后自动合并 |
 | 部署 | `main` 有更新时 | Cloudflare 自动重新部署 |
@@ -215,11 +227,10 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | --- | --- |
 | `GET /sub/<TOKEN>` | 合并后的订阅（mihomo YAML）；`?script=lite` / `?script=full` 在服务端套用覆写脚本；浏览器网址栏打开时跳到管理页 `/#import=<TOKEN>` 自动导入 |
 | `GET /script.js`、`/script-full.js` | 修改版 MyClash 覆写脚本（精简 / 全量，静态文件） |
-| `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, excludeRate: 2 \| null, sources: [{ name, url, exclude: ["原本的节点名称"] }] }`（`excludeRate`：倍率 ≥ 这个值的节点不导入；`exclude`：这个机场不导入的节点） |
+| `POST /api/subs` | 添加：`{ name, prefixMode: "name"\|"index"\|"none", rateTag: true, excludeRate: 2 \| null, sources: [{ name, url, exclude: ["原本的节点名称"], excludeRate?: 3 | null }] }`（全局 `excludeRate`：倍率 ≥ 这个值的节点不导入；机场的 `excludeRate`：没有这个键就跟随全局，`null` 为不限；`exclude`：这个机场不导入的节点） |
 | `POST /api/subs/lookup` | 一次查多个 TOKEN：`{ tokens: [...] }`（最多 50 个，查不到的不返回） |
 | `GET` / `PUT` / `DELETE /api/subs/<TOKEN>` | 查找、编辑、删除 |
-| `GET /api/subs/<TOKEN>/status` | 即时检查每个机场：`{ checkedAt, sources: [{ url, name, error, directError, cachedAt, info: { upload, download, total, expire }, blocked: null \| "expired" \| "exhausted" }] }` |
-| `GET /api/subs/<TOKEN>/nodes` | 每个机场原本的节点（未筛选）：`{ sources: [{ url, name, error, blocked, cachedAt, nodes: [{ name, rate }] }] }`，`rate` 为 null 表示没标倍率 |
+| `GET /api/subs/<TOKEN>/sources` | 每个机场的状态与原本的节点（未筛选），跟合并订阅用同一份缓存；`?refresh=1` 不用新鲜缓存、重新连机场：`{ checkedAt, sources: [{ url, name, error, directError, cachedAt, fetchedAt, info: { upload, download, total, expire }, blocked: null | "expired" | "exhausted", nodes: [{ name, rate }] }] }`；`cachedAt` 有值表示这次连机场失败或太慢、用的是旧缓存，`rate` 为 null 表示没标倍率 |
 | `POST /api/subs/<TOKEN>/rotate` | 换新 TOKEN |
 | `POST /api/subs/<TOKEN>/refresh` | 触发代抓缓存（需 `GITHUB_TOKEN`，1 分钟限一次） |
 | `GET /api/scripts` | 覆写脚本同步状态：`{ run: { status, conclusion, event, createdAt, url } \| null, updated: { at, message, url } \| null, canTrigger }`（「同步上游覆写脚本」最近一次执行，与 `rules` 分支最后一次更新的提交；在 KV 存 5 分钟） |

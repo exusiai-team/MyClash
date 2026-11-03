@@ -61,6 +61,13 @@ function startUpstream() {
       // 10 GB 用完，到期日还没到
       res.setHeader('subscription-userinfo', 'upload=0; download=10737418240; total=10737418240; expire=2000000000');
       res.end(b64('trojan://pw@used.node:443#日本 用完'));
+    } else if (req.url === '/slow') {
+      // 4 秒后才回应，比有旧缓存时的等待上限（2.5 秒）久
+      setTimeout(() => res.end(b64('trojan://pw@new.node:443#新 01')), 4000);
+    } else if (req.url === '/token-error') {
+      res.statusCode = 403;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ status: 'fail', message: 'token is error', data: null }));
     } else if (req.url === '/blocked') {
       res.statusCode = 403;
       res.end('blocked');
@@ -264,6 +271,14 @@ test('节点前缀三种模式：机场名称 / S1S2 / 不加', async (t) => {
   assert.deepEqual(none.names, ['新加坡 01', '美国 01', '香港 01', '美国 01 2', '香港 01 2']);
   assert.match(none.body, /\[飞云\] 1 个节点/);
 
+  // 同一家机场两份订阅：第二份的简称加序号
+  const { token: twice } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: 'z', prefixMode: 'name', sources: [{ url: `${base}/named` }, { url: `${base}/named` }] } })
+  ).json();
+  const twiceBody = await (await worker.fetch(new Request(`https://w.test/sub/${twice}`), env)).text();
+  assert.deepEqual(yaml.load(twiceBody).proxies.map((p) => p.name), ['飞云 | 新加坡 01', '飞云2 | 新加坡 01']);
+  assert.match(twiceBody, /\[飞云2\] 1 个节点/);
+
   const bad = await (await call(env, 'POST', '/api/subs', { body: { name: 'y', prefixMode: '??', sources: [{ url: base }] } })).json();
   assert.equal(bad.prefixMode, 'name');
 });
@@ -399,7 +414,7 @@ test('/sub/<TOKEN>：到期或流量用完的机场自动屏蔽，不计入流�
   // 只剩 A 的流量与到期日；屏蔽的机场若计入，客户端会把整个合并订阅显示成已到期或流量用完
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=1; download=2; total=100; expire=2000000000');
   const body = await res.text();
-  assert.match(body, /^# \[OldCloud\] 已屏蔽：订阅已于 2001-09-09 到期$/m);
+  assert.match(body, /^# \[Old\] 已屏蔽：订阅已于 2001-09-09 到期$/m);
   assert.match(body, /^# \[用完\] 已屏蔽：流量已用完（10\.0 GB \/ 10\.0 GB）$/m);
   assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['A | 🇭🇰 香港 01', 'A | 🇯🇵 日本 01']);
 
@@ -414,7 +429,7 @@ test('/sub/<TOKEN>：到期或流量用完的机场自动屏蔽，不计入流�
   assert.match(await all.text(), /都已到期或流量用完/);
 });
 
-test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否屏蔽', async (t) => {
+test('GET /api/subs/<TOKEN>/sources：每个机场的流量、到期日、是否屏蔽与节点', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
@@ -427,7 +442,7 @@ test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否�
     JSON.stringify({ body: 'x', userinfo: 'upload=1; download=1; total=10; expire=2100000000', fetchedAt }),
   );
 
-  const res = await call(env, 'GET', `/api/subs/${token}/status`);
+  const res = await call(env, 'GET', `/api/subs/${token}/sources`);
   assert.equal(res.status, 200);
   const { checkedAt, sources } = await res.json();
   assert.ok(checkedAt > 0);
@@ -439,7 +454,7 @@ test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否�
   assert.equal(named.name, '飞云');
   assert.equal(named.info, null);
   assert.equal(named.blocked, null);
-  assert.equal(expired.name, 'OldCloud');
+  assert.equal(expired.name, 'Old');
   assert.equal(expired.blocked, 'expired');
   assert.equal(expired.info.expire, 1000000000);
   assert.equal(failed.error, 'HTTP 500');
@@ -450,11 +465,11 @@ test('GET /api/subs/<TOKEN>/status：每个机场的流量、到期日与是否�
   assert.equal(cached.blocked, null);
   assert.equal(usedUp.blocked, 'exhausted');
 
-  assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/status`)).status, 404);
-  assert.equal((await call(env, 'POST', `/api/subs/${token}/status`)).status, 405);
+  assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/sources`)).status, 404);
+  assert.equal((await call(env, 'POST', `/api/subs/${token}/sources`)).status, 405);
 });
 
-test('节点筛选：手动排除与倍率门槛在合并时生效，/nodes 列出原本的节点', async (t) => {
+test('节点筛选：手动排除与倍率门槛在合并时生效，/sources 列出原本的节点', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const base = `http://127.0.0.1:${upstream.address().port}`;
@@ -484,7 +499,7 @@ test('节点筛选：手动排除与倍率门槛在合并时生效，/nodes 列�
   // 被排除的节点所在机场照常计入流量
   assert.equal(res.headers.get('subscription-userinfo'), 'upload=10; download=20; total=50; expire=1900000000');
 
-  const nodes = await (await call(env, 'GET', `/api/subs/${created.token}/nodes`)).json();
+  const nodes = await (await call(env, 'GET', `/api/subs/${created.token}/sources`)).json();
   assert.deepEqual(nodes.sources.map((s) => s.nodes), [
     [{ name: '香港 01 [2x]', rate: 2 }, { name: '日本 01-1.0x', rate: 1 }],
     [{ name: '美国 01', rate: null }, { name: '香港 01', rate: null }],
@@ -504,5 +519,118 @@ test('节点筛选：手动排除与倍率门槛在合并时生效，/nodes 列�
     const r = await (await call(env, 'PUT', `/api/subs/${created.token}`, { body: { name: 'x', excludeRate, sources: [{ url: base }] } })).json();
     assert.equal(r.excludeRate, null, String(excludeRate));
   }
-  assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/nodes`)).status, 404);
+  assert.equal((await call(env, 'GET', `/api/subs/${'0'.repeat(32)}/sources`)).status, 404);
+});
+
+test('节点筛选：每个机场可以单独设倍率门槛（跟随全局 / 不限 / 自定义）', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const { token, sources } = await (
+    await call(env, 'POST', '/api/subs', {
+      body: {
+        name: 'x',
+        excludeRate: 2,
+        sources: [
+          { name: '跟随', url: `${base}/rate` },
+          { name: '不限', url: `${base}/rate`, excludeRate: null },
+          { name: '自定', url: `${base}/rate`, excludeRate: 0.5 },
+          { name: '无效', url: `${base}/rate`, excludeRate: 'abc' },
+        ],
+      },
+    })
+  ).json();
+  assert.deepEqual(sources.map((s) => s.excludeRate), [undefined, null, 0.5, undefined]);
+  assert.equal(Object.hasOwn(sources[0], 'excludeRate'), false);
+
+  const body = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+  assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), [
+    '跟随 | 日本 01-1.0x',
+    '不限 | 香港 01 [2x]',
+    '不限 | 日本 01-1.0x',
+    '无效 | 日本 01-1.0x',
+  ]);
+  assert.match(body, /^# \[自定\] 0 个节点（已排除 2 个）$/m);
+});
+
+test('机场订阅缓存：30 分钟内直接用不连机场，抓成功就写回，refresh 重新连', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ name: 'A', url: `${base}/b64` }] } })).json();
+  const key = await cacheKey(`${base}/b64`);
+
+  // 第一次连机场，成功后写进缓存
+  await worker.fetch(new Request(`https://w.test/sub/${token}`), env);
+  await new Promise((r) => setTimeout(r, 10));
+  const saved = JSON.parse(env.SUB_STORE.store.get(key).value);
+  assert.ok(saved.body && saved.fetchedAt > Date.now() - 5000);
+  assert.equal(saved.userinfo, 'upload=10; download=20; total=50; expire=1900000000');
+
+  // 新鲜缓存：机场关了也照样拿得到，而且不标成缓存
+  const realFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async (...a) => { upstreamCalls++; return realFetch(...a); };
+  t.after(() => (globalThis.fetch = realFetch));
+  const body = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+  assert.equal(upstreamCalls, 0);
+  assert.match(body, /^# \[A\] 2 个节点$/m);
+  const sources = (await (await call(env, 'GET', `/api/subs/${token}/sources`)).json()).sources;
+  assert.equal(upstreamCalls, 0);
+  assert.equal(sources[0].cachedAt, null);
+  assert.equal(sources[0].fetchedAt, saved.fetchedAt);
+
+  // 「重新检查」重新连机场
+  await call(env, 'GET', `/api/subs/${token}/sources?refresh=1`);
+  assert.equal(upstreamCalls, 1);
+});
+
+test('机场订阅缓存：机场太慢时先用旧缓存，背景抓完再写回；机场拒绝时附上原因', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const old = { body: b64('trojan://pw@old.node:443#旧 01'), userinfo: 'upload=1; download=1; total=10; expire=0', fetchedAt: Date.now() - 3600 * 1000 };
+  await env.SUB_STORE.put(await cacheKey(`${base}/slow`), JSON.stringify(old));
+  await env.SUB_STORE.put(await cacheKey(`${base}/token-error`), JSON.stringify(old));
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ name: '慢', url: `${base}/slow` }, { name: '失效', url: `${base}/token-error` }] } })
+  ).json();
+
+  const started = Date.now();
+  const body = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+  assert.ok(Date.now() - started < 3500, '不等慢的机场');
+  assert.match(body, /^# \[慢\] 1 个节点（直连失败：机场回应太慢，使用 1 小时前的缓存）$/m);
+  assert.match(body, /^# \[失效\] 1 个节点（直连失败：HTTP 403：token is error，使用 1 小时前的缓存）$/m);
+  assert.deepEqual(yaml.load(body).proxies.map((p) => p.name), ['慢 | 旧 01', '失效 | 旧 01']);
+
+  // 背景抓完后缓存换成新的
+  await new Promise((r) => setTimeout(r, 1800));
+  const fresh = JSON.parse(env.SUB_STORE.store.get(await cacheKey(`${base}/slow`)).value);
+  assert.match(Buffer.from(fresh.body, 'base64').toString(), /new\.node/);
+});
+
+test('机场订阅缓存：抓不到又没有缓存的机场 5 分钟内不再重抓，refresh 才重抓', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const env = { SUB_STORE: memoryKv() };
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: 'x', sources: [{ name: 'A', url: `${base}/b64` }, { name: '坏', url: `${base}/token-error` }] } })
+  ).json();
+  const realFetch = globalThis.fetch;
+  const hits = [];
+  globalThis.fetch = async (url, init) => { hits.push(String(url)); return realFetch(url, init); };
+  t.after(() => (globalThis.fetch = realFetch));
+
+  const first = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+  assert.match(first, /^# \[坏\] 失败：HTTP 403：token is error$/m);
+  const second = await (await worker.fetch(new Request(`https://w.test/sub/${token}`), env)).text();
+  assert.match(second, /^# \[坏\] 失败：HTTP 403：token is error$/m);
+  assert.equal(hits.filter((u) => u.endsWith('/token-error')).length, 1);
+
+  await call(env, 'GET', `/api/subs/${token}/sources?refresh=1`);
+  assert.equal(hits.filter((u) => u.endsWith('/token-error')).length, 2);
 });
