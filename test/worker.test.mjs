@@ -143,40 +143,48 @@ test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', asy
   assert.equal((await get('?script=nope')).status, 400);
 });
 
-test('AI 链式代理：勾选的机场节点只放进 AI 组，经「AI链式代理」组中转', async (t) => {
+test('AI 链式代理：勾选的机场节点与整组直接挂上「AI链式代理」中转', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const env = { SUB_STORE: memoryKv() };
   const url = `http://127.0.0.1:${upstream.address().port}/yaml`;
   const res = await call(env, 'POST', '/api/subs', {
-    body: { name: 'c', prefixMode: 'none', sources: [{ url, aiChain: ['🇯🇵 日本 01', '🇭🇰 香港 01', '不存在'] }] },
+    body: { name: 'c', prefixMode: 'none', sources: [{ url, aiChain: ['🇯🇵 日本 01', '不存在'] }] },
   });
   const { token, sources } = await res.json();
-  assert.deepEqual(sources[0].aiChain, ['🇯🇵 日本 01', '🇭🇰 香港 01', '不存在']);
+  assert.deepEqual(sources[0].aiChain, ['🇯🇵 日本 01', '不存在']);
 
   const get = async (query) => (await worker.fetch(new Request(`https://w.test/sub/${token}${query}`), env)).text();
-  // 不覆写：没有链式代理，也不会带出传给脚本的键
+  // 不覆写：没有链式代理，也不会带出标记
   const plain = yaml.load(await get(''));
-  assert.ok(!plain.proxies.some((p) => p.name.startsWith('🔗')));
-  assert.ok(!('myclash-ai-chain' in plain));
+  assert.ok(!plain.proxies.some((p) => p['dialer-proxy'] || 'myclash-ai-chain' in p));
 
   const body = await get('?script=lite');
-  assert.match(body, /^# AI 链式代理：2 个落地节点/m);
+  assert.match(body, /^# AI 链式代理：1 个单独勾的节点，经「AI链式代理」组中转/m);
   const config = yaml.load(body);
-  assert.ok(!('myclash-ai-chain' in config));
-  // 按机场的节点顺序；勾了但机场没有的节点不生效
-  const landing = config.proxies.filter((p) => p.name.startsWith('🔗'));
-  assert.deepEqual(landing.map((p) => [p.name, p.server, p['dialer-proxy']]), [
-    ['🔗 🇭🇰 香港 01', 'hk.node', 'AI链式代理'],
-    ['🔗 🇯🇵 日本 01', 'jp.node', 'AI链式代理'],
-  ]);
-  // 原本的日本节点照样留着、不挂中转
-  assert.equal(config.proxies.find((p) => p.server === 'jp.node' && !p.name.startsWith('🔗'))['dialer-proxy'], undefined);
+  // 原节点直接挂中转，不复制；勾了但机场没有的节点不生效
+  assert.ok(!config.proxies.some((p) => 'myclash-ai-chain' in p));
+  assert.deepEqual(config.proxies.filter((p) => p['dialer-proxy']).map((p) => [p.server, p['dialer-proxy']]), [['jp.node', 'AI链式代理']]);
   const groups = new Map(config['proxy-groups'].map((g) => [g.name, g]));
-  assert.deepEqual(groups.get('AI').proxies.slice(0, 2), ['🔗 🇭🇰 香港 01', '🔗 🇯🇵 日本 01']);
-  assert.equal(groups.get('AI')['default-selected'], '🔗 🇭🇰 香港 01');
+  const jp = config.proxies.find((p) => p.server === 'jp.node').name;
+  assert.equal(groups.get('AI').proxies[0], jp);
+  assert.equal(groups.get('AI')['default-selected'], jp);
   assert.equal(groups.get('AI链式代理')['default-selected'], '香港');
   assert.equal(groups.get('AI链式代理').proxies.at(-1), '直连');
+
+  // 整组：只收认得的地区组，按固定顺序；再保存一次不带就清掉
+  const put = async (aiChainGroups) => (await call(env, 'PUT', `/api/subs/${token}`, {
+    body: { name: 'c', prefixMode: 'none', aiChainGroups, sources: [{ url }] },
+  })).json();
+  assert.deepEqual((await put(['日本', '乱写', '台湾'])).aiChainGroups, ['台湾', '日本']);
+  const grouped = await get('?script=lite');
+  assert.match(grouped, /^# AI 链式代理：整组 台湾、日本，经「AI链式代理」组中转/m);
+  const c2 = yaml.load(grouped);
+  // 没有台湾节点，整组台湾略过；AI 默认选日本
+  assert.equal(c2['proxy-groups'].find((g) => g.name === 'AI')['default-selected'], '日本');
+  assert.equal(c2.proxies.find((p) => p.server === 'jp.node')['dialer-proxy'], 'AI链式代理');
+  assert.ok(!('myclash-ai-chain-groups' in c2));
+  assert.deepEqual((await put(undefined)).aiChainGroups, []);
 });
 
 test('/sub/<TOKEN>：浏览器网址栏打开时跳到管理页自动导入，「首页」按钮也带上 TOKEN', async (t) => {

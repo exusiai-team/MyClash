@@ -30,10 +30,13 @@ const MAX_LOOKUP = 50;
 // 每个机场最多手动排除几个节点、节点名称最长几个字
 const MAX_EXCLUDE = 2000;
 const MAX_NODE_NAME = 200;
-// AI 链式代理：勾选的机场节点当落地，经覆写脚本的「AI链式代理」组中转，只放进「AI」组。
-// 落地节点清单放在 config 的这个键传给覆写脚本（scripts/sync-scripts.mjs 的 AI_CHAIN_KEY），脚本输出的配置不会带着它
+// AI 链式代理：勾选的机场节点与整组走链式的地区组，由覆写脚本直接给节点挂上「AI链式代理」组中转，「AI」组默认选它们。
+// 勾选的节点带着 proxy[AI_CHAIN_KEY] 标记、地区组名称放在 config[AI_CHAIN_GROUPS_KEY] 传给覆写脚本
+// （scripts/sync-scripts.mjs 的同名常量），输出的配置不会带着它们
 const AI_CHAIN_KEY = 'myclash-ai-chain';
-const LANDING_PREFIX = '🔗 ';
+const AI_CHAIN_GROUPS_KEY = 'myclash-ai-chain-groups';
+// 可以整组走链式的地区组（覆写脚本里的组名）
+const AI_CHAIN_REGIONS = ['台湾', '美国', '日本', '新加坡', '香港', '家宽节点'];
 // 每个机场最多勾几个落地节点
 const MAX_LANDING = 20;
 // /sub/<TOKEN>?script=lite|full：在服务端套用覆写脚本，客户端不用再加脚本覆写；不带参数则不覆写
@@ -100,8 +103,9 @@ async function serveSubscription(env, ctx, token, origin, script) {
     ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
     { rateTag: record.rateTag === true },
   );
-  const landing = override ? landingProxies(ok, config.proxies) : [];
-  if (landing.length) config[AI_CHAIN_KEY] = landing;
+  const landing = override ? markLanding(ok, config.proxies) : 0;
+  const chainGroups = override ? (record.aiChainGroups ?? []) : [];
+  if (chainGroups.length) config[AI_CHAIN_GROUPS_KEY] = chainGroups;
   if (override) {
     try {
       config = override.run(config);
@@ -109,11 +113,15 @@ async function serveSubscription(env, ctx, token, origin, script) {
       // 返回错误让客户端保留上次的配置，不给半成品
       return text(`套用${override.label}版覆写脚本失败：${err?.message ?? err}`, 502);
     }
+    // 还没认得标记的旧版覆写脚本会把它原样带出来
+    for (const p of config.proxies ?? []) delete p[AI_CHAIN_KEY];
   }
   const comments = [
     `MyClash 合并订阅：${record.name}${override ? `，已套用${override.label}版覆写脚本` : ''}`,
     `更新时间：${new Date().toISOString()}`,
-    ...(landing.length ? [`AI 链式代理：${landing.length} 个落地节点，经「AI链式代理」组中转`] : []),
+    ...(landing || chainGroups.length
+      ? [`AI 链式代理：${[chainGroups.length && `整组 ${chainGroups.join('、')}`, landing && `${landing} 个单独勾的节点`].filter(Boolean).join('，')}，经「AI链式代理」组中转`]
+      : []),
     ...results.map((r) =>
       r.blocked
         ? `[${r.label}] 已屏蔽：${r.blocked}` +
@@ -140,21 +148,24 @@ async function serveSubscription(env, ctx, token, origin, script) {
 }
 
 /**
- * AI 链式代理的落地节点：勾选的机场节点复制一份（合并后的名称前加 🔗，原节点照样留在各组）。
+ * AI 链式代理：勾选的机场节点在合并后的节点上打标记，由覆写脚本挂上中转，返回打了几个。
  * 按机场原本的节点名称勾选；mergeSubscriptions 按顺序合并、只改名称，所以合并后第 k 个节点就是各机场节点依序排下来的第 k 个。
  * 被节点筛选排除的节点不在 parsed.proxies 里，勾了也不会生效
  */
-function landingProxies(results, merged) {
-  const landing = [];
+function markLanding(results, merged) {
+  let count = 0;
   let k = 0;
   for (const r of results) {
     const picked = new Set(r.landing);
     for (const p of r.parsed.proxies) {
-      if (picked.has(p.name)) landing.push({ ...merged[k], name: LANDING_PREFIX + merged[k].name });
+      if (picked.has(p.name)) {
+        merged[k] = { ...merged[k], [AI_CHAIN_KEY]: true };
+        count++;
+      }
       k++;
     }
   }
-  return landing;
+  return count;
 }
 
 // 同一家机场有两份订阅时简称会一样，第二份起加序号（良心云、良心云2），免得节点名称分不出来
@@ -511,8 +522,10 @@ function validate(input) {
     return source;
   });
   const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
+  // AI 链式代理：整组走链式的地区组，按 AI_CHAIN_REGIONS 的顺序
+  const aiChainGroups = Array.isArray(input.aiChainGroups) ? AI_CHAIN_REGIONS.filter((r) => input.aiChainGroups.includes(r)) : [];
   // 全局：倍率 ≥ excludeRate 的节点不导入；null 表示不限
-  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), sources };
+  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), aiChainGroups, sources };
 }
 
 function nodeNames(list) {

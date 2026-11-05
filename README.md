@@ -10,7 +10,7 @@
 - **去掉重复节点**：除了名称以外设置完全相同的节点只留第一个；「剩余流量」「套餐到期」等信息节点常复制真节点的设置，不参与比较，免得顶掉真节点
 - **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
-- **AI 链式代理**：勾选机场节点当落地，只给「AI」组用，经「AI链式代理」组选的地区中转（例如只能经香港中转才连得上的台湾家宽）
+- **AI 链式代理**：整个地区组或勾选的机场节点经「AI链式代理」组选的地区中转，「AI」组默认选它们（例如只能经香港中转才连得上的台湾家宽）
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
@@ -66,7 +66,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
 - 「AI」组默认选「台湾」（原版为「美国」），订阅里没有台湾节点时选「美国」，都没有才由客户端退回第一项
 - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个），AdBlock 除外
-- AI 链式代理：Worker 传入落地节点时，放进「AI」组并新增「AI链式代理」组负责中转，见下方「AI 链式代理」
+- AI 链式代理：Worker 传入的节点与整组直接挂上新增的「AI链式代理」组中转，见下方「AI 链式代理」
 - 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/v1/models`（同「AI」组），按 Claude 的连通性挑节点
 - 「AdBlock」组（默认 `REJECT`）的广告规则集由 bett-rules 的 `category-ads` 换成 [Sukka 的 Reject Base](https://ruleset.skk.moe/Clash/domainset/reject.txt)（约 14 万个域名：广告、跟踪，以及小米反诈 `flash.sec.miui.com`、`fraud-detection.engine.miui.com`、云扫描等）。
   Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
@@ -84,7 +84,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   - 不选高倍率与「勿跑大流量」节点（`exclude-filter`）：倍率沿用原版「高倍率节点」组的判断，「高倍率节点-自动选择」本身不排除；手动选择组照样列出这些节点
   - 排除后一个节点都不剩的组不加排除条件，免得组变空被 `empty-fallback` 设成 `REJECT`
 
-GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/sukka-reject.mrs`，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 的服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本；脚本有改动时，流程在 `main` 上会用 `CLOUDFLARE_DEPLOY_TOKEN`（权限含 Workers 脚本编辑，另需 `CLOUDFLARE_ACCOUNT_ID`）重新部署，没设就要等下次部署才生效；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
+GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/sukka-reject.mrs`，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 只由 Cloudflare 的 Git 自动部署（Workers Builds）部署，服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本。脚本有改动时，流程在 `main` 上调用 Workers Builds 的 Deploy Hook（secret `CLOUDFLARE_DEPLOY_HOOK`，在 Worker → 设置 → 构建 → Deploy Hooks 建一个、分支选 `main`；不需要 API 令牌），让 Cloudflare 重新构建；没设就要等下次推送 `main` 才生效。`main` 上改了 `scripts/sync-scripts.mjs` 也会跑这个流程：推送当下先用旧脚本部署，一两分钟后由 Deploy Hook 换成新补丁生成的脚本；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
 管理页「客户端怎么用」下方显示 `rules` 分支最后更新时间（脚本或规则集有变化才会更新）与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
 
 **节点前缀**：区分不同机场。
@@ -111,19 +111,20 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 **AI 链式代理**（编辑页第 4 区，选填，只对 `?script=lite|full` 的链接生效）：让 Claude 等 AI 服务看到的是落地节点（例如台湾家宽）的 IP，而不是多人共用、常换的机场 IP；有些家宽节点也只能经中转才连得上。
 
 ```
-AI（默认选第一个落地节点）
-  🔗 三毛 | 5x | 台湾1|勿跑大流量   ← 落地节点，经「AI链式代理」连过去
-  默认代理  手动选择  自动选择  香港  日本 …  直连   ← 原本的选项，不经中转
+AI（默认选「台湾」）
+  台湾   ← 选了整组「台湾」：组里每个节点都挂上中转，选它就是链式代理
+  默认代理  手动选择  自动选择  香港  日本 …  直连
 AI链式代理（默认选香港）
-  默认代理  手动选择  自动选择  香港  日本 …  直连   ← 同 Google 等分流组；选「直连」就是直接连落地节点
+  自动选择  香港  日本 …  直连   ← 同 AI 组的选项，但不含连得到挂了中转节点的组（台湾、默认代理）；选「直连」就是不中转
 ```
 
-- 搜索勾选机场节点当落地：复制一份、名称前加 `🔗`，原节点照样留在各组。被节点筛选排除的节点勾了也不会生效
+- **整组**：点地区组（台湾、美国、日本、新加坡、香港、家宽节点），组里每个节点都挂上中转，「AI」组默认选第一个整组
+- **单个节点**：搜索勾选机场节点，挂上中转；没选整组时放在「AI」组最前面并设为默认。被节点筛选排除的节点勾了也不会生效
+- 跟常见的「台湾家宽经香港中转」订阅一样，直接改原节点，不复制、不多出组；mihomo 不允许分组设 `dialer-proxy`，「整组」就是给组里每个节点都挂上
+- 挂了中转的节点留在原来的组，哪个组选到都经中转；自动选择组（url-test）里还有其他节点的就拿掉它们，其他流量不会被自动选到多绕一趟
 - 「AI链式代理」默认选香港，客户端里改选后会记住
-- 落地节点只放进「AI」组，不进默认代理、地区组、自动选择与 GLOBAL：只有 AI 规则命中的流量走落地，也不会绕回自己
-- mihomo 不允许分组设 `dialer-proxy`，所以中转只挂在落地节点上；AI 组选了「台湾」等机场组时不经中转
 - 落地节点断了不会自动退回机场节点（悄悄换掉出口 IP 就失去意义），请在 AI 组手动改选
-- 勾选存在 KV 的订阅记录里，不进公开的 `/script.js`；Worker 把落地节点放在 `config['myclash-ai-chain']` 传给覆写脚本，输出的配置不会带着这个键
+- 选择存在 KV 的订阅记录里，不进公开的 `/script.js`；Worker 给勾选的节点加 `myclash-ai-chain` 标记、把整组放在 `config['myclash-ai-chain-groups']` 传给覆写脚本，输出的配置不会带着它们
 
 ## iPhone：小火箭
 

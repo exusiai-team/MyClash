@@ -100,7 +100,7 @@ export function patchScript(source, file) {
  * - 广告规则排在国内直连前面，国内厂商的广告、统计与小米反诈等域名才拦得到
  * - 自动选择组不选 HTTP / SOCKS5 节点（多是公开代理），也不选高倍率与「勿跑大流量」节点
  * - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个）
- * - AI 链式代理：MyClash Worker 传入的落地节点只放进「AI」组，经新增的「AI链式代理」组中转
+ * - AI 链式代理：MyClash Worker 选的节点与整组走链式的地区组直接挂上新增的「AI链式代理」组中转，「AI」组默认选它们
  * 友情推荐`,
     '文件开头注释',
   );
@@ -376,30 +376,48 @@ export function directForAllServices(source) {
   return source.replaceAll(search, "'直连'");
 }
 
-// AI 链式代理：MyClash Worker 把落地节点清单放在 config['myclash-ai-chain'] 传进来，
-// 输出的配置由脚本重新组出来，这个键不会带出去。mihomo 不允许分组设 dialer-proxy，所以只给落地节点挂：
-// - 落地节点只放进「AI」组最前面并设为默认，不进其他组，其他流量不会走落地，也不会绕回自己
-// - 「AI链式代理」组决定从哪里连到落地节点，选项同「AI」组原本的选项（跟 Google 等分流组一样，含「直连」即不中转），
-//   默认选香港（客户端里改选后会记住），没有香港组就由客户端退回第一项
+// AI 链式代理（做法同常见的「台湾家宽经香港中转」订阅）：直接给原节点挂 dialer-proxy，不复制节点、不多出组。
+// mihomo 不允许分组设 dialer-proxy，所以「整组走链式」就是把组里每个节点都挂上：
+// - MyClash Worker 单独勾的节点带着 config 里不会带出去的标记 proxy['myclash-ai-chain']；
+//   config['myclash-ai-chain-groups'] 列出整组走链式的地区组（如「台湾」），组里的节点都挂上
+// - 挂了中转的节点照样留在原来的组，哪个组选到都经中转；「AI」组默认选第一个整组走链式的地区组，
+//   只勾了单个节点时把它们放在「AI」组最前面并设为默认
+// - 「AI链式代理」组决定从哪里连到这些节点，默认选香港（客户端里改选后会记住），选「直连」就是不中转；
+//   选项同「AI」组原本的选项，但拿掉连得到挂了中转节点的组，不会绕回自己
+// - 自动选择组（url-test）里还有其他节点的，拿掉挂了中转的节点，其他流量不会被自动选到多绕一趟
 export const AI_CHAIN_KEY = 'myclash-ai-chain';
+export const AI_CHAIN_GROUPS_KEY = 'myclash-ai-chain-groups';
 export const AI_CHAIN_GROUP = 'AI链式代理';
 export const AI_CHAIN_RELAY = '香港';
-const AI_CHAIN_READ = `  // MyClash Worker 传进来的 AI 链式代理落地节点
-  const aiChain = config['${AI_CHAIN_KEY}'];
+const AI_CHAIN_READ = `  // MyClash Worker 传进来的 AI 链式代理：整组走链式的地区组
+  const aiChainGroups = config['${AI_CHAIN_GROUPS_KEY}'] ?? [];
 
 `;
-const AI_CHAIN = `  // AI 链式代理：落地节点只放进「AI」组，经「${AI_CHAIN_GROUP}」组连过去
+const AI_CHAIN = `  // AI 链式代理：单独勾的节点与整组走链式的地区组里的节点直接挂上中转「${AI_CHAIN_GROUP}」
   const aiGroup = newConfig['proxy-groups'].find((g) => g.name === 'AI');
-  if (aiChain?.length && aiGroup) {
-    const usedNames = new Set([...newConfig['proxies'], ...newConfig['proxy-groups']].map((p) => p.name));
-    const landingProxies = aiChain.map((proxy) => {
-      let name = proxy.name;
-      for (let i = 2; usedNames.has(name); i++) name = \`\${proxy.name} \${i}\`;
-      usedNames.add(name);
-      return { ...proxy, name, 'dialer-proxy': '${AI_CHAIN_GROUP}' };
-    });
-    const relayProxies = aiGroup.proxies.filter((name) => name !== '直连').concat('直连');
-    const groups = newConfig['proxy-groups'];
+  const pickedNodes = newConfig['proxies'].filter((p) => p['${AI_CHAIN_KEY}']).map((p) => p.name);
+  newConfig['proxies'] = newConfig['proxies'].map(({ ['${AI_CHAIN_KEY}']: _, ...p }) => p);
+  const groups = newConfig['proxy-groups'];
+  const groupByName = new Map(groups.map((g) => [g.name, g]));
+  const chainRegions = aiChainGroups.filter((name) => groupByName.has(name));
+  // 组里（含子组）的所有节点
+  const nodesOf = (name, seen = new Set()) => {
+    if (seen.has(name)) return [];
+    seen.add(name);
+    const g = groupByName.get(name);
+    return g ? g.proxies.flatMap((n) => nodesOf(n, seen)) : [name];
+  };
+  const proxyNames = new Set(newConfig['proxies'].map((p) => p.name));
+  const chained = new Set([...pickedNodes, ...chainRegions.flatMap((r) => nodesOf(r))].filter((n) => proxyNames.has(n)));
+  if (chained.size && aiGroup) {
+    newConfig['proxies'] = newConfig['proxies'].map((p) => (chained.has(p.name) ? { ...p, 'dialer-proxy': '${AI_CHAIN_GROUP}' } : p));
+    for (const g of groups) {
+      if (g.type !== 'url-test' || g.proxies.every((n) => chained.has(n))) continue;
+      g.proxies = g.proxies.filter((n) => !chained.has(n));
+    }
+    const relayProxies = aiGroup.proxies
+      .filter((name) => name !== '直连' && !nodesOf(name).some((n) => chained.has(n)))
+      .concat('直连');
     groups.splice(groups.indexOf(aiGroup) + 1, 0, {
       ...selectBaseOption,
       name: '${AI_CHAIN_GROUP}',
@@ -408,9 +426,13 @@ const AI_CHAIN = `  // AI 链式代理：落地节点只放进「AI」组，经�
       ...(aiGroup.url && { url: aiGroup.url }),
       ...(relayProxies.includes('${AI_CHAIN_RELAY}') && { 'default-selected': '${AI_CHAIN_RELAY}' }),
     });
-    newConfig['proxies'].push(...landingProxies);
-    aiGroup.proxies = [...landingProxies.map((p) => p.name), ...aiGroup.proxies];
-    aiGroup['default-selected'] = landingProxies[0].name;
+    if (chainRegions.length) {
+      aiGroup.proxies = [...chainRegions.filter((r) => !aiGroup.proxies.includes(r)), ...aiGroup.proxies];
+      aiGroup['default-selected'] = chainRegions[0];
+    } else {
+      aiGroup.proxies = [...pickedNodes, ...aiGroup.proxies.filter((n) => !pickedNodes.includes(n))];
+      aiGroup['default-selected'] = pickedNodes[0];
+    }
     const globalProxies = groups.find((g) => g.name === 'GLOBAL')?.proxies;
     if (globalProxies?.includes('AI')) globalProxies.splice(globalProxies.indexOf('AI') + 1, 0, '${AI_CHAIN_GROUP}');
   }
