@@ -3,6 +3,7 @@
 //   script-full.js       ← 同上，Script/mihomoScript.js（全量版）
 //   rules/sukka-reject.mrs ← Sukka 的 Reject Base 域名集（ruleset.skk.moe），用 mihomo 转成 mrs，
 //                           换掉两个脚本「AdBlock」组原来的 category-ads
+//   rules/sukka-reject-classical.txt ← Sukka non_ip 规则里 mrs 放不下的关键词、通配、IP 规则，同样给「AdBlock」组
 // 需要 mihomo（PATH 里，或用 MIHOMO 环境变量指定路径）。
 // 上游改版导致找不到要改的位置时直接报错，不会写出半成品。用法：node scripts/sync-scripts.mjs
 import { execFileSync } from 'node:child_process';
@@ -25,6 +26,17 @@ const SUKKA_REJECT_URL = 'https://ruleset.skk.moe/Clash/domainset/reject.txt';
 const SUKKA_MIN_DOMAINS = 50000; // 少于这个数说明上游改版或抓到的不是清单
 export const SUKKA_RULESET = 'rules/sukka-reject'; // 相对 rules 分支根目录
 export const SUKKA_RULESET_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@rules/${SUKKA_RULESET}.mrs`;
+// Reject Base 的另一半：域名集放不下的关键词、通配、IP 规则（non_ip/reject），
+// 加上 PCDN 域名（non_ip/reject-no-drop，补上游 hosts 只屏蔽 B 站 PCDN 的不足）。
+// 其中 DOMAIN / DOMAIN-SUFFIX 并进上面的 mrs，其余写成 classical 文本规则集（mrs 只支持纯域名与 IP 段）。
+// 不取 non_ip/reject-drop：里面有极光、个推等推送 SDK，国内 App 会收不到通知
+const SUKKA_NON_IP_URLS = [
+  'https://ruleset.skk.moe/Clash/non_ip/reject.txt',
+  'https://ruleset.skk.moe/Clash/non_ip/reject-no-drop.txt',
+];
+const SUKKA_MIN_NON_IP_RULES = 200;
+export const SUKKA_CLASSICAL = 'rules/sukka-reject-classical';
+export const SUKKA_CLASSICAL_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@rules/${SUKKA_CLASSICAL}.txt`;
 
 // 通用测速网址与间隔（groupBaseOption），对标 NIVA Network 订阅的「自动选择」组
 export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
@@ -90,11 +102,12 @@ export function patchScript(source, file) {
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
  * - 「AI」组默认选「台湾」，没有台湾节点时选「美国」
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
- * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，转成 mrs，含小米反诈 / 云扫描等域名）
+ * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，域名转成 mrs，含小米反诈 / 云扫描等域名；
+ *   关键词、通配、IP 规则与 PCDN 域名另放一个 classical 规则集）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
  * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时；默认选「IPv6优先」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
- * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」
+ * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」；去掉用不到的 doh.pub hosts
  * - 地区组默认选「<地区>-自动选择」，「默认代理」默认选全局「自动选择」
  * - 开启 sniffer，绕过系统 DNS（浏览器安全 DNS、直连 IP）的连接也能按域名分流
  * - 广告规则排在国内直连前面，国内厂商的广告、统计与小米反诈等域名才拦得到
@@ -169,9 +182,24 @@ export function useSukkaReject(source) {
         url: '${SUKKA_RULESET_URL}',
         path: './ruleset/sukka-reject.mrs',
       },
+      // 同上，mrs 放不下的关键词、通配、IP 规则与 PCDN 域名
+      'sukka-reject-classical': {
+        type: 'http',
+        format: 'text',
+        behavior: 'classical',
+        interval: 86400,
+        url: '${SUKKA_CLASSICAL_URL}',
+        path: './ruleset/sukka-reject-classical.txt',
+      },
 `;
   const s = replaceOnce(source, CATEGORY_ADS_PROVIDER, provider, 'AdBlock 规则集');
-  return replaceOnce(s, "rules: ['RULE-SET,category-ads,AdBlock'],", "rules: ['RULE-SET,sukka-reject,AdBlock'],", 'AdBlock 规则');
+  // classical 规则集里有 IP 规则，加 no-resolve：这条排在国内直连前面，不然每个域名连接走到这里都要先解析
+  return replaceOnce(
+    s,
+    "rules: ['RULE-SET,category-ads,AdBlock'],",
+    "rules: ['RULE-SET,sukka-reject,AdBlock', 'RULE-SET,sukka-reject-classical,AdBlock,no-resolve'],",
+    'AdBlock 规则',
+  );
 }
 
 // groupBaseOption 改用 BASE_TEST_URL 与 BASE_TEST_INTERVAL
@@ -273,7 +301,8 @@ export function useDohBootstrap(source) {
   if ((s.match(new RegExp(`= ${DOH_BOOTSTRAP_DNS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')};`, 'g')) || []).length !== 2) {
     throw new Error('找不到 defaultDNS 或 proxyServerDNS，上游脚本可能改版了');
   }
-  return s;
+  // 上游的 hosts 给原本 proxyServerDNS 用的 doh.pub 写死了 IP；换成 IP 直连的 DoH 后用不到了
+  return replaceOnce(s, "    'doh.pub': ['1.12.12.12', '120.53.53.53'],\n", '', 'doh.pub hosts');
 }
 
 // select 组默认选第一个节点，所以把自动选择排到最前：
@@ -322,7 +351,7 @@ export function addSniffer(source) {
 // 把 AdBlock 的规则搬到「私有网络直连」之后：从 functionalRules 里取，AdBlock 关闭或极简模式时就没有，不会指向不存在的组
 const RULES_START = "  newConfig['rules'] = [\n    ...prefixRules,\n";
 const AD_BLOCK_FIRST = `  // 广告规则排在国内直连前面，否则国内厂商的广告域名先被 geolocation-cn 直连
-  const adBlockRules = functionalRules.filter((rule) => rule.endsWith(',AdBlock'));
+  const adBlockRules = functionalRules.filter((rule) => rule.split(',')[2] === 'AdBlock');
   const afterPrivate = prefixRules.indexOf('RULE-SET,private,直连') + 1;
   newConfig['rules'] = [
     ...prefixRules.slice(0, afterPrivate),
@@ -478,21 +507,48 @@ function convertToMrs(txt, mrs) {
   }
 }
 
+const contentLines = (text) => text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+
+// 把 Sukka 的 classical 规则分成两份：DOMAIN / DOMAIN-SUFFIX 转成域名集写法（并进 mrs），其余原样留给 classical 规则集
+export function splitSukkaNonIp(lines) {
+  const domains = [];
+  const classical = [];
+  for (const line of lines) {
+    const [type, value] = line.split(',');
+    if (type === 'DOMAIN') domains.push(value);
+    else if (type === 'DOMAIN-SUFFIX') domains.push(`+.${value}`);
+    else classical.push(line);
+  }
+  return { domains, classical };
+}
+
 // 清单只在临时目录转成 mrs，再放进输出目录（清单开头的「Last Updated」不影响 mrs，内容没变 mrs 就一样）
 async function syncSukkaRuleset() {
-  const text = await fetchText(SUKKA_REJECT_URL);
-  const count = text.split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('#')).length;
-  if (count < SUKKA_MIN_DOMAINS) throw new Error(`Sukka 的清单只有 ${count} 个域名，上游可能改版了`);
+  const [domainset, ...nonIp] = await Promise.all([SUKKA_REJECT_URL, ...SUKKA_NON_IP_URLS].map(fetchText));
+  const domainsetLines = contentLines(domainset);
+  if (domainsetLines.length < SUKKA_MIN_DOMAINS) throw new Error(`Sukka 的清单只有 ${domainsetLines.length} 个域名，上游可能改版了`);
+  const nonIpLines = nonIp.flatMap(contentLines);
+  if (nonIpLines.length < SUKKA_MIN_NON_IP_RULES) throw new Error(`Sukka 的 non_ip 规则只有 ${nonIpLines.length} 条，上游可能改版了`);
+  const { domains, classical } = splitSukkaNonIp(nonIpLines);
+
   const dir = await mkdtemp(join(tmpdir(), 'sukka-reject-'));
   try {
     const txt = join(dir, 'reject.txt');
-    await writeFile(txt, text);
+    await writeFile(txt, [...domainsetLines, ...domains].join('\n') + '\n');
     await mkdir(join(OUT_DIR, 'rules'), { recursive: true });
     convertToMrs(txt, join(OUT_DIR, `${SUKKA_RULESET}.mrs`));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-  console.log(`Sukka Reject Base：${count} 个域名 → ${SUKKA_RULESET}.mrs`);
+  // 不写日期，内容没变文件就一样，不会每天都推一次
+  const header = [
+    "# Sukka's Ruleset - Reject Non-IP 与 Reject No-Drop 里 mrs 放不下的规则（关键词、通配、IP）",
+    `# 来源：${SUKKA_NON_IP_URLS.join('、')}`,
+    '# License: AGPL 3.0，https://github.com/SukkaW/Surge',
+    '# 由 exusiai-team/MyClash 的 scripts/sync-scripts.mjs 生成',
+  ];
+  await writeFile(join(OUT_DIR, `${SUKKA_CLASSICAL}.txt`), [...header, ...classical].join('\n') + '\n');
+  console.log(`Sukka Reject Base：${domainsetLines.length + domains.length} 个域名 → ${SUKKA_RULESET}.mrs，${classical.length} 条规则 → ${SUKKA_CLASSICAL}.txt`);
 }
 
 async function main() {

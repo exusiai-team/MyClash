@@ -1,0 +1,24 @@
+name: 自动合并依赖更新
+
+# Dependabot 的 PR 在「测试」通过后自动合并（Cloudflare 再自动重新部署）。
+# 用 workflow_run 而不是在「测试」里加 job：那样每个 PR 都会多挂一个 skipping 的检查
+on:
+  workflow_run:
+    workflows: [测试]
+    types: [completed]
+
+jobs:
+  automerge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - run: gh pr merge "$BRANCH" --repo "$GITHUB_REPOSITORY" --squash --delete-branch
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

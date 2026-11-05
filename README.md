@@ -59,6 +59,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 > 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。
 
+哪些功能来自上游、哪些是本仓库加的，以及完整的 DNS、规则集与规则顺序，见 [FEATURES.md](FEATURES.md)。
+
 相对原版的改动：
 - 分流组用各自服务的测速网址，取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 Google → `https://www.google.com/generate_204`）。
   AI 改用 `https://api.anthropic.com/v1/models`：Bettbox 的 `/cdn-cgi/trace` 由 Cloudflare 边缘节点直接回应，只测到节点到就近 Cloudflare 的延迟，到不了 Anthropic 源站，地区被封也照样通；`/v1/models` 不带 key 由源站回 401，测的是到源站的整条路径。
@@ -70,13 +72,15 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 - 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/v1/models`（同「AI」组），按 Claude 的连通性挑节点
 - 「AdBlock」组（默认 `REJECT`）的广告规则集由 bett-rules 的 `category-ads` 换成 [Sukka 的 Reject Base](https://ruleset.skk.moe/Clash/domainset/reject.txt)（约 14 万个域名：广告、跟踪，以及小米反诈 `flash.sec.miui.com`、`fraud-detection.engine.miui.com`、云扫描等）。
   Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
+  Sukka 另有 mrs 放不下的关键词、通配、IP 规则（`non_ip/reject`）与 PCDN 清单（`non_ip/reject-no-drop`）：其中的纯域名也并进上面的 mrs，其余放进 classical 规则集 `rules/sukka-reject-classical.txt`（规则带 `no-resolve`）。推送 SDK 清单 `reject-drop` 不取，免得国内 App 收不到通知。
   清单比 `category-ads` 激进，碰到误杀可在 AdBlock 组改选 `PASS`（连同广告规则一起放行）
 - 新增「IPv6」节点组：名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6` 的节点归进来（同时保留在原地区组），附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
 - 「直连」组改用 vivo 的测速网址 `https://wifi.vivo.com.cn/generate_204`（同时有 IPv4 与 IPv6 地址）。通用测速网址 `connectivitycheck.gstatic.com` 在国内 DNS 只有 IPv4 地址，「🇨🇳 直连 | 仅IPv6」解析不到 IPv6 地址，测速会一直超时；默认选「🇨🇳 直连 | IPv6优先」（原版默认「双栈」）
 - 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
 - `default-nameserver` 与 `proxy-server-nameserver` 由「114 明文 + 阿里 DoT + 腾讯 DoH」改为阿里、腾讯两个 DoH（`https://223.5.5.5/dns-query`、`https://1.12.12.12/dns-query`）。
-  原本 114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时成簇刷屏；DoH 连接可复用，本机实测 warning 归零、解析也更快
+  原本 114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时成簇刷屏；DoH 连接可复用，本机实测 warning 归零、解析也更快。
+  `hosts` 里原本给 `doh.pub` 写死的 IP 用不到了，一并删掉。完整的 DNS 设置见 [FEATURES.md](FEATURES.md#3-dns)
 - 开启 sniffer（原版没有，mihomo 默认关闭）：fake-ip 只能还原走系统 DNS 的连接，浏览器的安全 DNS、自带 DoH 的 App、直接连 IP 的流量进来只有 IP，`ai`、`google` 等域名规则全部失效。嗅探 HTTP / TLS / QUIC，只拿域名匹配规则，不改目标地址（`override-destination: false`）
 - 广告规则排在「私有网络直连」之后、国内直连（`geolocation-cn`）之前。原版的分流规则都排在国内直连后面，而 `geolocation-cn` 按 `baidu.com`、`miui.com` 等整个域名后缀匹配，国内厂商的广告、统计与小米反诈域名（如 `hm.baidu.com`、`flash.sec.miui.com`）先被直连，到不了 AdBlock。AdBlock 关闭或极简模式时不加这条规则
 - 自动选择组（url-test）只看延迟，所以：
@@ -84,7 +88,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   - 不选高倍率与「勿跑大流量」节点（`exclude-filter`）：倍率沿用原版「高倍率节点」组的判断，「高倍率节点-自动选择」本身不排除；手动选择组照样列出这些节点
   - 排除后一个节点都不剩的组不加排除条件，免得组变空被 `empty-fallback` 设成 `REJECT`
 
-GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/sukka-reject.mrs`，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 只由 Cloudflare 的 Git 自动部署（Workers Builds）部署，服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本。脚本有改动时，流程在 `main` 上调用 Workers Builds 的 Deploy Hook（secret `CLOUDFLARE_DEPLOY_HOOK`，在 Worker → 设置 → 构建 → Deploy Hooks 建一个、分支选 `main`；不需要 API 令牌），让 Cloudflare 重新构建；没设就要等下次推送 `main` 才生效。`main` 上改了 `scripts/sync-scripts.mjs` 也会跑这个流程：推送当下先用旧脚本部署，一两分钟后由 Deploy Hook 换成新补丁生成的脚本；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
+GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步上游覆写脚本」）执行 `node scripts/sync-scripts.mjs`（本机执行需要 [mihomo](https://github.com/MetaCubeX/mihomo)，或用 `MIHOMO` 环境变量指定路径），生成 `script.js`、`script-full.js` 与 `rules/` 下的 Sukka 规则集，**只推到 `rules` 分支，不进 `main`**：有变化且测试通过才推送，`rules` 是孤儿分支、每次强制推送成只有一个提交的新历史，仓库不会越长越大。Worker 只由 Cloudflare 的 Git 自动部署（Workers Builds）部署，服务端覆写是打包进去的，部署时 `scripts/build-overrides.mjs` 从 `rules` 分支取最新脚本。脚本有改动时，流程在 `main` 上调用 Workers Builds 的 Deploy Hook（secret `CLOUDFLARE_DEPLOY_HOOK`，在 Worker → 设置 → 构建 → Deploy Hooks 建一个、分支选 `main`；不需要 API 令牌），让 Cloudflare 重新构建；没设就要等下次推送 `main` 才生效。`main` 上改了 `scripts/sync-scripts.mjs` 也会跑这个流程：推送当下先用旧脚本部署，一两分钟后由 Deploy Hook 换成新补丁生成的脚本；规则集只由客户端下载，不用部署。上游改版导致找不到修改位置时脚本会报错、流程失败且不推送，需要手动调整 `scripts/sync-scripts.mjs`。
 管理页「客户端怎么用」下方显示 `rules` 分支最后更新时间（脚本或规则集有变化才会更新）与最近一次同步结果（成功 / 失败 / 同步中，点时间可打开 GitHub 查看），设了 `GITHUB_TOKEN` 时还可按「立即同步」。
 
 **节点前缀**：区分不同机场。
@@ -267,7 +271,7 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `scripts/refresh-cache.mjs` | GitHub Actions 代抓脚本 |
 | `public/index.html` | 管理页 |
 | `public/script.js`、`public/script-full.js` | 修改版 MyClash 覆写脚本（不进 git，部署 / 测试前由 `scripts/build-overrides.mjs` 从 `rules` 分支取来；`rules` 分支上叫 `script.js`、`script-full.js`，由 `scripts/sync-scripts.mjs` 生成） |
-| `rules` 分支的 `rules/sukka-reject.mrs` | Sukka Reject Base 规则集（由 `scripts/sync-scripts.mjs` 生成，不在 `main` 上） |
+| `rules` 分支的 `rules/sukka-reject.mrs`、`rules/sukka-reject-classical.txt` | Sukka Reject Base 规则集（由 `scripts/sync-scripts.mjs` 生成，不在 `main` 上） |
 | `scripts/sync-scripts.mjs` | 从上游同步覆写脚本并套用改动 （`.github/workflows/sync-scripts.yml` 每天自动执行） |
 | `scripts/build-overrides.mjs` | 部署 / 测试前从 `rules` 分支取最新覆写脚本放进 `public/`，再包成 ES module（`src/overrides/`，都不进 git），给服务端覆写用；本机没网时沿用 `public/` 里已有的文件，设 `GENERATED_DIR` 可改用本机目录 |
 
