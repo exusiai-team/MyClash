@@ -88,7 +88,7 @@ export function patchScript(source, file) {
  * - 通用测速网址改为 connectivitycheck.gstatic.com/generate_204，测速间隔改为 300 秒
  * - 分流策略组使用各自服务的测速网址（参考 Bettbox 的服务检测），不再全部共用 groupBaseOption.url
  * - HuggingFace 用 bett-rules 的 huggingface 规则集分出来，不走「AI」组，改走「默认代理」
- * - 「AI」组默认选「台湾」
+ * - 「AI」组默认选「台湾」，没有台湾节点时选「美国」
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，转成 mrs，含小米反诈 / 云扫描等域名）
  * - 新增「IPv6」节点组（名称标有 IPv6 / v6，或 server 为 IPv6 地址的节点），并加进「默认代理」
@@ -99,6 +99,8 @@ export function patchScript(source, file) {
  * - 开启 sniffer，绕过系统 DNS（浏览器安全 DNS、直连 IP）的连接也能按域名分流
  * - 广告规则排在国内直连前面，国内厂商的广告、统计与小米反诈等域名才拦得到
  * - 自动选择组不选 HTTP / SOCKS5 节点（多是公开代理），也不选高倍率与「勿跑大流量」节点
+ * - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个）
+ * - AI 链式代理：MyClash Worker 传入的落地节点只放进「AI」组，经新增的「AI链式代理」组中转
  * 友情推荐`,
     '文件开头注释',
   );
@@ -118,10 +120,18 @@ export function patchScript(source, file) {
   block = replaceOnce(
     block,
     `    name: 'AI',\n    testUrl: '${TEST_URLS.AI}',\n    baseOption: selectBaseOption,\n    defaultSelected: '美国',\n`,
-    `    name: 'AI',\n    testUrl: '${TEST_URLS.AI}',\n    baseOption: selectBaseOption,\n    defaultSelected: '台湾',\n`,
+    `    name: 'AI',\n    testUrl: '${TEST_URLS.AI}',\n    baseOption: selectBaseOption,\n    defaultSelected: '台湾',\n    fallbackSelected: '美国',\n`,
     'AI 默认选择',
   );
   s = s.slice(0, start) + block + s.slice(end);
+  // 默认选的组不存在（订阅里没有台湾节点）时改选 fallbackSelected（美国），都没有才由客户端退回第一项
+  s = replaceOnce(
+    s,
+    '    const selected =\n      svc.defaultSelected !== undefined && groupProxies.includes(svc.defaultSelected) ? svc.defaultSelected : undefined;\n',
+    '    // 默认选的组不存在时改选 fallbackSelected（AI：没有台湾节点就选美国）\n' +
+      '    const selected = [svc.defaultSelected, svc.fallbackSelected].find((name) => name !== undefined && groupProxies.includes(name));\n',
+    '分流组默认选择代码',
+  );
   s = setBaseTestOption(s);
   s = addRegionTestUrls(s);
   s = addIpv6Group(s);
@@ -132,11 +142,13 @@ export function patchScript(source, file) {
   s = addSniffer(s);
   s = adBlockFirst(s);
   s = excludeFromAutoGroups(s);
+  s = directForAllServices(s);
+  s = addAiChain(s);
 
   return replaceOnce(
     s,
-    '      icon: svc.icon,\n      proxies: groupProxies,\n',
-    '      icon: svc.icon,\n      proxies: groupProxies,\n      // 分流组用各自服务的测速网址\n      ...(svc.testUrl && { url: svc.testUrl }),\n',
+    '      ...(svc.icon && { icon: svc.icon }),\n      proxies: groupProxies,\n',
+    '      ...(svc.icon && { icon: svc.icon }),\n      proxies: groupProxies,\n      // 分流组用各自服务的测速网址\n      ...(svc.testUrl && { url: svc.testUrl }),\n',
     '分流组生成代码',
   );
 }
@@ -353,6 +365,62 @@ export function excludeFromAutoGroups(source) {
   replaceOnce(source, "const highRateRegionName = '高倍率节点';\n", '', '高倍率节点组名称');
   replaceOnce(source, '  {\n    name: highRateRegionName,\n    regex:', '', '高倍率节点正则');
   return replaceOnce(source, '    ...generatedRegionGroups,\n  ];\n', `    ...generatedRegionGroups,\n  ];\n${AUTO_GROUP_EXCLUDE}`, '策略组组装代码');
+}
+
+// 上游只给标了 direct 的分流组（Apple、Steam 等）加「直连」，其余分流组都补上，想直连时不用改规则；
+// AdBlock（REJECT / PASS）与手动选择、自动选择不走这段，不受影响
+export function directForAllServices(source) {
+  const search = "...(svc.direct ? ['直连'] : [])";
+  const count = source.split(search).length - 1;
+  if (count !== 2) throw new Error(`分流组的「直连」选项应有 2 处，找到 ${count} 处，上游脚本可能改版了`);
+  return source.replaceAll(search, "'直连'");
+}
+
+// AI 链式代理：MyClash Worker 把落地节点放在 config['myclash-ai-chain'] 传进来（{ proxies, relay }），
+// 输出的配置由脚本重新组出来，这个键不会带出去。mihomo 不允许分组设 dialer-proxy，所以只给落地节点挂：
+// - 落地节点只放进「AI」组最前面并设为默认，不进其他组，其他流量不会走落地，也不会绕回自己
+// - 「AI链式代理」组决定从哪里连到落地节点，选项同「AI」组原本的选项（跟 Google 等分流组一样，含「直连」即不中转），
+//   默认选 Worker 传来的 relay，没有这一项就由客户端退回第一项
+export const AI_CHAIN_KEY = 'myclash-ai-chain';
+export const AI_CHAIN_GROUP = 'AI链式代理';
+const AI_CHAIN_READ = `  // MyClash Worker 传进来的 AI 链式代理设置（落地节点与默认中转）
+  const aiChain = config['${AI_CHAIN_KEY}'];
+
+`;
+const AI_CHAIN = `  // AI 链式代理：落地节点只放进「AI」组，经「${AI_CHAIN_GROUP}」组连过去
+  const aiGroup = newConfig['proxy-groups'].find((g) => g.name === 'AI');
+  if (aiChain?.proxies?.length && aiGroup) {
+    const usedNames = new Set([...newConfig['proxies'], ...newConfig['proxy-groups']].map((p) => p.name));
+    const landingProxies = aiChain.proxies.map((proxy) => {
+      let name = proxy.name;
+      for (let i = 2; usedNames.has(name); i++) name = \`\${proxy.name} \${i}\`;
+      usedNames.add(name);
+      return { ...proxy, name, 'dialer-proxy': '${AI_CHAIN_GROUP}' };
+    });
+    const relayProxies = aiGroup.proxies.filter((name) => name !== '直连').concat('直连');
+    const groups = newConfig['proxy-groups'];
+    groups.splice(groups.indexOf(aiGroup) + 1, 0, {
+      ...selectBaseOption,
+      name: '${AI_CHAIN_GROUP}',
+      icon: \`\${iconBaseUrl}Bypass.svg\`,
+      proxies: relayProxies,
+      ...(aiGroup.url && { url: aiGroup.url }),
+      ...(relayProxies.includes(aiChain.relay) && { 'default-selected': aiChain.relay }),
+    });
+    newConfig['proxies'].push(...landingProxies);
+    aiGroup.proxies = [...landingProxies.map((p) => p.name), ...aiGroup.proxies];
+    aiGroup['default-selected'] = landingProxies[0].name;
+    const globalProxies = groups.find((g) => g.name === 'GLOBAL')?.proxies;
+    if (globalProxies?.includes('AI')) globalProxies.splice(globalProxies.indexOf('AI') + 1, 0, '${AI_CHAIN_GROUP}');
+  }
+
+`;
+
+export function addAiChain(source) {
+  const start = "  const newConfig = {};\n\n  const filteredProxies = filterAndNormalizeProxies(config);\n";
+  const s = replaceOnce(source, start, AI_CHAIN_READ + start, 'main 开头');
+  const anchor = "  newConfig['rule-providers'] = finalRuleProviders;\n";
+  return replaceOnce(s, anchor, AI_CHAIN + anchor, '规则集组装代码');
 }
 
 // 精简版从全量版搬来「Apple」分流组（连同开关），放在「Telegram」之前，跟全量版顺序一致；

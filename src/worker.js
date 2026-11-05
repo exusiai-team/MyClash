@@ -1,4 +1,4 @@
-import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
+import { parseSubscription, parseNodes, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey, CACHE_TTL_SECONDS } from './cache.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
@@ -30,6 +30,15 @@ const MAX_LOOKUP = 50;
 // 每个机场最多手动排除几个节点、节点名称最长几个字
 const MAX_EXCLUDE = 2000;
 const MAX_NODE_NAME = 200;
+// AI 链式代理：落地节点（勾选的机场节点与自建节点）经覆写脚本的「AI链式代理」组中转，只放进「AI」组。
+// 设置放在 config 的这个键传给覆写脚本（scripts/sync-scripts.mjs 的 AI_CHAIN_KEY），脚本输出的配置不会带着它
+const AI_CHAIN_KEY = 'myclash-ai-chain';
+const LANDING_PREFIX = '🔗 ';
+// 「AI链式代理」组默认选的中转；订阅里没有这一项就由客户端退回第一项（默认代理）
+const DEFAULT_RELAY = '香港';
+// 每个机场最多勾几个落地节点；自建落地节点最多几个、最长几个字
+const MAX_LANDING = 20;
+const MAX_CUSTOM_NODES = 20000;
 // /sub/<TOKEN>?script=lite|full：在服务端套用覆写脚本，客户端不用再加脚本覆写；不带参数则不覆写
 const OVERRIDES = {
   lite: { run: liteScript, label: '精简' },
@@ -94,6 +103,8 @@ async function serveSubscription(env, ctx, token, origin, script) {
     ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
     { rateTag: record.rateTag === true },
   );
+  const landing = override ? landingProxies(ok, config.proxies, record) : [];
+  if (landing.length) config[AI_CHAIN_KEY] = { proxies: landing, relay: record.aiChain?.relay || DEFAULT_RELAY };
   if (override) {
     try {
       config = override.run(config);
@@ -105,6 +116,7 @@ async function serveSubscription(env, ctx, token, origin, script) {
   const comments = [
     `MyClash 合并订阅：${record.name}${override ? `，已套用${override.label}版覆写脚本` : ''}`,
     `更新时间：${new Date().toISOString()}`,
+    ...(landing.length ? [`AI 链式代理：${landing.length} 个落地节点，经「AI链式代理」组中转`] : []),
     ...results.map((r) =>
       r.blocked
         ? `[${r.label}] 已屏蔽：${r.blocked}` +
@@ -128,6 +140,25 @@ async function serveSubscription(env, ctx, token, origin, script) {
   if (userinfo) headers['Subscription-Userinfo'] = userinfo;
 
   return new Response(dumpConfig(config, comments), { headers });
+}
+
+/**
+ * AI 链式代理的落地节点：勾选的机场节点复制一份（合并后的名称前加 🔗，原节点照样留在各组），再加上自建节点。
+ * 机场节点按原本的名称勾选；mergeSubscriptions 按顺序合并、只改名称，所以合并后第 k 个节点就是各机场节点依序排下来的第 k 个。
+ * 被节点筛选排除的节点不在 parsed.proxies 里，勾了也不会生效
+ */
+function landingProxies(results, merged, record) {
+  const landing = [];
+  let k = 0;
+  for (const r of results) {
+    const picked = new Set(r.landing);
+    for (const p of r.parsed.proxies) {
+      if (picked.has(p.name)) landing.push({ ...merged[k], name: LANDING_PREFIX + merged[k].name });
+      k++;
+    }
+  }
+  for (const p of parseNodes(record.aiChain?.custom)) landing.push({ ...p, name: LANDING_PREFIX + p.name });
+  return landing;
 }
 
 // 同一家机场有两份订阅时简称会一样，第二份起加序号（良心云、良心云2），免得节点名称分不出来
@@ -165,7 +196,7 @@ async function fetchSource(env, ctx, source, index, mode, excludeRate) {
   const parsed = { ...all, proxies };
   // 节点全被排除的机场等于没用，流量与到期日也不计入
   if (proxies.length === 0) return { label, prefix, parsed, excluded, error: `${excluded} 个节点全被排除` };
-  return { label, prefix, parsed, excluded, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
+  return { label, prefix, parsed, excluded, landing: source.aiChain, userinfo: got.userinfo, cachedAt: got.cachedAt, directError: got.directError };
 }
 
 /**
@@ -470,10 +501,14 @@ function validate(input) {
       throw new HttpError(400, `第 ${i + 1} 个订阅链接必须是 http(s)`);
     }
     const sourceName = String(s?.name ?? '').trim().slice(0, 20);
-    const exclude = Array.isArray(s?.exclude) ? [...new Set(s.exclude.filter((n) => typeof n === 'string' && n && n.length <= MAX_NODE_NAME))] : [];
+    const exclude = nodeNames(s?.exclude);
     if (exclude.length > MAX_EXCLUDE) throw new HttpError(400, `第 ${i + 1} 个机场最多排除 ${MAX_EXCLUDE} 个节点`);
+    // AI 链式代理：这个机场勾作落地的节点（按原本的节点名称）
+    const landing = nodeNames(s?.aiChain);
+    if (landing.length > MAX_LANDING) throw new HttpError(400, `第 ${i + 1} 个机场最多勾 ${MAX_LANDING} 个落地节点`);
     const source = { name: sourceName, url };
     if (exclude.length) source.exclude = exclude;
+    if (landing.length) source.aiChain = landing;
     // 这个机场自己的倍率门槛：没有这个键就跟随全局，null 表示不限
     if (s?.excludeRate === null) source.excludeRate = null;
     else if (validRate(s?.excludeRate) !== null) source.excludeRate = validRate(s.excludeRate);
@@ -481,7 +516,24 @@ function validate(input) {
   });
   const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
   // 全局：倍率 ≥ excludeRate 的节点不导入；null 表示不限
-  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), sources };
+  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), sources, aiChain: validAiChain(input.aiChain) };
+}
+
+function nodeNames(list) {
+  return Array.isArray(list) ? [...new Set(list.filter((n) => typeof n === 'string' && n && n.length <= MAX_NODE_NAME))] : [];
+}
+
+// AI 链式代理：自建落地节点（存原文，管理页照原样显示）与「AI链式代理」组默认选的中转
+function validAiChain(input) {
+  const custom = String(input?.custom ?? '').trim();
+  if (custom.length > MAX_CUSTOM_NODES) throw new HttpError(400, `自建落地节点不能超过 ${MAX_CUSTOM_NODES} 字`);
+  const nodes = parseNodes(custom);
+  if (custom && nodes.length === 0) {
+    throw new HttpError(400, '自建落地节点读不出来：请贴 mihomo YAML，或 ss / vmess / vless / trojan / hysteria2 分享链接');
+  }
+  if (nodes.length > MAX_LANDING) throw new HttpError(400, `自建落地节点最多 ${MAX_LANDING} 个`);
+  const relay = String(input?.relay ?? '').trim().slice(0, 30) || DEFAULT_RELAY;
+  return { relay, custom };
 }
 
 function validRate(v) {

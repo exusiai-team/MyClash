@@ -263,6 +263,12 @@
   .node.by-rate { cursor: default; }
   .node.by-rate .r { color: var(--danger); }
   .node-empty { padding: 12px; font-size: 13px; color: var(--muted); }
+  /* AI 链式代理：已选的落地节点，点一下移除；被节点筛选排除的标成警告 */
+  .chip-btn { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .chip-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-btn svg.i { width: 12px; height: 12px; }
+  .chip-btn.warn { background: var(--warn-soft); color: var(--warn); }
+  #chain-results:empty { display: none; }
 
   /* 底部固定的操作列 */
   .actionbar {
@@ -525,6 +531,33 @@
       <div id="node-groups"></div>
     </section>
 
+    <section class="card" aria-labelledby="sec-chain">
+      <div class="sec-head">
+        <h2 id="sec-chain"><span class="step">4</span>AI 链式代理 <span class="hint">选填</span></h2>
+        <span class="hint" id="chain-summary"></span>
+      </div>
+      <p class="hint sec-desc">落地节点只放进「AI」组并设为默认，经「AI链式代理」组中转：中转选香港，就是用香港组的节点连到落地节点；选「直连」就是直接连。
+        Anthropic 看到的是落地节点的 IP，最好用固定 IP 的家宽或自己的 VPS。只对精简 / 全量覆写的链接生效。</p>
+      <div class="field">
+        <span class="label">机场节点当落地 <span class="hint">复制一份带 🔗 的放进 AI 组，原节点照样留在各组</span></span>
+        <div class="chips" id="chain-picked"></div>
+        <div class="search" style="margin-top:10px"><svg class="i"><use href="#i-search"/></svg>
+          <input type="text" id="chain-search" placeholder="搜索节点加为落地，例如 家宽、台湾" aria-label="搜索要当落地的节点" autocomplete="off"></div>
+        <div class="nodes" id="chain-results"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="chain-custom">自建落地节点 <span class="hint">mihomo YAML，或 ss / vmess / vless / trojan / hysteria2 分享链接，一行一个</span></label>
+        <textarea id="chain-custom" placeholder="trojan://密码@home.example.com:443#家宽" spellcheck="false"></textarea>
+      </div>
+      <div class="field">
+        <label class="label" for="chain-relay">「AI链式代理」默认中转 <span class="hint">客户端里随时可以改；订阅里没有这一组时退回「默认代理」</span></label>
+        <select id="chain-relay">
+          <option>香港</option><option>日本</option><option>新加坡</option><option>台湾</option><option>美国</option>
+          <option>低倍率节点</option><option>默认代理</option><option>直连</option>
+        </select>
+      </div>
+    </section>
+
     <div class="actionbar">
       <div class="info"><b id="bar-summary"></b><span class="msg" id="edit-msg"></span></div>
       <button type="button" class="btn" id="cancel-btn">取消</button>
@@ -659,6 +692,8 @@
     if (own) chips.push(`${own} 个机场单独设门槛`);
     const manual = it.sources.reduce((n, s) => n + (s.exclude?.length || 0), 0);
     if (manual) chips.push(`手动排除 ${manual} 个节点`);
+    const landing = it.sources.reduce((n, s) => n + (s.aiChain?.length || 0), 0);
+    if (landing || it.aiChain?.custom) chips.push('AI 链式代理');
     return chips.map((c) => `<span class="chip accent">${escapeHtml(c)}</span>`).join('');
   }
   function itemHtml(it) {
@@ -800,6 +835,8 @@
   let statsByUrl = new Map();
   let lastPick = null;
   let dirty = false;
+  // AI 链式代理：每个机场勾作落地的节点（按原本的节点名称）
+  let landingByUrl = new Map();
 
   const urlOf = (row) => row.querySelector('.src-url').value.trim();
   const rows = () => [...$('sources').children];
@@ -952,6 +989,10 @@
     rateByUrl = new Map((record ? record.sources : []).map((s) => [s.url, fromSaved(s)]));
     expanded = new Set();
     lastPick = null;
+    landingByUrl = new Map((record ? record.sources : []).map((s) => [s.url, new Set(s.aiChain || [])]));
+    $('chain-search').value = '';
+    $('chain-custom').value = record?.aiChain?.custom || '';
+    setRelay(record?.aiChain?.relay || '香港');
     $('edit-title').textContent = record ? `编辑「${record.name}」` : '新建订阅';
     $('edit-name').value = record ? record.name : '';
     $('rate-tag').checked = record ? record.rateTag === true : true;
@@ -997,8 +1038,9 @@
   });
   addEventListener('beforeunload', (e) => { if (dirty && !$('view-edit').hidden) e.preventDefault(); });
   // 编辑页里任何输入都算修改
-  $('view-edit').addEventListener('input', (e) => { if (e.target.id !== 'node-search') dirty = true; });
-  $('view-edit').addEventListener('change', (e) => { if (e.target.id !== 'node-search') dirty = true; });
+  const SEARCH_IDS = ['node-search', 'chain-search'];
+  $('view-edit').addEventListener('input', (e) => { if (!SEARCH_IDS.includes(e.target.id)) dirty = true; });
+  $('view-edit').addEventListener('change', (e) => { if (!SEARCH_IDS.includes(e.target.id)) dirty = true; });
 
   const PREFIX_HINTS = {
     name: '从订阅自动读取机场名称并缩成简称（读不到时用订阅域名，再不行用 S1、S2…），例如「飞云机场 - 官网 feiyun.com」→「飞云 | 香港 01」。填了自定义前缀就用自定义的。',
@@ -1144,6 +1186,71 @@
     const loaded = currentUrls().filter((u) => sourceByUrl.get(u)?.nodes?.length);
     $('expand-all').textContent = loaded.length && loaded.every((u) => expanded.has(u)) ? '全部收起' : '全部展开';
     refreshRows();
+    renderChain();
+  }
+
+  // --- AI 链式代理 ---
+  function landingSet(url) {
+    if (!landingByUrl.has(url)) landingByUrl.set(url, new Set());
+    return landingByUrl.get(url);
+  }
+  // 节点会不会导入（跟节点筛选一样的判断）；没导入的落地节点合并时不会生效
+  function imported(url, name) {
+    const node = sourceByUrl.get(url)?.nodes?.find((n) => n.name === name);
+    if (!node) return null;
+    const limit = effectiveRate(url);
+    return !(limit !== null && rateOf(node) >= limit) && !excludeByUrl.get(url)?.has(name);
+  }
+  function setRelay(relay) {
+    const sel = $('chain-relay');
+    if (![...sel.options].some((o) => o.value === relay)) sel.add(new Option(relay));
+    sel.value = relay;
+  }
+  // 已选的落地节点（点一下移除），与搜索结果（勾选加入，最多列 40 个）
+  function renderChain() {
+    const urls = currentUrls();
+    const picked = urls.flatMap((url, i) => [...(landingByUrl.get(url) || [])].map((name) => ({ url, i, name, ok: imported(url, name) })));
+    $('chain-picked').innerHTML = picked.length
+      ? picked.map(({ url, i, name, ok }) => {
+        const why = ok === false ? '（被节点筛选排除，不会生效）' : ok === null && sourceByUrl.get(url)?.nodes ? '（机场已经没有这个节点）' : '';
+        const label = `${airportName(url, i)} | ${name}`;
+        return `<button type="button" class="chip chip-btn${why ? ' warn' : ''}" data-url="${escapeHtml(url)}" data-name="${escapeHtml(name)}" title="移除：${escapeHtml(label + why)}"><span>${escapeHtml(label + why)}</span>${icon('x')}</button>`;
+      }).join('')
+      : '<span class="hint">还没有选机场节点</span>';
+    const q = $('chain-search').value.trim().toLowerCase();
+    const results = q ? urls.flatMap((url, i) => (sourceByUrl.get(url)?.nodes || []).filter((n) => matches(n, q)).map((n) => ({ url, i, name: n.name }))) : [];
+    $('chain-results').innerHTML = q && !results.length ? '<p class="node-empty">没有符合的节点</p>'
+      : results.slice(0, 40).map(({ url, i, name }) => {
+        const on = landingByUrl.get(url)?.has(name);
+        return `<label class="node" title="${escapeHtml(name)}"><input type="checkbox" data-url="${escapeHtml(url)}" data-name="${escapeHtml(name)}"${on ? ' checked' : ''}>` +
+          `<span class="n">${escapeHtml(`${airportName(url, i)} | ${name}`)}</span></label>`;
+      }).join('') + (results.length > 40 ? `<p class="node-empty">还有 ${results.length - 40} 个，请缩小搜索范围</p>` : '');
+    const custom = $('chain-custom').value.trim() ? '，另有自建节点' : '';
+    $('chain-summary').textContent = picked.length || custom ? `已选 ${picked.length} 个机场节点${custom}` : '';
+  }
+  $('chain-picked').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-name]');
+    if (!chip) return;
+    landingSet(chip.dataset.url).delete(chip.dataset.name);
+    dirty = true;
+    renderChain();
+  });
+  $('chain-results').addEventListener('change', (e) => {
+    const box = e.target;
+    const set = landingSet(box.dataset.url);
+    if (box.checked) set.add(box.dataset.name); else set.delete(box.dataset.name);
+    renderChain();
+  });
+  $('chain-search').addEventListener('input', renderChain);
+  $('chain-custom').addEventListener('input', renderChain);
+  // 要保存的落地节点：读到节点的机场只留现在还有的节点名称，读不到的维持原样
+  function landingFor(url) {
+    const set = landingByUrl.get(url);
+    if (!set?.size) return [];
+    const src = sourceByUrl.get(url);
+    if (!src || src.error) return [...set];
+    const names = new Set(src.nodes.map((n) => n.name));
+    return [...set].filter((n) => names.has(n));
   }
 
   function excludeSet(url) {
@@ -1267,12 +1374,15 @@
     const sources = rows()
       .map((r) => ({ name: r.querySelector('.src-name').value.trim(), url: urlOf(r) }))
       .filter((s) => s.url)
-      .map((s) => ({ ...s, exclude: excludeFor(s.url), ...rateFor(s.url) }));
+      .map((s) => ({ ...s, exclude: excludeFor(s.url), ...rateFor(s.url), aiChain: landingFor(s.url) }));
     if (!name) { $('edit-name').focus(); return showMsg($('edit-msg'), '请填名称'); }
     if (!sources.length) return showMsg($('edit-msg'), '至少要填一个机场订阅链接');
     $('save-btn').disabled = true;
     try {
-      const body = { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, excludeRate: getExcludeRate(), sources };
+      const body = {
+        name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, excludeRate: getExcludeRate(), sources,
+        aiChain: { custom: $('chain-custom').value.trim(), relay: $('chain-relay').value },
+      };
       const saved = editingToken ? await api('PUT', '/subs/' + editingToken, body) : await api('POST', '/subs', body);
       if (!editingToken) addToken(saved.token);
       toast(editingToken ? `已保存「${saved.name}」` : `已生成「${saved.name}」，复制链接到客户端就能用`);

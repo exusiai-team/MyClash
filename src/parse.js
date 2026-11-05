@@ -16,6 +16,23 @@ export function parseSubscription(text) {
   return { ...parsed, proxies, duplicates };
 }
 
+/**
+ * 自建节点（AI 链式代理的落地节点）：mihomo YAML（proxies: 清单、节点清单或单个节点），
+ * 或分享链接（一行一个，也可以整段 base64）
+ * @returns {object[]}
+ */
+export function parseNodes(text) {
+  const body = String(text ?? '').trim();
+  if (!body) return [];
+  let doc = null;
+  try {
+    doc = yaml.load(body);
+  } catch {}
+  const list = Array.isArray(doc) ? doc : Array.isArray(doc?.proxies) ? doc.proxies : isPlainObject(doc) && doc.name && doc.type ? [doc] : null;
+  if (list) return list.filter((p) => isPlainObject(p) && p.name && p.type);
+  return parseUriList(body).proxies;
+}
+
 // 「剩余流量」「套餐到期」「官网」等信息节点：机场常直接复制某个真节点的设置、只改名称，排在最前面
 const INFO_NODE_RE = /剩余|到期|过期|重置|流量|官网|网站|网址|官方|套餐|订阅|客服|群/;
 

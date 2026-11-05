@@ -10,6 +10,7 @@
 - **去掉重复节点**：除了名称以外设置完全相同的节点只留第一个；「剩余流量」「套餐到期」等信息节点常复制真节点的设置，不参与比较，免得顶掉真节点
 - **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
+- **AI 链式代理**：指定落地节点（机场节点或自建节点）只给「AI」组用，经「AI链式代理」组选的地区中转，出口 IP 固定
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
@@ -63,7 +64,9 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   AI 改用 `https://api.anthropic.com/v1/models`：Bettbox 的 `/cdn-cgi/trace` 由 Cloudflare 边缘节点直接回应，只测到节点到就近 Cloudflare 的延迟，到不了 Anthropic 源站，地区被封也照样通；`/v1/models` 不带 key 由源站回 401，测的是到源站的整条路径。
   Telegram 改用 `https://api.telegram.org/`：Bettbox 的 `http://91.108.56.100/` 不支持 keep-alive，开了 unified-delay 测速常报错且延迟失准）；Bettbox 没检测的服务与地区、倍率组用通用测速网址 `https://connectivitycheck.gstatic.com/generate_204`（原版为 Apple 的测速网址），测速间隔从原版的 600 秒改为 300 秒。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
-- 「AI」组默认选「台湾」（原版为「美国」；订阅里没有台湾节点时由客户端退回第一项）
+- 「AI」组默认选「台湾」（原版为「美国」），订阅里没有台湾节点时选「美国」，都没有才由客户端退回第一项
+- 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个），AdBlock 除外
+- AI 链式代理：Worker 传入落地节点时，放进「AI」组并新增「AI链式代理」组负责中转，见下方「AI 链式代理」
 - 「台湾」地区组与「台湾-自动选择」改用 Claude 的测速网址 `https://api.anthropic.com/v1/models`（同「AI」组），按 Claude 的连通性挑节点
 - 「AdBlock」组（默认 `REJECT`）的广告规则集由 bett-rules 的 `category-ads` 换成 [Sukka 的 Reject Base](https://ruleset.skk.moe/Clash/domainset/reject.txt)（约 14 万个域名：广告、跟踪，以及小米反诈 `flash.sec.miui.com`、`fraud-detection.engine.miui.com`、云扫描等）。
   Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
@@ -104,6 +107,22 @@ GitHub Actions 每天（UTC+8 04:00，也可在 Actions 页手动触发「同步
 每个机场一组，可以单独设门槛：「跟随全局」「不限」或「自定义」（展开后点这个机场的倍率标签也会设成自定义），适合各家倍率标准不同的情况。机场订阅列的「导入 x / y 个节点」会跳到对应的机场。
 「选择节点」逐个勾选，保存的是**不导入**的节点（按机场原本的节点名称，不受前缀与倍率标注影响），所以机场新增的节点默认导入；机场改了节点名称，就要重新取消勾选。
 被排除的节点若是别的节点的 `dialer-proxy`，依赖它的节点也一并去掉；某个机场的节点全被排除时，它的流量与到期日不计入。
+
+**AI 链式代理**（编辑页第 4 区，选填，只对 `?script=lite|full` 的链接生效）：让 Claude 等 AI 服务看到的是固定的落地 IP（家宽或自己的 VPS），而不是多人共用、常换的机场 IP。
+
+```
+AI（默认选第一个落地节点）
+  🔗 三毛 | 5x | 台湾1|勿跑大流量   ← 落地节点，经「AI链式代理」连过去
+  默认代理  手动选择  自动选择  香港  日本 …  直连   ← 原本的选项，不经中转
+AI链式代理（默认选香港）
+  默认代理  手动选择  自动选择  香港  日本 …  直连   ← 同 Google 等分流组；选「直连」就是直接连落地节点
+```
+
+- 落地节点可以搜索勾选机场节点（复制一份、名称前加 `🔗`，原节点照样留在各组），也可以贴自建节点（mihomo YAML 或分享链接）。被节点筛选排除的节点勾了也不会生效
+- 落地节点只放进「AI」组，不进默认代理、地区组、自动选择与 GLOBAL：只有 AI 规则命中的流量走落地，也不会绕回自己
+- mihomo 不允许分组设 `dialer-proxy`，所以中转只挂在落地节点上；AI 组选了「台湾」等机场组时不经中转
+- 落地节点断了不会自动退回机场节点（悄悄换掉出口 IP 就失去意义），请在 AI 组手动改选
+- 设置存在 KV 的订阅记录里，不进公开的 `/script.js`；Worker 把落地节点放在 `config['myclash-ai-chain']` 传给覆写脚本，输出的配置不会带着这个键
 
 ## iPhone：小火箭
 
