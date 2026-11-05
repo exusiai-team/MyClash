@@ -59,6 +59,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 > 用了 `?script=` 的链接，**客户端就不要再加脚本覆写**，否则会覆写两次。
 
+哪些功能来自上游、哪些是本仓库加的，以及完整的 DNS、规则集与规则顺序，见 [FEATURES.md](FEATURES.md)。
+
 相对原版的改动：
 - 分流组用各自服务的测速网址，取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 Google → `https://www.google.com/generate_204`）。
   AI 改用 `https://api.anthropic.com/v1/models`：Bettbox 的 `/cdn-cgi/trace` 由 Cloudflare 边缘节点直接回应，只测到节点到就近 Cloudflare 的延迟，到不了 Anthropic 源站，地区被封也照样通；`/v1/models` 不带 key 由源站回 401，测的是到源站的整条路径。
