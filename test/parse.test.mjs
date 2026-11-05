@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_KEY, AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -250,13 +250,19 @@ test('合并：rateTag 标注倍率，1 倍不标，dialer-proxy 跟着改名', 
   assert.equal(mergeSubscriptions([{ prefix: '飞云', parsed }]).proxies[0].name, '飞云 | 香港 01-2.0x');
 });
 
-function runScript(file, extra = []) {
+const BASE_NODES = ['🇺🇸 美国 01', '🇭🇰 香港 01', '🇯🇵 日本 01', '🇸🇬 新加坡 01', '🇹🇼 台湾 01'].map((name, i) => ({
+  name, type: 'ss', server: `n${i}.example`, port: 1, cipher: 'aes-128-gcm', password: 'x',
+}));
+
+// rest：除了 proxies 以外要传给脚本的设置，例如 Worker 传入的 AI 链式代理
+function runConfig(file, config) {
   const ctx = vm.createContext({ console, structuredClone, URL });
   vm.runInContext(fs.readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'), ctx);
-  const proxies = ['🇺🇸 美国 01', '🇭🇰 香港 01', '🇯🇵 日本 01', '🇸🇬 新加坡 01', '🇹🇼 台湾 01'].map((name, i) => ({
-    name, type: 'ss', server: `n${i}.example`, port: 1, cipher: 'aes-128-gcm', password: 'x',
-  }));
-  return vm.runInContext('main', ctx)({ proxies: [...proxies, ...extra] });
+  return vm.runInContext('main', ctx)(config);
+}
+
+function runScript(file, extra = [], rest = {}) {
+  return runConfig(file, { ...rest, proxies: [...BASE_NODES, ...extra] });
 }
 
 for (const file of ['script.js', 'script-full.js']) {
@@ -272,6 +278,12 @@ for (const file of ['script.js', 'script-full.js']) {
     // 台湾地区组（含自动选择组）用 Claude 的测速网址
     assert.equal(REGION_TEST_URLS.台湾, TEST_URLS.AI);
     for (const name of ['台湾', '台湾-自动选择']) assert.equal(groups.get(name).url, TEST_URLS.AI, name);
+    // AI 组默认选台湾，没有台湾节点时选美国，都没有就不设（由客户端退回第一项）
+    assert.equal(groups.get('AI')['default-selected'], '台湾');
+    const aiDefault = (...without) => runConfig(file, { proxies: BASE_NODES.filter((p) => !without.includes(p.name)) })['proxy-groups']
+      .find((g) => g.name === 'AI')['default-selected'];
+    assert.equal(aiDefault('🇹🇼 台湾 01'), '美国');
+    assert.equal(aiDefault('🇹🇼 台湾 01', '🇺🇸 美国 01'), undefined);
     // 直连组用有 IPv6 地址的测速网址，「仅IPv6」才测得通
     assert.equal(groups.get('直连').url, DIRECT_TEST_URL);
     // 直连组默认选「IPv6优先」，其余直连节点都还在
@@ -296,6 +308,64 @@ for (const file of ['script.js', 'script-full.js']) {
     const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
     for (const name of ['香港', '日本']) assert.equal(groups.get(name).proxies[0], `${name}-自动选择`, name);
     assert.equal(groups.get('默认代理').proxies[0], '自动选择');
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：分流组都有「直连」选项，AdBlock 除外`, () => {
+    const out = runScript(file);
+    const services = out['proxy-groups'].filter((g) => g.proxies[0] === '默认代理' && !['漏网之鱼', 'GLOBAL'].includes(g.name));
+    assert.ok(services.some((g) => g.name === 'Google'));
+    for (const g of services) assert.equal(g.proxies.at(-1), '直连', g.name);
+    assert.ok(!out['proxy-groups'].find((g) => g.name === 'AdBlock').proxies.includes('直连'));
+  });
+}
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：AI 链式代理只作用于 AI 组`, () => {
+    const landing = (name) => ({ name, type: 'trojan', server: 'home.example', port: 443, password: 'x', 'dialer-proxy': 'old' });
+    // 没有传落地节点：不生成「AI链式代理」组
+    assert.ok(!runScript(file)['proxy-groups'].some((g) => g.name === AI_CHAIN_GROUP));
+
+    const out = runScript(file, [], { [AI_CHAIN_KEY]: [landing('🔗 家宽'), landing('🔗 家宽')] });
+    assert.ok(!(AI_CHAIN_KEY in out));
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    const names = out['proxy-groups'].map((g) => g.name);
+    // 紧跟在 AI 组后面，GLOBAL 里也排在 AI 后面
+    assert.equal(names[names.indexOf('AI') + 1], AI_CHAIN_GROUP);
+    const global = groups.get('GLOBAL').proxies;
+    assert.equal(global[global.indexOf('AI') + 1], AI_CHAIN_GROUP);
+
+    // 落地节点同名时加序号，都挂上「AI链式代理」
+    const landed = out.proxies.filter((p) => p.server === 'home.example');
+    assert.deepEqual([...landed.map((p) => p.name)], ['🔗 家宽', '🔗 家宽 2']);
+    for (const p of landed) assert.equal(p['dialer-proxy'], AI_CHAIN_GROUP);
+
+    // AI 组：落地节点排最前面并设为默认，原本的选项都还在
+    const ai = groups.get('AI');
+    assert.deepEqual([...ai.proxies.slice(0, 2)], ['🔗 家宽', '🔗 家宽 2']);
+    assert.equal(ai['default-selected'], '🔗 家宽');
+    // 中转选项同 Google 组（含直连），默认选香港，测速网址同 AI 组
+    const relay = groups.get(AI_CHAIN_GROUP);
+    assert.equal(relay.type, 'select');
+    assert.deepEqual([...relay.proxies], [...groups.get('Google').proxies]);
+    assert.deepEqual([...ai.proxies.slice(2)], [...relay.proxies]);
+    assert.equal(relay['default-selected'], AI_CHAIN_RELAY);
+    assert.equal(relay.url, TEST_URLS.AI);
+    // 落地节点不进其他组
+    for (const g of out['proxy-groups']) {
+      if (g.name !== 'AI') assert.ok(!g.proxies.some((n) => n.startsWith('🔗')), g.name);
+    }
+    // 引用都指向存在的节点或组
+    const defined = new Set([...out.proxies.map((p) => p.name), ...names, 'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS']);
+    for (const g of out['proxy-groups']) for (const n of g.proxies) assert.ok(defined.has(n), `${g.name} → ${n}`);
+
+    // 香港不在选项里（例如没有香港节点）就不设默认
+    const noHk = runConfig(file, {
+      proxies: BASE_NODES.filter((p) => !p.name.includes('香港')),
+      [AI_CHAIN_KEY]: [landing('🔗 家宽')],
+    });
+    assert.equal(noHk['proxy-groups'].find((g) => g.name === AI_CHAIN_GROUP)['default-selected'], undefined);
   });
 }
 
@@ -430,9 +500,12 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
   for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', '台湾']) {
     assert.ok(groups.get(name).includes(`url=${lite.get(name).url}`), name);
   }
-  // 默认选择（第一项）同精简版
-  assert.equal(groups.get('AI')[1], '台湾');
+  // 默认选择（第一项）同精简版：AI 默认台湾，台湾组不通（订阅里没有台湾节点）时 fallback 到美国
+  assert.equal(groups.get('AI')[1], '台湾优先');
+  assert.deepEqual(groups.get('台湾优先').slice(0, 3), ['fallback', '台湾', '美国']);
   for (const name of ['Google', 'Apple', 'Telegram', 'Steam']) assert.equal(groups.get(name)[1], '默认代理', name);
+  // 分流组除 AdBlock 外都可选 DIRECT（同精简版）
+  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.get(name).includes('DIRECT'), name);
   assert.equal(groups.get('AdBlock')[1], 'REJECT');
   // 地区组同精简版分两层：手选组默认选「<地区>-自动选择」，手动选的节点重连后不会被测速改掉
   for (const name of ['香港', '日本', '美国', '新加坡', '台湾']) {
