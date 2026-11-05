@@ -354,7 +354,7 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.equal(ai['default-selected'], '台湾');
     assert.deepEqual([...ai.proxies], [...none.get('AI').proxies]);
     // 中转组紧跟在 AI 组后面（GLOBAL 里也是），默认香港，测速网址同 AI 组；
-    // 拿掉连得到台湾节点的组（台湾、默认代理），不会绕回自己
+    // 台湾节点从其他组拿掉后，只有台湾组与含有它的默认代理连得到台湾节点，不当中转，不会绕回自己
     const names = out['proxy-groups'].map((g) => g.name);
     assert.equal(names[names.indexOf('AI') + 1], AI_CHAIN_GROUP);
     const global = groups.get('GLOBAL').proxies;
@@ -364,8 +364,12 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.equal(relay['default-selected'], AI_CHAIN_RELAY);
     assert.equal(relay.url, TEST_URLS.AI);
     assert.equal(relay.proxies.at(-1), '直连');
-    for (const n of ['台湾', '默认代理']) assert.ok(!relay.proxies.includes(n), n);
-    for (const n of ['香港', '美国', '自动选择']) assert.ok(relay.proxies.includes(n), n);
+    assert.deepEqual([...relay.proxies], [...none.get('AI').proxies.filter((n) => !['台湾', '默认代理', '直连'].includes(n)), '直连']);
+    // 其他组（手动选择等）里拿掉台湾节点
+    for (const g of out['proxy-groups']) {
+      if (['台湾', '台湾-自动选择', 'AI'].includes(g.name)) continue;
+      assert.ok(!g.proxies.some((n) => n.includes('🇹🇼')), g.name);
+    }
 
     // 只勾单个节点：挂上中转，放在 AI 组最前面并设为默认；同组的其他节点不挂
     const one = runConfig(file, {
@@ -376,10 +380,10 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.deepEqual([...one.proxies].filter((p) => p['dialer-proxy']).map((p) => p.name), ['🇹🇼 台湾 01']);
     assert.equal(g1.get('AI').proxies[0], '🇹🇼 台湾 01');
     assert.equal(g1.get('AI')['default-selected'], '🇹🇼 台湾 01');
-    // 台湾组混着没挂中转的台湾 02：自动选择组拿掉台湾 01，台湾组手动还选得到；台湾组连得到它，不当中转
+    // 台湾组混着没挂中转的台湾 02：台湾 01 只留在 AI 组，台湾组与其自动选择组拿掉它，台湾组也能当中转
     assert.deepEqual([...g1.get('台湾-自动选择').proxies], ['🇹🇼 台湾 02']);
-    assert.ok(g1.get('台湾').proxies.includes('🇹🇼 台湾 01'));
-    assert.ok(!g1.get(AI_CHAIN_GROUP).proxies.includes('台湾'));
+    assert.ok(!g1.get('台湾').proxies.includes('🇹🇼 台湾 01'));
+    assert.ok(g1.get(AI_CHAIN_GROUP).proxies.includes('台湾'));
 
     // 香港不在中转选项里（例如没有香港节点）就不设默认
     const noHk = runConfig(file, { proxies: BASE_NODES.filter((p) => !p.name.includes('香港')), [AI_CHAIN_GROUPS_KEY]: ['台湾'] });
