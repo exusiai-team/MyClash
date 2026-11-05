@@ -376,22 +376,23 @@ export function directForAllServices(source) {
   return source.replaceAll(search, "'直连'");
 }
 
-// AI 链式代理：MyClash Worker 把落地节点放在 config['myclash-ai-chain'] 传进来（{ proxies, relay }），
+// AI 链式代理：MyClash Worker 把落地节点清单放在 config['myclash-ai-chain'] 传进来，
 // 输出的配置由脚本重新组出来，这个键不会带出去。mihomo 不允许分组设 dialer-proxy，所以只给落地节点挂：
 // - 落地节点只放进「AI」组最前面并设为默认，不进其他组，其他流量不会走落地，也不会绕回自己
 // - 「AI链式代理」组决定从哪里连到落地节点，选项同「AI」组原本的选项（跟 Google 等分流组一样，含「直连」即不中转），
-//   默认选 Worker 传来的 relay，没有这一项就由客户端退回第一项
+//   默认选香港（客户端里改选后会记住），没有香港组就由客户端退回第一项
 export const AI_CHAIN_KEY = 'myclash-ai-chain';
 export const AI_CHAIN_GROUP = 'AI链式代理';
-const AI_CHAIN_READ = `  // MyClash Worker 传进来的 AI 链式代理设置（落地节点与默认中转）
+export const AI_CHAIN_RELAY = '香港';
+const AI_CHAIN_READ = `  // MyClash Worker 传进来的 AI 链式代理落地节点
   const aiChain = config['${AI_CHAIN_KEY}'];
 
 `;
 const AI_CHAIN = `  // AI 链式代理：落地节点只放进「AI」组，经「${AI_CHAIN_GROUP}」组连过去
   const aiGroup = newConfig['proxy-groups'].find((g) => g.name === 'AI');
-  if (aiChain?.proxies?.length && aiGroup) {
+  if (aiChain?.length && aiGroup) {
     const usedNames = new Set([...newConfig['proxies'], ...newConfig['proxy-groups']].map((p) => p.name));
-    const landingProxies = aiChain.proxies.map((proxy) => {
+    const landingProxies = aiChain.map((proxy) => {
       let name = proxy.name;
       for (let i = 2; usedNames.has(name); i++) name = \`\${proxy.name} \${i}\`;
       usedNames.add(name);
@@ -405,7 +406,7 @@ const AI_CHAIN = `  // AI 链式代理：落地节点只放进「AI」组，经�
       icon: \`\${iconBaseUrl}Bypass.svg\`,
       proxies: relayProxies,
       ...(aiGroup.url && { url: aiGroup.url }),
-      ...(relayProxies.includes(aiChain.relay) && { 'default-selected': aiChain.relay }),
+      ...(relayProxies.includes('${AI_CHAIN_RELAY}') && { 'default-selected': '${AI_CHAIN_RELAY}' }),
     });
     newConfig['proxies'].push(...landingProxies);
     aiGroup.proxies = [...landingProxies.map((p) => p.name), ...aiGroup.proxies];

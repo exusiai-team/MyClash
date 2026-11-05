@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import fs from 'node:fs';
 import * as yaml from 'js-yaml';
 import worker from '../src/worker.js';
 import { cacheKey } from '../src/cache.js';
@@ -144,20 +143,16 @@ test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', asy
   assert.equal((await get('?script=nope')).status, 400);
 });
 
-test('AI 链式代理：勾选的机场节点与自建节点只放进 AI 组，经「AI链式代理」组中转', async (t) => {
+test('AI 链式代理：勾选的机场节点只放进 AI 组，经「AI链式代理」组中转', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const env = { SUB_STORE: memoryKv() };
   const url = `http://127.0.0.1:${upstream.address().port}/yaml`;
-  const create = (aiChain, source = {}) => call(env, 'POST', '/api/subs', { body: { name: 'c', prefixMode: 'none', sources: [{ url, ...source }], aiChain } });
-
-  // 自建节点读不出来就拒绝保存
-  assert.equal((await create({ custom: 'not a node' })).status, 400);
-
-  const res = await create({ custom: 'trojan://pw@home.example:443#家宽', relay: '日本' }, { aiChain: ['🇯🇵 日本 01', '不存在'] });
-  const { token, aiChain, sources } = await res.json();
-  assert.deepEqual(aiChain, { relay: '日本', custom: 'trojan://pw@home.example:443#家宽' });
-  assert.deepEqual(sources[0].aiChain, ['🇯🇵 日本 01', '不存在']);
+  const res = await call(env, 'POST', '/api/subs', {
+    body: { name: 'c', prefixMode: 'none', sources: [{ url, aiChain: ['🇯🇵 日本 01', '🇭🇰 香港 01', '不存在'] }] },
+  });
+  const { token, sources } = await res.json();
+  assert.deepEqual(sources[0].aiChain, ['🇯🇵 日本 01', '🇭🇰 香港 01', '不存在']);
 
   const get = async (query) => (await worker.fetch(new Request(`https://w.test/sub/${token}${query}`), env)).text();
   // 不覆写：没有链式代理，也不会带出传给脚本的键
@@ -169,51 +164,19 @@ test('AI 链式代理：勾选的机场节点与自建节点只放进 AI 组，�
   assert.match(body, /^# AI 链式代理：2 个落地节点/m);
   const config = yaml.load(body);
   assert.ok(!('myclash-ai-chain' in config));
+  // 按机场的节点顺序；勾了但机场没有的节点不生效
   const landing = config.proxies.filter((p) => p.name.startsWith('🔗'));
   assert.deepEqual(landing.map((p) => [p.name, p.server, p['dialer-proxy']]), [
+    ['🔗 🇭🇰 香港 01', 'hk.node', 'AI链式代理'],
     ['🔗 🇯🇵 日本 01', 'jp.node', 'AI链式代理'],
-    ['🔗 家宽', 'home.example', 'AI链式代理'],
   ]);
   // 原本的日本节点照样留着、不挂中转
   assert.equal(config.proxies.find((p) => p.server === 'jp.node' && !p.name.startsWith('🔗'))['dialer-proxy'], undefined);
   const groups = new Map(config['proxy-groups'].map((g) => [g.name, g]));
-  assert.deepEqual(groups.get('AI').proxies.slice(0, 2), ['🔗 🇯🇵 日本 01', '🔗 家宽']);
-  assert.equal(groups.get('AI')['default-selected'], '🔗 🇯🇵 日本 01');
-  assert.equal(groups.get('AI链式代理')['default-selected'], '日本');
+  assert.deepEqual(groups.get('AI').proxies.slice(0, 2), ['🔗 🇭🇰 香港 01', '🔗 🇯🇵 日本 01']);
+  assert.equal(groups.get('AI')['default-selected'], '🔗 🇭🇰 香港 01');
+  assert.equal(groups.get('AI链式代理')['default-selected'], '香港');
   assert.equal(groups.get('AI链式代理').proxies.at(-1), '直连');
-});
-
-test('小火箭：?script=rocket 附上落地节点，/sub/<TOKEN>/shadowrocket.conf 按订阅生成分流配置', async (t) => {
-  const upstream = await startUpstream();
-  t.after(() => upstream.close());
-  const conf = fs.readFileSync(new URL('../public/shadowrocket.conf', import.meta.url), 'utf8');
-  const env = { SUB_STORE: memoryKv(), ASSETS: { fetch: async (req) => (new URL(req.url).pathname === '/shadowrocket.conf' ? new Response(conf) : new Response('', { status: 404 })) } };
-  const url = `http://127.0.0.1:${upstream.address().port}/yaml`;
-  const create = async (body) => (await call(env, 'POST', '/api/subs', { body: { name: 'r', prefixMode: 'none', sources: [{ url }], ...body } })).json();
-  const get = async (path) => worker.fetch(new Request(`https://w.test${path}`), env);
-
-  // 没设落地、订阅里没有台湾节点：AI 默认美国，没有落地组
-  const plain = await create({});
-  const plainConf = await (await get(`/sub/${plain.token}/shadowrocket.conf`)).text();
-  assert.match(plainConf, /^AI = select,美国,台湾,/m);
-  assert.doesNotMatch(plainConf, /^AI落地 = /m);
-  assert.equal((await get(`/sub/${'0'.repeat(32)}/shadowrocket.conf`)).status, 404);
-
-  const { token } = await create({ aiChain: { custom: 'trojan://pw@home.example:443#家宽', relay: '日本' } });
-  const sub = yaml.load(await (await get(`/sub/${token}?script=rocket`)).text());
-  assert.deepEqual(sub['proxy-groups'].map((g) => g.name), ['节点选择']);
-  const landing = sub.proxies.filter((p) => p.name.startsWith('🔗'));
-  assert.deepEqual(landing.map((p) => [p.name, p['dialer-proxy']]), [['🔗 家宽', 'AI链式代理']]);
-  // 不覆写的订阅不带落地节点（没有「AI链式代理」组，mihomo 会报错）
-  assert.ok(!yaml.load(await (await get(`/sub/${token}`)).text()).proxies.some((p) => p.name.startsWith('🔗')));
-
-  const chainConf = await (await get(`/sub/${token}/shadowrocket.conf`)).text();
-  assert.match(chainConf, /^AI = select,AI落地,美国,台湾,/m);
-  assert.match(chainConf, /^AI落地 = select,url=https:\/\/api\.anthropic\.com\/v1\/models,policy-regex-filter=\^🔗$/m);
-  assert.match(chainConf, /^AI链式代理 = select,日本,默认代理,/m);
-  // 订阅链接贴进网址栏也记得是小火箭
-  const nav = await worker.fetch(new Request(`https://w.test/sub/${token}?script=rocket`, { headers: { 'sec-fetch-mode': 'navigate', accept: 'text/html' } }), env);
-  assert.match(nav.headers.get('location'), /script=rocket/);
 });
 
 test('/sub/<TOKEN>：浏览器网址栏打开时跳到管理页自动导入，「首页」按钮也带上 TOKEN', async (t) => {

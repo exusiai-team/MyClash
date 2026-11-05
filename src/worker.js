@@ -1,6 +1,5 @@
-import { parseSubscription, parseNodes, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
+import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey, CACHE_TTL_SECONDS } from './cache.js';
-import { rocketConf, RELAY_GROUP, TAIWAN_RE } from './rocket.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
 
@@ -31,15 +30,12 @@ const MAX_LOOKUP = 50;
 // 每个机场最多手动排除几个节点、节点名称最长几个字
 const MAX_EXCLUDE = 2000;
 const MAX_NODE_NAME = 200;
-// AI 链式代理：落地节点（勾选的机场节点与自建节点）经覆写脚本的「AI链式代理」组中转，只放进「AI」组。
-// 设置放在 config 的这个键传给覆写脚本（scripts/sync-scripts.mjs 的 AI_CHAIN_KEY），脚本输出的配置不会带着它
+// AI 链式代理：勾选的机场节点当落地，经覆写脚本的「AI链式代理」组中转，只放进「AI」组。
+// 落地节点清单放在 config 的这个键传给覆写脚本（scripts/sync-scripts.mjs 的 AI_CHAIN_KEY），脚本输出的配置不会带着它
 const AI_CHAIN_KEY = 'myclash-ai-chain';
 const LANDING_PREFIX = '🔗 ';
-// 「AI链式代理」组默认选的中转；订阅里没有这一项就由客户端退回第一项（默认代理）
-const DEFAULT_RELAY = '香港';
-// 每个机场最多勾几个落地节点；自建落地节点最多几个、最长几个字
+// 每个机场最多勾几个落地节点
 const MAX_LANDING = 20;
-const MAX_CUSTOM_NODES = 20000;
 // /sub/<TOKEN>?script=lite|full：在服务端套用覆写脚本，客户端不用再加脚本覆写；不带参数则不覆写
 const OVERRIDES = {
   lite: { run: liteScript, label: '精简' },
@@ -69,9 +65,6 @@ async function route(request, env, ctx) {
     }
     return serveSubscription(env, ctx, parts[1], url.origin, url.searchParams.get('script'));
   }
-  if (parts[0] === 'sub' && parts.length === 3 && parts[2] === 'shadowrocket.conf' && request.method === 'GET') {
-    return serveRocketConf(env, ctx, parts[1], url.origin);
-  }
   if (parts[0] === 'api') return api(request, env, ctx, parts.slice(1));
   return json({ error: '找不到' }, 404);
 }
@@ -81,68 +74,34 @@ async function route(request, env, ctx) {
 // 管理页读取的网址片段：#import=<TOKEN>&script=lite（片段不会发给服务器）
 function importHash(token, script) {
   const params = new URLSearchParams({ import: token });
-  if (Object.hasOwn(OVERRIDES, script ?? '') || script === 'rocket') params.set('script', script);
+  if (Object.hasOwn(OVERRIDES, script ?? '')) params.set('script', script);
   return params.toString();
 }
 
-// /sub/<TOKEN>/shadowrocket.conf：小火箭的分流配置，按这个订阅改写 public/shadowrocket.conf（见 src/rocket.js）。
-// 抓不到节点时照样给配置（分流配置跟节点分开导入）；找不到台湾节点（包括抓不到）时 AI 默认美国
-async function serveRocketConf(env, ctx, token, origin) {
-  const record = await getRecord(env, token);
+async function serveSubscription(env, ctx, token, origin, script) {
+  const override = script === null ? null : Object.hasOwn(OVERRIDES, script) ? OVERRIDES[script] : undefined;
+  if (override === undefined) return text('script 参数只能是 lite（精简）或 full（全量），不覆写请去掉这个参数', 400);
+  const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
   if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
-  const res = await env.ASSETS.fetch(new Request(`${origin}/shadowrocket.conf`));
-  if (!res.ok) return text('读不到 shadowrocket.conf', 502);
-  const { ok, config } = await loadMerged(env, ctx, record);
-  const names = config ? config.proxies.map((p) => String(p.name)) : [];
-  const body = rocketConf(await res.text(), {
-    // 机场都抓不到时 ok 是空的，自建落地节点照样算
-    landing: landingProxies(ok, config?.proxies ?? [], record).length > 0,
-    relay: record.aiChain?.relay || DEFAULT_RELAY,
-    hasTaiwan: names.some((n) => TAIWAN_RE.test(n)),
-  });
-  return new Response(body, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
-}
 
-function getRecord(env, token) {
-  return /^[a-f0-9]{32}$/.test(token) ? env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
-}
-
-// 抓取并合并所有机场；一个节点都没有时 error 是要回给客户端的说明
-async function loadMerged(env, ctx, record) {
   const mode = record.prefixMode ?? 'index';
   const results = await Promise.all(record.sources.map((source, i) => fetchSource(env, ctx, source, i, mode, sourceRate(source, record))));
   numberDuplicatePrefixes(results);
   const ok = results.filter((r) => r.parsed && r.parsed.proxies.length > 0);
   if (ok.length === 0) {
-    const error = results.every((r) => r.blocked)
-      ? '所有机场订阅都已到期或流量用完（已自动屏蔽），请续费或在管理页更换订阅'
+    return results.every((r) => r.blocked)
+      ? text('所有机场订阅都已到期或流量用完（已自动屏蔽），请续费或在管理页更换订阅', 502)
       : results.some((r) => r.excluded)
-        ? '所有节点都被排除了（节点筛选），请在管理页调整'
-        : '所有机场订阅都抓取失败、已屏蔽或没有节点，请稍后再试';
-    return { results, ok, error };
+        ? text('所有节点都被排除了（节点筛选），请在管理页调整', 502)
+        : text('所有机场订阅都抓取失败、已屏蔽或没有节点，请稍后再试', 502);
   }
-  const config = mergeSubscriptions(
+
+  let config = mergeSubscriptions(
     ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
     { rateTag: record.rateTag === true },
   );
-  return { results, ok, config };
-}
-
-async function serveSubscription(env, ctx, token, origin, script) {
-  // rocket：小火箭的订阅，同不覆写，另外附上 AI 链式代理的落地节点（分流配置见 serveRocketConf）
-  const rocket = script === 'rocket';
-  const override = script === null || rocket ? null : Object.hasOwn(OVERRIDES, script) ? OVERRIDES[script] : undefined;
-  if (override === undefined) return text('script 参数只能是 lite（精简）、full（全量）或 rocket（小火箭），不覆写请去掉这个参数', 400);
-  const record = await getRecord(env, token);
-  if (!record) return text('找不到这个 TOKEN（可能已删除或已更换）', 404);
-
-  const { results, ok, config: merged, error } = await loadMerged(env, ctx, record);
-  if (error) return text(error, 502);
-  let config = merged;
-  const landing = override || rocket ? landingProxies(ok, config.proxies, record) : [];
-  // 小火箭不执行覆写脚本，落地节点直接放进节点清单；dialer-proxy 指向分流配置里的「AI链式代理」组
-  if (rocket) config.proxies.push(...landing.map((p) => ({ ...p, 'dialer-proxy': RELAY_GROUP })));
-  else if (landing.length) config[AI_CHAIN_KEY] = { proxies: landing, relay: record.aiChain?.relay || DEFAULT_RELAY };
+  const landing = override ? landingProxies(ok, config.proxies) : [];
+  if (landing.length) config[AI_CHAIN_KEY] = landing;
   if (override) {
     try {
       config = override.run(config);
@@ -181,11 +140,11 @@ async function serveSubscription(env, ctx, token, origin, script) {
 }
 
 /**
- * AI 链式代理的落地节点：勾选的机场节点复制一份（合并后的名称前加 🔗，原节点照样留在各组），再加上自建节点。
- * 机场节点按原本的名称勾选；mergeSubscriptions 按顺序合并、只改名称，所以合并后第 k 个节点就是各机场节点依序排下来的第 k 个。
+ * AI 链式代理的落地节点：勾选的机场节点复制一份（合并后的名称前加 🔗，原节点照样留在各组）。
+ * 按机场原本的节点名称勾选；mergeSubscriptions 按顺序合并、只改名称，所以合并后第 k 个节点就是各机场节点依序排下来的第 k 个。
  * 被节点筛选排除的节点不在 parsed.proxies 里，勾了也不会生效
  */
-function landingProxies(results, merged, record) {
+function landingProxies(results, merged) {
   const landing = [];
   let k = 0;
   for (const r of results) {
@@ -195,7 +154,6 @@ function landingProxies(results, merged, record) {
       k++;
     }
   }
-  for (const p of parseNodes(record.aiChain?.custom)) landing.push({ ...p, name: LANDING_PREFIX + p.name });
   return landing;
 }
 
@@ -554,24 +512,11 @@ function validate(input) {
   });
   const prefixMode = PREFIX_MODES.includes(input.prefixMode) ? input.prefixMode : 'name';
   // 全局：倍率 ≥ excludeRate 的节点不导入；null 表示不限
-  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), sources, aiChain: validAiChain(input.aiChain) };
+  return { name, prefixMode, rateTag: input.rateTag === true, excludeRate: validRate(input.excludeRate), sources };
 }
 
 function nodeNames(list) {
   return Array.isArray(list) ? [...new Set(list.filter((n) => typeof n === 'string' && n && n.length <= MAX_NODE_NAME))] : [];
-}
-
-// AI 链式代理：自建落地节点（存原文，管理页照原样显示）与「AI链式代理」组默认选的中转
-function validAiChain(input) {
-  const custom = String(input?.custom ?? '').trim();
-  if (custom.length > MAX_CUSTOM_NODES) throw new HttpError(400, `自建落地节点不能超过 ${MAX_CUSTOM_NODES} 字`);
-  const nodes = parseNodes(custom);
-  if (custom && nodes.length === 0) {
-    throw new HttpError(400, '自建落地节点读不出来：请贴 mihomo YAML，或 ss / vmess / vless / trojan / hysteria2 分享链接');
-  }
-  if (nodes.length > MAX_LANDING) throw new HttpError(400, `自建落地节点最多 ${MAX_LANDING} 个`);
-  const relay = String(input?.relay ?? '').trim().slice(0, 30) || DEFAULT_RELAY;
-  return { relay, custom };
 }
 
 function validRate(v) {

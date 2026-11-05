@@ -2,9 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { AI_CHAIN_GROUP, AI_CHAIN_KEY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_KEY, AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
-import { LANDING_GROUP, RELAY_GROUP, rocketConf } from '../src/rocket.js';
 import * as yaml from 'js-yaml';
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
@@ -328,7 +327,7 @@ for (const file of ['script.js', 'script-full.js']) {
     // 没有传落地节点：不生成「AI链式代理」组
     assert.ok(!runScript(file)['proxy-groups'].some((g) => g.name === AI_CHAIN_GROUP));
 
-    const out = runScript(file, [], { [AI_CHAIN_KEY]: { proxies: [landing('🔗 家宽'), landing('🔗 家宽')], relay: '香港' } });
+    const out = runScript(file, [], { [AI_CHAIN_KEY]: [landing('🔗 家宽'), landing('🔗 家宽')] });
     assert.ok(!(AI_CHAIN_KEY in out));
     const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
     const names = out['proxy-groups'].map((g) => g.name);
@@ -346,12 +345,12 @@ for (const file of ['script.js', 'script-full.js']) {
     const ai = groups.get('AI');
     assert.deepEqual([...ai.proxies.slice(0, 2)], ['🔗 家宽', '🔗 家宽 2']);
     assert.equal(ai['default-selected'], '🔗 家宽');
-    // 中转选项同 Google 组（含直连），默认选 relay，测速网址同 AI 组
+    // 中转选项同 Google 组（含直连），默认选香港，测速网址同 AI 组
     const relay = groups.get(AI_CHAIN_GROUP);
     assert.equal(relay.type, 'select');
     assert.deepEqual([...relay.proxies], [...groups.get('Google').proxies]);
     assert.deepEqual([...ai.proxies.slice(2)], [...relay.proxies]);
-    assert.equal(relay['default-selected'], '香港');
+    assert.equal(relay['default-selected'], AI_CHAIN_RELAY);
     assert.equal(relay.url, TEST_URLS.AI);
     // 落地节点不进其他组
     for (const g of out['proxy-groups']) {
@@ -361,10 +360,10 @@ for (const file of ['script.js', 'script-full.js']) {
     const defined = new Set([...out.proxies.map((p) => p.name), ...names, 'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS']);
     for (const g of out['proxy-groups']) for (const n of g.proxies) assert.ok(defined.has(n), `${g.name} → ${n}`);
 
-    // relay 不在选项里（例如没有香港节点）就不设默认
+    // 香港不在选项里（例如没有香港节点）就不设默认
     const noHk = runConfig(file, {
       proxies: BASE_NODES.filter((p) => !p.name.includes('香港')),
-      [AI_CHAIN_KEY]: { proxies: [landing('🔗 家宽')], relay: '香港' },
+      [AI_CHAIN_KEY]: [landing('🔗 家宽')],
     });
     assert.equal(noHk['proxy-groups'].find((g) => g.name === AI_CHAIN_GROUP)['default-selected'], undefined);
   });
@@ -501,9 +500,12 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
   for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', '台湾']) {
     assert.ok(groups.get(name).includes(`url=${lite.get(name).url}`), name);
   }
-  // 默认选择（第一项）同精简版
-  assert.equal(groups.get('AI')[1], '台湾');
+  // 默认选择（第一项）同精简版：AI 默认台湾，台湾组不通（订阅里没有台湾节点）时 fallback 到美国
+  assert.equal(groups.get('AI')[1], '台湾优先');
+  assert.deepEqual(groups.get('台湾优先').slice(0, 3), ['fallback', '台湾', '美国']);
   for (const name of ['Google', 'Apple', 'Telegram', 'Steam']) assert.equal(groups.get(name)[1], '默认代理', name);
+  // 分流组除 AdBlock 外都可选 DIRECT（同精简版）
+  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.get(name).includes('DIRECT'), name);
   assert.equal(groups.get('AdBlock')[1], 'REJECT');
   // 地区组同精简版分两层：手选组默认选「<地区>-自动选择」，手动选的节点重连后不会被测速改掉
   for (const name of ['香港', '日本', '美国', '新加坡', '台湾']) {
@@ -517,44 +519,6 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
     assert.ok(groups.has(policy) || ['DIRECT', 'REJECT'].includes(policy), rule);
   }
   assert.equal(section('Rule').at(-1), 'FINAL,漏网之鱼');
-  // 分流组除 AdBlock 外都可选 DIRECT（同精简版）
-  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.get(name).includes('DIRECT'), name);
-  // 正则组一律排除 🔗 开头的落地节点，其余照常归组
-  const regexGroups = section('Proxy Group').map((l) => l.match(/policy-regex-filter=(.*)$/)?.[1]).filter(Boolean);
-  assert.equal(regexGroups.length, 12);
-  for (const source of regexGroups) {
-    const re = new RegExp(source.replace(/^\(\?i\)/, ''), 'iu');
-    assert.ok(!re.test('🔗 三毛 | 5x | 台湾1'), source);
-  }
-  const tw = new RegExp(groups.get('台湾').at(-1).replace(/^policy-regex-filter=\(\?i\)/, ''), 'iu');
-  assert.ok(tw.test('🇹🇼 三毛 | 台湾1') && tw.test('MNK | Taiwan 01'));
-});
-
-test('rocketConf：按订阅加 AI 落地组与 AI链式代理组，没有台湾节点时 AI 默认美国', () => {
-  const template = fs.readFileSync(new URL('../public/shadowrocket.conf', import.meta.url), 'utf8');
-  const groupsOf = (conf) => new Map(conf.split('[Proxy Group]')[1].split(/\n\[/)[0].split('\n')
-    .filter((l) => l.includes(' = ')).map((l) => { const [name, value] = l.split(/ = (.*)/); return [name, value.split(',')]; }));
-
-  // 没有落地、有台湾：跟模板一样
-  assert.equal(rocketConf(template), template);
-
-  const noTw = groupsOf(rocketConf(template, { hasTaiwan: false }));
-  assert.deepEqual(noTw.get('AI').slice(0, 3), ['select', '美国', '台湾']);
-  assert.ok(!noTw.has(LANDING_GROUP));
-
-  const conf = rocketConf(template, { landing: true, relay: '日本' });
-  const groups = groupsOf(conf);
-  const names = [...groups.keys()];
-  assert.deepEqual(names.slice(names.indexOf('AI'), names.indexOf('AI') + 3), ['AI', LANDING_GROUP, RELAY_GROUP]);
-  assert.deepEqual(groups.get('AI').slice(0, 3), ['select', LANDING_GROUP, '台湾']);
-  assert.deepEqual(groups.get(LANDING_GROUP), ['select', 'url=https://api.anthropic.com/v1/models', 'policy-regex-filter=^🔗']);
-  // 中转选项同 Google 组（含 DIRECT），默认中转排第一
-  const relay = groups.get(RELAY_GROUP);
-  assert.equal(relay[1], '日本');
-  assert.deepEqual(relay.slice(1, -1).sort(), groups.get('Google').filter((x) => !x.includes('=') && x !== 'select').sort());
-  assert.ok(relay.includes('DIRECT'));
-  // 只改 AI 一行、加两行，其余不动
-  assert.equal(conf.split('\n').length, template.split('\n').length + 2);
 });
 
 test('sync-scripts：上游改版找不到修改位置时报错', () => {
