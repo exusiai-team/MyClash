@@ -380,11 +380,13 @@ export function directForAllServices(source) {
 // mihomo 不允许分组设 dialer-proxy，所以「整组走链式」就是把组里每个节点都挂上：
 // - MyClash Worker 单独勾的节点带着 config 里不会带出去的标记 proxy['myclash-ai-chain']；
 //   config['myclash-ai-chain-groups'] 列出整组走链式的地区组（如「台湾」），组里的节点都挂上
-// - 挂了中转的节点照样留在原来的组，哪个组选到都经中转；「AI」组默认选第一个整组走链式的地区组，
+// - 挂了中转的节点只留在整组走链式的地区组、「AI」组与全是这些节点的组（如「台湾-自动选择」），
+//   其他组（手动选择、日本、家宽节点、自动选择…）里还有别的节点的就拿掉它们：
+//   这些组才能当中转而不绕回自己（mihomo 运行时不查经过分组的 dialer-proxy 循环，绕回去内核直接栈溢出崩溃），
+//   其他流量也不会被选到多绕一趟；「AI」组默认选第一个整组走链式的地区组，
 //   只勾了单个节点时把它们放在「AI」组最前面并设为默认
 // - 「AI链式代理」组决定从哪里连到这些节点，默认选香港（客户端里改选后会记住），选「直连」就是不中转；
-//   选项同「AI」组原本的选项，但拿掉连得到挂了中转节点的组，不会绕回自己
-// - 自动选择组（url-test）里还有其他节点的，拿掉挂了中转的节点，其他流量不会被自动选到多绕一趟
+//   选项同「AI」组原本的选项，但拿掉仍连得到挂了中转节点的组（整组走链式的地区组、含有它的默认代理）
 export const AI_CHAIN_KEY = 'myclash-ai-chain';
 export const AI_CHAIN_GROUPS_KEY = 'myclash-ai-chain-groups';
 export const AI_CHAIN_GROUP = 'AI链式代理';
@@ -412,7 +414,7 @@ const AI_CHAIN = `  // AI 链式代理：单独勾的节点与整组走链式的
   if (chained.size && aiGroup) {
     newConfig['proxies'] = newConfig['proxies'].map((p) => (chained.has(p.name) ? { ...p, 'dialer-proxy': '${AI_CHAIN_GROUP}' } : p));
     for (const g of groups) {
-      if (g.type !== 'url-test' || g.proxies.every((n) => chained.has(n))) continue;
+      if (g === aiGroup || chainRegions.includes(g.name) || g.proxies.every((n) => chained.has(n))) continue;
       g.proxies = g.proxies.filter((n) => !chained.has(n));
     }
     const relayProxies = aiGroup.proxies
