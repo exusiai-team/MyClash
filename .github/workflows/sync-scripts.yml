@@ -2,7 +2,7 @@ name: 同步上游覆写脚本
 
 # 每天从 AIsouler/MyClash 抓一次覆写脚本，套用本项目的改动（scripts/sync-scripts.mjs），
 # 再从 Sukka 抓 Reject Base 转成 mrs 规则集。生成物只推到 rules 分支，不进 main：
-#   script.js、script-full.js、rules/sukka-reject.mrs
+#   script.js、script-full.js、rules/sukka-reject.mrs、rules/sukka-reject-classical.txt
 # rules 分支是孤儿分支，每次有变化就用强制推送换成只有一个提交的新历史，仓库不会越长越大。
 # Worker 只由 Cloudflare 的 Git 自动部署（Workers Builds）部署，部署时 scripts/build-overrides.mjs 从 rules 分支取覆写脚本。
 # 两个脚本有改动时，这里调用 Workers Builds 的 Deploy Hook（secret CLOUDFLARE_DEPLOY_HOOK，不需要 API 令牌），

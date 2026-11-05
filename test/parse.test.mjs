@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY,AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY,AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, TEST_URLS, patchScript, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -428,10 +428,11 @@ for (const file of ['script.js', 'script-full.js']) {
 
 for (const file of ['script.js', 'script-full.js']) {
   test(`覆写脚本 public/${file}：代理服务器域名与 DNS 本身用两个 DoH 解析`, () => {
-    const { dns } = runScript(file);
+    const { dns, hosts } = runScript(file);
     const doh = ['https://223.5.5.5/dns-query#DIRECT', 'https://1.12.12.12/dns-query#DIRECT'];
     assert.deepEqual([...dns['default-nameserver']], doh);
     assert.deepEqual([...dns['proxy-server-nameserver']], doh);
+    assert.ok(!('doh.pub' in hosts)); // 原本给 doh.pub 写死的 IP，换成 IP 直连的 DoH 后用不到
   });
 }
 
@@ -444,6 +445,12 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.equal(sukka.url, SUKKA_RULESET_URL);
     assert.ok(sukka.url.endsWith('@rules/rules/sukka-reject.mrs')); // 在 rules 分支，不在 main
     assert.ok(out.rules.includes('RULE-SET,sukka-reject,AdBlock'));
+    const classical = out['rule-providers']['sukka-reject-classical'];
+    assert.equal(classical.format, 'text');
+    assert.equal(classical.behavior, 'classical');
+    assert.equal(classical.url, SUKKA_CLASSICAL_URL);
+    // 有 IP 规则，又排在国内直连前面，不能让每个域名连接都先解析
+    assert.ok(out.rules.includes('RULE-SET,sukka-reject-classical,AdBlock,no-resolve'));
     for (const name of ['category-ads', 'fuck-you-miui']) {
       assert.ok(!(name in out['rule-providers']), name);
       assert.ok(!out.rules.includes(`RULE-SET,${name},AdBlock`), name);
@@ -468,7 +475,8 @@ for (const file of ['script.js', 'script-full.js']) {
     const ad = rules.indexOf('RULE-SET,sukka-reject,AdBlock');
     assert.ok(ad > rules.indexOf('RULE-SET,private,直连'));
     assert.ok(ad < rules.indexOf('RULE-SET,geolocation-cn,直连'));
-    assert.equal(rules.filter((r) => r.endsWith(',AdBlock')).length, 1);
+    assert.equal(rules.indexOf('RULE-SET,sukka-reject-classical,AdBlock,no-resolve'), ad + 1);
+    assert.equal(rules.filter((r) => r.split(',')[2] === 'AdBlock').length, 2);
   });
 }
 
@@ -570,4 +578,16 @@ test('dumpYaml：输出读回来跟原本一样，节点一行一个，容易误
   assert.match(out, /^ {2}empty: \[\]$/m);
   assert.ok(!/[\u2028\u0085\ufeff]/.test(out), 'YAML 当成换行或不可打印的字符要转义');
   assert.ok(!out.includes('skipped'));
+});
+
+test('Sukka 的 non_ip 规则：DOMAIN / DOMAIN-SUFFIX 并进 mrs，其余留给 classical', () => {
+  const { domains, classical } = splitSukkaNonIp([
+    'DOMAIN,a.example',
+    'DOMAIN-SUFFIX,b.example',
+    'DOMAIN-KEYWORD,adserver',
+    'DOMAIN-WILDCARD,ads-*.example',
+    'IP-CIDR,1.2.3.0/24,no-resolve',
+  ]);
+  assert.deepEqual(domains, ['a.example', '+.b.example']);
+  assert.deepEqual(classical, ['DOMAIN-KEYWORD,adserver', 'DOMAIN-WILDCARD,ads-*.example', 'IP-CIDR,1.2.3.0/24,no-resolve']);
 });

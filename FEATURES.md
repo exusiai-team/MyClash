@@ -74,33 +74,84 @@
 | 日志级别 | info | warning | `reduceMemory` |
 | 本机代理核心直连 | 无 | xray / sing-box 进程最先直连 | `reduceMemory` |
 | sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，只拿域名匹配规则 | `addSniffer` |
-| 广告规则 | category-ads，排在国内直连之后 | Sukka Reject Base（mrs），排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockFirst` |
+| 广告规则 | category-ads，排在国内直连之后 | Sukka Reject Base（域名转 mrs + 关键词 / 通配 / IP 的 classical 规则集）与 Sukka 的 PCDN 清单，排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockFirst` |
 | DNS 引导 | 见第 3 节 | 见第 3 节 | `useDohBootstrap` |
 
 ## 3. DNS
 
-`fake-ip` 模式：系统 DNS 查询拿到假 IP，连接按域名走规则；只有国内域名、私有域名和 `fakeip-filter` 里的域名回真 IP。
+### 3.1 现在输出的设置
 
-| 键 | 值 | 来源 |
+机场的 `dns` 里没有节点专用 DNS 时，`?script=lite|full` 输出的 `dns` 与 `hosts` 就是下面这样（精简版、全量版相同）；行尾注释是来源：
+
+```yaml
+dns:
+  enable: true                       # 上游
+  ipv6: true                         # 上游
+  use-hosts: true                    # 上游
+  use-system-hosts: true             # 上游
+  cache-algorithm: arc               # 上游
+  enhanced-mode: fake-ip             # 上游
+  fake-ip-range: 198.18.0.1/15       # 上游
+  fake-ip-range6: 2001:2::1/48       # 上游
+  fake-ip-filter:                    # 上游：这些域名回真 IP
+    - rule-set:private
+    - rule-set:fakeip_filter
+    - rule-set:cn
+  default-nameserver:                # 本仓库（原版：114 明文 + 阿里 DoT + 腾讯 DoH）
+    - https://223.5.5.5/dns-query#DIRECT
+    - https://1.12.12.12/dns-query#DIRECT
+  proxy-server-nameserver:           # 本仓库（原版：114 明文 + 阿里 DoT + doh.pub）
+    - https://223.5.5.5/dns-query#DIRECT
+    - https://1.12.12.12/dns-query#DIRECT
+  nameserver:                        # 上游
+    - https://cloudflare-dns.com/dns-query#默认代理
+    - https://dns.google/dns-query#默认代理
+  nameserver-policy:                 # 上游
+    rule-set:private: system
+    rule-set:douyin: [180.184.1.1, 180.184.2.2]
+    rule-set:cn: [223.5.5.5#DIRECT, 119.29.29.29#DIRECT]
+  direct-nameserver: [223.5.5.5#DIRECT, 119.29.29.29#DIRECT]   # 上游
+  direct-nameserver-follow-policy: true                         # 上游
+hosts:                               # 上游；本仓库删掉了用不到的 doh.pub
+  cloudflare-dns.com: [1.1.1.1, 1.0.0.1]
+  dns.google: [8.8.8.8, 8.8.4.4]
+  services.googleapis.cn: services.googleapis.com   # Google Play 下载
+  +.mcdn.bilivideo.com: [0.0.0.0]                   # 以下 4 条屏蔽 B 站 PCDN
+  +.mcdn.bilivideo.cn: [0.0.0.0]
+  +.edge.mountaintoys.cn: [0.0.0.0]
+  +.h2.smtcdns.net: [0.0.0.0]
+```
+
+机场订阅自带 DNS 时，上游还会多做两件事（Worker 合并时保留了机场的 `dns` / `hosts`，所以拿得到）：
+
+- `proxy-server-nameserver-policy`：从机场 `dns` 里挑出解析节点域名用的私有 DNS（阿里、腾讯、Google 等公共 DNS 不算），只用在节点域名上；机场 `fake-ip-filter` 里跟节点域名有关的条目并进 `fake-ip-filter`
+- 机场 DNS 是本机监听的写法时，直接按机场 `hosts` 改写节点 server
+
+### 3.2 每种查询用哪个 DNS
+
+| 查询 | 用哪个 | 经过 |
 | --- | --- | --- |
-| `enhanced-mode` | `fake-ip`，`198.18.0.1/15`、`2001:2::1/48` | 上游 |
-| `ipv6`、`use-hosts`、`use-system-hosts`、`cache-algorithm: arc` | | 上游 |
-| `fake-ip-filter` | `rule-set:private`、`rule-set:fakeip_filter`、`rule-set:cn`，加机场 `fake-ip-filter` 里跟节点域名有关的条目 | 上游 |
-| `nameserver` | Cloudflare、Google DoH，经「默认代理」查 | 上游 |
-| `nameserver-policy` | 私有域名 → `system`；抖音 → 火山引擎 `180.184.1.1`；`cn` → 阿里、腾讯 UDP（`223.5.5.5`、`119.29.29.29`） | 上游 |
-| `direct-nameserver` | 阿里、腾讯 UDP，`direct-nameserver-follow-policy: true` | 上游 |
-| `default-nameserver` | 阿里、腾讯 DoH（`https://223.5.5.5/dns-query`、`https://1.12.12.12/dns-query`） | **本仓库**（原版：114 明文 + 阿里 DoT + 腾讯 DoH） |
-| `proxy-server-nameserver` | 同上，解析节点域名用 | **本仓库**（原版：114 明文 + 阿里 DoT + `doh.pub`） |
-| `proxy-server-nameserver-policy` | 从机场的 `dns` 里挑出节点域名专用的私有 DNS（排除阿里、腾讯、Google 等公共 DNS） | 上游（Worker 保留机场 `dns` 才有得挑） |
-| 按 hosts 改写节点 server | 机场 DNS 是本机监听的那种写法时，按机场 `hosts` 直接改写节点地址 | 上游 |
-| `hosts` | Cloudflare、Google DoH 的 IP；`services.googleapis.cn` → `.com`（Google Play 下载）；B 站 PCDN 域名 → `0.0.0.0` | 上游 |
-| `sniffer` | 见 2.2 | **本仓库** |
+| 私有域名（`rule-set:private`） | 系统 DNS | 直连 |
+| 国内域名（`rule-set:cn`，约 10.7 万条），系统查到就回真 IP | 阿里 `223.5.5.5`、腾讯 `119.29.29.29`（UDP） | 直连 |
+| 抖音 | 火山引擎 `180.184.1.1`、`180.184.2.2` | 直连 |
+| 其他域名，系统来查 | 不查，直接回假 IP；连接按域名走规则，走代理时由节点那边解析 | — |
+| 其他域名，规则走到 IP 规则还没命中（见第 5 节） | Cloudflare、Google DoH | 经「默认代理」 |
+| 规则判为直连的连接，要拿真实 IP | 跟 `nameserver-policy` 一样（`direct-nameserver-follow-policy`），没命中就用阿里、腾讯 UDP | 直连 |
+| 节点的服务器域名 | 机场的私有 DNS（有的话），否则阿里、腾讯 DoH | 直连 |
+| DNS 服务器本身的域名（`cloudflare-dns.com`、`dns.google`） | 先查 `hosts`（写死了 IP）；查不到才用 `default-nameserver` | 直连 |
+| 浏览器安全 DNS、App 自带 DoH、直接连 IP | 不经过 mihomo 的 DNS；sniffer 从 TLS / HTTP / QUIC 里取出域名再走规则 | — |
 
-改 `default-nameserver` / `proxy-server-nameserver` 的原因：114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `operation was canceled`，测速时成簇刷屏；两个 DoH 连接可复用，本机实测 warning 归零、中位延迟 48 ms → 18 ms。
+### 3.3 本仓库改了什么、为什么
 
-## 4. 规则集（mrs）
+- `default-nameserver` / `proxy-server-nameserver` 改成两个 DoH：原版 114 明文总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时节点域名集中解析就成簇刷屏。DoH 连接可复用，本机实测同样 120 次查询，warning 由 18 条降到 0，中位延迟 48 ms → 18 ms（`useDohBootstrap`）
+- 删掉 `hosts` 里的 `doh.pub`：只有原版的 `proxy-server-nameserver` 用它，改成用 IP 的 DoH 后用不到了（`useDohBootstrap`）
+- 开启 sniffer（`addSniffer`）：`force-dns-mapping`、`parse-pure-ip`，`override-destination: false`（只拿域名匹配规则，不改目标地址），跳过 `Mijia Cloud` 与 `+.push.apple.com`
 
-规则集都是 `format: mrs`、`interval: 86400`（每天更新），客户端经 `cdn.jsdmirror.com` 下载（规则里先直连这个域名，避免鸡生蛋）。大小为 2026-11 的约值。
+国内 DNS（`nameserver-policy`、`direct-nameserver`）沿用原版的 UDP：一个包就回，取消也不会记 warning，换成 DoH 只多一点防运营商劫持 53 端口的好处。
+
+## 4. 规则集
+
+除 `sukka-reject-classical` 外都是 `format: mrs`；全部 `interval: 86400`（每天更新），客户端经 `cdn.jsdmirror.com` 下载（规则里先直连这个域名，避免鸡生蛋）。大小为 2026-11 的约值。
 
 | 规则集 | 内容 | 用途 | 来源 |
 | --- | --- | --- | --- |
@@ -114,9 +165,20 @@
 | `douyin` | 抖音 | DNS 走火山引擎 | 上游（数据：bett-rules） |
 | 各分流组的 geosite / geoip | Google、AI、Telegram… | 对应分流组 | 上游（数据：bett-rules） |
 | `huggingface` | HuggingFace | 默认代理（抢在 AI 前面） | **本仓库**（数据：bett-rules） |
-| `sukka-reject` | Sukka Reject Base 域名集，约 14 万条；原文 3 MB，转成 mrs 约 1.4 MB | AdBlock（默认 REJECT） | **本仓库**每天用 mihomo 转换，放 `rules` 分支（数据：Sukka） |
+| `sukka-reject` | Sukka Reject Base 的域名集 `domainset/reject`，加上 `non_ip/reject` 与 `non_ip/reject-no-drop`（PCDN）里的 DOMAIN / DOMAIN-SUFFIX，约 14.8 万条；转成 mrs 约 1.4 MB | AdBlock（默认 REJECT） | **本仓库**每天用 mihomo 转换，放 `rules` 分支（数据：Sukka） |
+| `sukka-reject-classical` | 同上两份 non_ip 清单里 mrs 放不下的：约 146 条关键词（`adserver`、`umeng`、`admob`…）、22 条通配（`ads-*.tiktok.com`）、51 条 IP 段；classical 文本，约 7 KB | AdBlock，规则带 `no-resolve` | **本仓库**每天生成，放 `rules` 分支（数据：Sukka） |
 
-原版的 `category-ads`（约 15 KB）被 `sukka-reject` 换掉，不再下载。
+原版的 `category-ads`（约 15 KB）被换掉，不再下载。
+
+Sukka 的清单没有全取：
+
+- 不取 `non_ip/reject-drop`：里面有极光（jpush）、个推（getui）等推送 SDK，屏蔽后国内 App 会收不到通知
+- 不取 `ip/reject`：大多是运营商劫持「查无此域名」时回的 IP（本配置用公共 DNS，碰不到）与僵尸网络控制端 IP，跟广告无关；其中的 IP-ASN 规则 mrs 也放不下
+- 不取 `domainset/reject_extra`：多 8 万条，误杀风险更高
+
+`sukka-reject-classical` 里有 IP 规则，又排在国内直连前面，所以规则带 `no-resolve`：只拦本来就是 IP 的连接，不会让每个域名连接走到这里都先解析一次。
+
+Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`、`bzr.openai.com`、`gvt2.com`），AdBlock 排在 AI 规则前面，这些一定会被拒绝。碰到 App 异常时，把 AdBlock 组改选 `PASS` 试试。
 
 ## 5. 规则顺序
 
@@ -125,7 +187,7 @@
 1. xray / sing-box 进程 → 直连（本仓库）
 2. `cdn.jsdmirror.com` → 直连（上游）
 3. `private` → 直连（上游）
-4. `sukka-reject` → AdBlock（本仓库：换了规则集，也从分流规则搬到这里）
+4. `sukka-reject`、`sukka-reject-classical`（`no-resolve`）→ AdBlock（本仓库：换了规则集，也从分流规则搬到这里）
 5. `geolocation-cn`、`games_cn`、`synology`、`apple_cn`、`microsoft_cn` 与几个固定域名 → 直连（上游）
 6. 屏蔽代理 QUIC（上游，默认关闭）
 7. `huggingface` → 默认代理（本仓库）
