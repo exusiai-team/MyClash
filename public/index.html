@@ -268,6 +268,9 @@
   .chip-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip-btn svg.i { width: 12px; height: 12px; }
   .chip-btn.warn { background: var(--warn-soft); color: var(--warn); }
+  .rate-chip.region.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); text-decoration: none; }
+  .rate-chip.region.none { opacity: .55; }
+  .chain-sub { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
   #chain-results:empty { display: none; }
 
   /* 底部固定的操作列 */
@@ -536,8 +539,12 @@
         <h2 id="sec-chain"><span class="step">4</span>AI 链式代理 <span class="hint">选填</span></h2>
         <span class="hint" id="chain-summary"></span>
       </div>
-      <p class="hint sec-desc">勾选的节点复制一份带 🔗 的，只放进「AI」组并设为默认，经「AI链式代理」组中转（默认香港，客户端里改选后会记住；选「直连」就是不中转），原节点照样留在各组。
-        适合只能经中转连上的家宽节点。只对精简 / 全量覆写的链接生效。</p>
+      <p class="hint sec-desc">选中的节点直接经「AI链式代理」组中转（默认香港，客户端里改选后会记住；选「直连」就是不中转），不复制节点、不多出组，哪个组选到它们都经中转；
+        「AI」组默认选第一个整组，没选整组就默认选第一个节点。适合只能经中转连上的家宽节点。只对精简 / 全量覆写的链接生效。</p>
+      <h3 class="chain-sub">整组</h3>
+      <p class="hint">点一下选整个地区组，组里每个节点都经中转，例如选「台湾」，AI 默认选的「台湾」组就是链式代理。数字是会导入的节点数，按名称估算。</p>
+      <div class="chips" id="chain-regions" style="margin-top:8px"></div>
+      <h3 class="chain-sub">单个节点</h3>
       <div class="chips" id="chain-picked"></div>
       <div class="search" style="margin-top:10px"><svg class="i"><use href="#i-search"/></svg>
         <input type="text" id="chain-search" placeholder="搜索节点加为落地，例如 家宽、台湾" aria-label="搜索要当落地的节点" autocomplete="off"></div>
@@ -679,7 +686,10 @@
     const manual = it.sources.reduce((n, s) => n + (s.exclude?.length || 0), 0);
     if (manual) chips.push(`手动排除 ${manual} 个节点`);
     const landing = it.sources.reduce((n, s) => n + (s.aiChain?.length || 0), 0);
-    if (landing) chips.push(`AI 链式代理 ${landing} 个落地`);
+    const regions = it.aiChainGroups || [];
+    if (landing || regions.length) {
+      chips.push(`AI 链式代理 ${[regions.length && `整组 ${regions.join('、')}`, landing && `${landing} 个落地`].filter(Boolean).join('，')}`);
+    }
     return chips.map((c) => `<span class="chip accent">${escapeHtml(c)}</span>`).join('');
   }
   function itemHtml(it) {
@@ -823,6 +833,7 @@
   let dirty = false;
   // AI 链式代理：每个机场勾作落地的节点（按原本的节点名称）
   let landingByUrl = new Map();
+  let chainRegions = new Set();
 
   const urlOf = (row) => row.querySelector('.src-url').value.trim();
   const rows = () => [...$('sources').children];
@@ -976,6 +987,7 @@
     expanded = new Set();
     lastPick = null;
     landingByUrl = new Map((record ? record.sources : []).map((s) => [s.url, new Set(s.aiChain || [])]));
+    chainRegions = new Set(record?.aiChainGroups || []);
     $('chain-search').value = '';
     $('edit-title').textContent = record ? `编辑「${record.name}」` : '新建订阅';
     $('edit-name').value = record ? record.name : '';
@@ -1185,9 +1197,24 @@
     const limit = effectiveRate(url);
     return !(limit !== null && rateOf(node) >= limit) && !excludeByUrl.get(url)?.has(name);
   }
-  // 已选的落地节点（点一下移除），与搜索结果（勾选加入，最多列 40 个）
+  // 可以整组走链式的地区组；正则抄自覆写脚本的 regionDefinitions / homeRegionDefinitions，只用来估算节点数
+  const CHAIN_REGIONS = [
+    ['台湾', /🇹🇼|台湾|台北|高雄|(?<![A-Za-z])TWN?(?![A-Za-z])|taiwan/i],
+    ['美国', /🇺🇸|美国|纽约|洛杉矶|旧金山|芝加哥|休斯顿|迈阿密|西雅图|波士顿|华盛顿|圣何塞|(?<![A-Za-z])USA?(?![A-Za-z])|america|united\s*states/i],
+    ['日本', /🇯🇵|日本|东京|大阪|京都|(?<![A-Za-z])JPN?(?![A-Za-z])|japan/i],
+    ['新加坡', /🇸🇬|新加坡|狮城|(?<![A-Za-z])SGP?(?![A-Za-z])|singapore/i],
+    ['香港', /🇭🇰|香港|(?<![A-Za-z])HKG?(?![A-Za-z])|hong\s*kong/i],
+    ['家宽节点', /家宽|住宅|原生\s*IP|家庭宽带|\bISP\b|\bRES\b|residential/i],
+  ];
+  // 整组（点一下切换）、已选的落地节点（点一下移除），与搜索结果（勾选加入，最多列 40 个）
   function renderChain() {
     const urls = currentUrls();
+    const kept = urls.flatMap((url) => (sourceByUrl.get(url)?.nodes || []).filter((n) => imported(url, n.name)));
+    $('chain-regions').innerHTML = CHAIN_REGIONS.map(([name, re]) => {
+      const n = kept.filter((node) => re.test(node.name)).length;
+      const on = chainRegions.has(name);
+      return `<button type="button" class="rate-chip region${on ? ' on' : ''}${n ? '' : ' none'}" data-region="${name}" aria-pressed="${on}" title="${on ? '取消' : '选'}整组「${name}」走链式">${on ? '🔗 ' : ''}${name}<small>${n}</small></button>`;
+    }).join('');
     const picked = urls.flatMap((url, i) => [...(landingByUrl.get(url) || [])].map((name) => ({ url, i, name, ok: imported(url, name) })));
     $('chain-picked').innerHTML = picked.length
       ? picked.map(({ url, i, name, ok }) => {
@@ -1204,8 +1231,17 @@
         return `<label class="node" title="${escapeHtml(name)}"><input type="checkbox" data-url="${escapeHtml(url)}" data-name="${escapeHtml(name)}"${on ? ' checked' : ''}>` +
           `<span class="n">${escapeHtml(`${airportName(url, i)} | ${name}`)}</span></label>`;
       }).join('') + (results.length > 40 ? `<p class="node-empty">还有 ${results.length - 40} 个，请缩小搜索范围</p>` : '');
-    $('chain-summary').textContent = picked.length ? `已选 ${picked.length} 个落地节点` : '';
+    $('chain-summary').textContent = [chainRegions.size && `整组 ${[...chainRegions].join('、')}`, picked.length && `${picked.length} 个落地节点`]
+      .filter(Boolean).join('，');
   }
+  $('chain-regions').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-region]');
+    if (!chip) return;
+    const name = chip.dataset.region;
+    if (chainRegions.has(name)) chainRegions.delete(name); else chainRegions.add(name);
+    dirty = true;
+    renderChain();
+  });
   $('chain-picked').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-name]');
     if (!chip) return;
@@ -1356,7 +1392,7 @@
     if (!sources.length) return showMsg($('edit-msg'), '至少要填一个机场订阅链接');
     $('save-btn').disabled = true;
     try {
-      const body = { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, excludeRate: getExcludeRate(), sources };
+      const body = { name, prefixMode: getPrefixMode(), rateTag: $('rate-tag').checked, excludeRate: getExcludeRate(), aiChainGroups: [...chainRegions], sources };
       const saved = editingToken ? await api('PUT', '/subs/' + editingToken, body) : await api('POST', '/subs', body);
       if (!editingToken) addToken(saved.token);
       toast(editingToken ? `已保存「${saved.name}」` : `已生成「${saved.name}」，复制链接到客户端就能用`);

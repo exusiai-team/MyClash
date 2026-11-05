@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { AI_CHAIN_GROUP, AI_CHAIN_KEY, AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY,AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_RULESET_URL, TEST_URLS, patchScript } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -322,49 +322,67 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
-  test(`覆写脚本 public/${file}：AI 链式代理只作用于 AI 组`, () => {
-    const landing = (name) => ({ name, type: 'trojan', server: 'home.example', port: 443, password: 'x', 'dialer-proxy': 'old' });
-    // 没有传落地节点：不生成「AI链式代理」组
-    assert.ok(!runScript(file)['proxy-groups'].some((g) => g.name === AI_CHAIN_GROUP));
+  test(`覆写脚本 public/${file}：AI 链式代理直接给节点挂中转，AI 组默认选它们`, () => {
+    const tw2 = { ...BASE_NODES[4], name: '🇹🇼 台湾 02', server: 'tw2.example' };
+    const groupsOf = (out) => new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    const check = (out) => {
+      const names = out['proxy-groups'].map((g) => g.name);
+      const defined = new Set([...out.proxies.map((p) => p.name), ...names, 'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS']);
+      for (const g of out['proxy-groups']) for (const n of g.proxies) assert.ok(defined.has(n), `${g.name} → ${n}`);
+      for (const p of out.proxies) assert.ok(!(AI_CHAIN_KEY in p), p.name);
+      assert.ok(!(AI_CHAIN_GROUPS_KEY in out));
+    };
+    // 什么都没选：不生成「AI链式代理」组，AI 照旧默认台湾
+    const none = groupsOf(runScript(file, [tw2]));
+    assert.ok(!none.has(AI_CHAIN_GROUP));
 
-    const out = runScript(file, [], { [AI_CHAIN_KEY]: [landing('🔗 家宽'), landing('🔗 家宽')] });
-    assert.ok(!(AI_CHAIN_KEY in out));
-    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    // 整组台湾（没有这个地区组的家宽节点略过）
+    const out = runScript(file, [tw2], { [AI_CHAIN_GROUPS_KEY]: ['台湾', '家宽节点'] });
+    check(out);
+    const groups = groupsOf(out);
+    const chained = [...out.proxies].filter((p) => p['dialer-proxy']).map((p) => [p.name, p['dialer-proxy']]);
+    assert.deepEqual(chained, [['🇹🇼 台湾 01', AI_CHAIN_GROUP], ['🇹🇼 台湾 02', AI_CHAIN_GROUP]]);
+    // 不复制节点、不多出组；台湾组原样（自动选择组全是台湾节点，留着）
+    assert.equal(out.proxies.length, runScript(file, [tw2]).proxies.length);
+    assert.ok(!out['proxy-groups'].some((g) => g.name.includes('🔗')));
+    assert.deepEqual([...groups.get('台湾-自动选择').proxies], ['🇹🇼 台湾 01', '🇹🇼 台湾 02']);
+    // 混着其他节点的自动选择组拿掉台湾节点
+    assert.ok(!groups.get('自动选择').proxies.some((n) => n.includes('台湾')));
+    assert.ok(groups.get('自动选择').proxies.length > 0);
+    // AI 组默认选台湾，选项不变
+    const ai = groups.get('AI');
+    assert.equal(ai['default-selected'], '台湾');
+    assert.deepEqual([...ai.proxies], [...none.get('AI').proxies]);
+    // 中转组紧跟在 AI 组后面（GLOBAL 里也是），默认香港，测速网址同 AI 组；
+    // 拿掉连得到台湾节点的组（台湾、默认代理），不会绕回自己
     const names = out['proxy-groups'].map((g) => g.name);
-    // 紧跟在 AI 组后面，GLOBAL 里也排在 AI 后面
     assert.equal(names[names.indexOf('AI') + 1], AI_CHAIN_GROUP);
     const global = groups.get('GLOBAL').proxies;
     assert.equal(global[global.indexOf('AI') + 1], AI_CHAIN_GROUP);
-
-    // 落地节点同名时加序号，都挂上「AI链式代理」
-    const landed = out.proxies.filter((p) => p.server === 'home.example');
-    assert.deepEqual([...landed.map((p) => p.name)], ['🔗 家宽', '🔗 家宽 2']);
-    for (const p of landed) assert.equal(p['dialer-proxy'], AI_CHAIN_GROUP);
-
-    // AI 组：落地节点排最前面并设为默认，原本的选项都还在
-    const ai = groups.get('AI');
-    assert.deepEqual([...ai.proxies.slice(0, 2)], ['🔗 家宽', '🔗 家宽 2']);
-    assert.equal(ai['default-selected'], '🔗 家宽');
-    // 中转选项同 Google 组（含直连），默认选香港，测速网址同 AI 组
     const relay = groups.get(AI_CHAIN_GROUP);
     assert.equal(relay.type, 'select');
-    assert.deepEqual([...relay.proxies], [...groups.get('Google').proxies]);
-    assert.deepEqual([...ai.proxies.slice(2)], [...relay.proxies]);
     assert.equal(relay['default-selected'], AI_CHAIN_RELAY);
     assert.equal(relay.url, TEST_URLS.AI);
-    // 落地节点不进其他组
-    for (const g of out['proxy-groups']) {
-      if (g.name !== 'AI') assert.ok(!g.proxies.some((n) => n.startsWith('🔗')), g.name);
-    }
-    // 引用都指向存在的节点或组
-    const defined = new Set([...out.proxies.map((p) => p.name), ...names, 'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS']);
-    for (const g of out['proxy-groups']) for (const n of g.proxies) assert.ok(defined.has(n), `${g.name} → ${n}`);
+    assert.equal(relay.proxies.at(-1), '直连');
+    for (const n of ['台湾', '默认代理']) assert.ok(!relay.proxies.includes(n), n);
+    for (const n of ['香港', '美国', '自动选择']) assert.ok(relay.proxies.includes(n), n);
 
-    // 香港不在选项里（例如没有香港节点）就不设默认
-    const noHk = runConfig(file, {
-      proxies: BASE_NODES.filter((p) => !p.name.includes('香港')),
-      [AI_CHAIN_KEY]: [landing('🔗 家宽')],
+    // 只勾单个节点：挂上中转，放在 AI 组最前面并设为默认；同组的其他节点不挂
+    const one = runConfig(file, {
+      proxies: [...BASE_NODES.map((p) => (p.name.includes('台湾') ? { ...p, [AI_CHAIN_KEY]: true } : p)), tw2],
     });
+    check(one);
+    const g1 = groupsOf(one);
+    assert.deepEqual([...one.proxies].filter((p) => p['dialer-proxy']).map((p) => p.name), ['🇹🇼 台湾 01']);
+    assert.equal(g1.get('AI').proxies[0], '🇹🇼 台湾 01');
+    assert.equal(g1.get('AI')['default-selected'], '🇹🇼 台湾 01');
+    // 台湾组混着没挂中转的台湾 02：自动选择组拿掉台湾 01，台湾组手动还选得到；台湾组连得到它，不当中转
+    assert.deepEqual([...g1.get('台湾-自动选择').proxies], ['🇹🇼 台湾 02']);
+    assert.ok(g1.get('台湾').proxies.includes('🇹🇼 台湾 01'));
+    assert.ok(!g1.get(AI_CHAIN_GROUP).proxies.includes('台湾'));
+
+    // 香港不在中转选项里（例如没有香港节点）就不设默认
+    const noHk = runConfig(file, { proxies: BASE_NODES.filter((p) => !p.name.includes('香港')), [AI_CHAIN_GROUPS_KEY]: ['台湾'] });
     assert.equal(noHk['proxy-groups'].find((g) => g.name === AI_CHAIN_GROUP)['default-selected'], undefined);
   });
 }
