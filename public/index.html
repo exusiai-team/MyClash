@@ -420,7 +420,7 @@
         <button type="button" class="btn sm ghost hidden" id="sync-btn" title="让 GitHub Actions 立刻从上游同步覆写脚本（10 分钟限一次）"><svg class="i"><use href="#i-refresh"/></svg>立即同步</button>
       </div>
       <details class="more"><summary>iPhone 小火箭教程（导入与省电）</summary>
-        <p class="hint">小火箭读不了 mihomo 的规则集，所以节点和分流分开导入：订阅只给节点，分流用 <code>/shadowrocket.conf</code>。
+        <p class="hint">小火箭读不了 mihomo 的规则集，所以节点和分流分开导入：订阅只给节点，分流用订阅卡片上按这个订阅生成的 <code>shadowrocket.conf</code>（没有台湾节点时 AI 默认选美国，设了 AI 链式代理会加落地组）。
           这份配置的分流组同精简版，规则集改用 blackmatrix7 的小火箭 <code>.list</code>，没有 HuggingFace 分流，广告规则只用 AdvertisingLite。</p>
         <ol class="steps">
           <li>用非中国区的 Apple ID 在 App Store 购买安装 Shadowrocket。</li>
@@ -537,7 +537,7 @@
         <span class="hint" id="chain-summary"></span>
       </div>
       <p class="hint sec-desc">落地节点只放进「AI」组并设为默认，经「AI链式代理」组中转：中转选香港，就是用香港组的节点连到落地节点；选「直连」就是直接连。
-        Anthropic 看到的是落地节点的 IP，最好用固定 IP 的家宽或自己的 VPS。只对精简 / 全量覆写的链接生效。</p>
+        Anthropic 看到的是落地节点的 IP，最好用固定 IP 的家宽或自己的 VPS。精简 / 全量覆写的链接直接生效；小火箭要重新导入分流配置，必要时手动设一次「代理通过」（订阅卡片选「小火箭」有说明）。</p>
       <div class="field">
         <span class="label">机场节点当落地 <span class="hint">复制一份带 🔗 的放进 AI 组，原节点照样留在各组</span></span>
         <div class="chips" id="chain-picked"></div>
@@ -661,12 +661,12 @@
   function removeToken(t) { saveTokens(getTokens().filter((x) => x !== t)); }
 
   // 覆写脚本：lite / full 由 Worker 直接套用（?script=），none 输出未覆写的合并结果；
-  // rocket 给 iPhone 小火箭用：订阅只取节点（同 none），分流另外导入 /shadowrocket.conf
+  // rocket 给 iPhone 小火箭用：订阅只取节点（同 none，另附 AI 链式代理的落地节点），分流另外导入按这个订阅生成的 shadowrocket.conf
   const MODES = [['lite', '精简'], ['full', '全量'], ['rocket', '小火箭'], ['none', '不覆写']];
   function getMode(token) { const m = store.get('mode:' + token); return MODES.some(([x]) => x === m) ? m : 'lite'; }
   function setMode(token, mode) { store.set('mode:' + token, mode); }
-  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' || mode === 'rocket' ? '' : `?script=${mode}`); }
-  const rocketConfUrl = () => `${workerUrl}/shadowrocket.conf`;
+  function subUrl(token, mode = 'none') { return `${workerUrl}/sub/${token}` + (mode === 'none' ? '' : `?script=${mode}`); }
+  const rocketConfUrl = (token) => `${workerUrl}/sub/${token}/shadowrocket.conf`;
   const importLabel = (mode) => (mode === 'rocket' ? '导入节点到小火箭' : '一键导入 Clash');
   // 切换覆写版本时更新卡片：链接、导入按钮文字，以及只有小火箭才显示的配置链接
   function applyMode(item, mode) {
@@ -685,6 +685,7 @@
 
   // --- 清单 ---
   const PREFIX_LABELS = { name: '机场名称', index: 'S1、S2…', none: '不加' };
+  const hasChain = (it) => Boolean(it.aiChain?.custom) || it.sources.some((s) => s.aiChain?.length);
   function filterChips(it) {
     const chips = [];
     if (it.excludeRate) chips.push(`不导入 ≥${it.excludeRate}x`);
@@ -692,8 +693,7 @@
     if (own) chips.push(`${own} 个机场单独设门槛`);
     const manual = it.sources.reduce((n, s) => n + (s.exclude?.length || 0), 0);
     if (manual) chips.push(`手动排除 ${manual} 个节点`);
-    const landing = it.sources.reduce((n, s) => n + (s.aiChain?.length || 0), 0);
-    if (landing || it.aiChain?.custom) chips.push('AI 链式代理');
+    if (hasChain(it)) chips.push('AI 链式代理');
     return chips.map((c) => `<span class="chip accent">${escapeHtml(c)}</span>`).join('');
   }
   function itemHtml(it) {
@@ -715,8 +715,9 @@
       </div>
       <div class="linkbox"><code class="link">${escapeHtml(subUrl(it.token, mode))}</code>
         <button type="button" class="icon-btn" data-act="copy" title="复制订阅链接" aria-label="复制订阅链接">${icon('copy')}</button></div>
-      <p class="hint rocket-only${rocket}">iPhone 小火箭：上面的订阅只含节点，分流规则用下面的配置（对标精简版）。先「导入节点到小火箭」，再「导入分流配置」。</p>
-      <div class="linkbox rocket-only${rocket}"><code class="link link-conf">${escapeHtml(rocketConfUrl())}</code>
+      <p class="hint rocket-only${rocket}">iPhone 小火箭：上面的订阅只含节点，分流规则用下面的配置（对标精简版，按这个订阅生成）。先「导入节点到小火箭」，再「导入分流配置」。</p>
+      ${hasChain(it) ? `<p class="hint rocket-only${rocket}">AI 链式代理：小火箭的配置文件没法替订阅节点设中转。如果「AI落地」组里的 🔗 节点没有经过中转，就在小火箭首页点 🔗 节点右边的 ⓘ，把「代理通过」设成「AI链式代理」组，并在订阅设置里打开「保持代理通过」。改了落地节点后，要重新导入分流配置。</p>` : ''}
+      <div class="linkbox rocket-only${rocket}"><code class="link link-conf">${escapeHtml(rocketConfUrl(it.token))}</code>
         <button type="button" class="icon-btn" data-act="copy-conf" title="复制小火箭配置链接" aria-label="复制小火箭配置链接">${icon('copy')}</button></div>
       <div class="actions">
         <button type="button" class="btn primary" data-act="copy">${icon('copy')}复制链接</button>
@@ -748,7 +749,7 @@
   async function importFrom(input) {
     const m = String(input).match(/[a-f0-9]{32}/);
     if (!m) return showMsg($('import-msg'), '找不到 TOKEN，请粘贴 32 位的 TOKEN 或完整订阅链接');
-    const mode = String(input).match(/[?&]script=(lite|full)\b/)?.[1];
+    const mode = String(input).match(/[?&]script=(lite|full|rocket)\b/)?.[1];
     try {
       const { name } = await api('GET', '/subs/' + m[0]);
       const existed = getTokens().includes(m[0]);
@@ -795,8 +796,8 @@
             ? `shadowrocket://add/${subUrl(token, mode)}`
             : `clash://install-config?url=${encodeURIComponent(subUrl(token, mode))}&name=${encodeURIComponent(name)}`;
           return;
-        case 'import-conf': location.href = `shadowrocket://config/add/${rocketConfUrl()}`; return;
-        case 'copy-conf': return copy(rocketConfUrl(), '小火箭配置链接');
+        case 'import-conf': location.href = `shadowrocket://config/add/${rocketConfUrl(token)}`; return;
+        case 'copy-conf': return copy(rocketConfUrl(token), '小火箭配置链接');
         case 'preview': return preview(token, name, mode);
         case 'edit':
           btn.disabled = true;

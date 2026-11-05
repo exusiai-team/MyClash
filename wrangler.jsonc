@@ -12,8 +12,8 @@
   "send_metrics": false,
   // 存放订阅组的 KV；部署时会自动创建（名称 myclash-sub-store），不用填 id
   "kv_namespaces": [{ "binding": "SUB_STORE" }],
-  // 管理页：打开 Worker 地址就是管理页
-  "assets": { "directory": "./public" },
+  // 管理页：打开 Worker 地址就是管理页；ASSETS 给 /sub/<TOKEN>/shadowrocket.conf 读 public/shadowrocket.conf 来改写
+  "assets": { "directory": "./public", "binding": "ASSETS" },
   // 管理页「立即刷新缓存」要触发的 GitHub 仓库；另需在 Cloudflare 把 GITHUB_TOKEN 设为密钥
   "vars": { "GITHUB_REPO": "exusiai-team/MyClash" },
   // Cloudflare 的预览构建（wrangler preview）要求有这个区块；预览版本不绑定 KV，只用来确认能正常构建
