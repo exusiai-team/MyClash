@@ -144,6 +144,8 @@ AI链式代理（默认选香港）
   Google、AI、Apple、Telegram、Steam（都可选 `DIRECT`）、AdBlock（默认 `REJECT`）与漏网之鱼，测速网址同精简版。
   AI 默认选「台湾」，**订阅里没有台湾节点时手动改选「美国」**（第二项）。不用 fallback 组自动切换：小火箭手册不建议在 fallback / url-test 组里套其他分组。
   DNS 用阿里、腾讯 DoH，失败或超过 2 秒才用系统 DNS（原本只用系统 DNS）。
+  AI 规则排在 Google 前面（不然 Gemini 会被 Google 规则抢走、走香港）；Apple 默认走代理。
+  隧道不接管 IPv6（`ipv6 = false`，局域网的 IPv6 组播才不会进隧道断掉）；节点不支持 UDP 时拒绝 UDP（`udp-policy-not-supported-behaviour = REJECT`），QUIC 马上退回 TCP，不会直连被墙卡住。
   小火箭不做 AI 链式代理：中转只能在 App 里给节点设「代理通过」（例如把台湾家宽节点的「代理通过」设成「香港」组），配置文件设不了
   规则集用 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 的 Shadowrocket `.list`（经 `cdn.jsdmirror.com`），
   与精简版的 bett-rules 不完全相同：没有 HuggingFace 分流，广告只用 blackmatrix7 的 AdvertisingLite，国内用 blackmatrix7 的 China（规则加约 3700 个域名）、`DOMAIN-SUFFIX,cn` 与 `GEOIP,CN` 判断直连。
@@ -168,6 +170,18 @@ AI链式代理（默认选香港）
    - 规则集：跟着配置更新
 
 导入后如果首页少了节点，或某些节点连不上，可能是该协议的链接写法小火箭读不了。请回报机场的节点类型（略过的节点数在回应标头 `X-MyClash-Skipped`）。
+
+### 开着小火箭时 LocalSend 找不到电脑
+
+配置已把局域网与组播排除在隧道外，问题不在分流规则。LocalSend 先用 UDP 组播（`224.0.0.167:53317`）广播自己，收到的一方再向它发 HTTPS 注册请求，**注册成功才列出设备**（任一方向成功即可）；1 秒内找到任何设备就不再扫描子网。
+所以能看到安卓、看不到电脑，是两个方向都断了：电脑注册到 iPhone 失败（与小火箭无关），iPhone 这边收电脑组播再回连的那条又被 VPN 影响。依序试：
+
+1. 电脑的 LocalSend 升到 1.18.2 以上：1.18.0、1.18.1 会把局域网请求交给系统代理（如开着系统代理的 Clash），报 `TLS info not found`
+2. iPhone 的 LocalSend 里按 IP 手动添加电脑并加入收藏（路由器给电脑固定 IP）：每次扫描都会直接用 TCP 探测收藏的设备，不靠组播
+3. 小火箭「设置 → 隧道」关掉「包括所有网络」「包括本地网络」（开了局域网流量全进隧道，组播会断）
+4. Windows 把当前网络设为「专用」，防火墙允许 LocalSend 入站
+
+判断卡在哪：开着小火箭时在 iPhone 上手动按扫描（会扫子网），扫得到电脑就是组播那段断了，用第 2 条；扫不到就是 iPhone 连不上电脑的 53317 端口，查第 4 条。
 
 ### 省电设置
 
