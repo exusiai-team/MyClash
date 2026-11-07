@@ -1,5 +1,6 @@
 import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey, CACHE_TTL_SECONDS } from './cache.js';
+import { isShadowrocket, toShadowrocket } from './rocket.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
 
@@ -66,7 +67,7 @@ async function route(request, env, ctx) {
     if (request.headers.get('sec-fetch-mode') === 'navigate' && request.headers.get('accept')?.includes('text/html')) {
       return Response.redirect(`${url.origin}/#${importHash(parts[1], url.searchParams.get('script'))}`, 302);
     }
-    return serveSubscription(env, ctx, parts[1], url.origin, url.searchParams.get('script'));
+    return serveSubscription(env, ctx, parts[1], url.origin, url.searchParams.get('script'), request.headers.get('user-agent'));
   }
   if (parts[0] === 'api') return api(request, env, ctx, parts.slice(1));
   return json({ error: '找不到' }, 404);
@@ -81,7 +82,7 @@ function importHash(token, script) {
   return params.toString();
 }
 
-async function serveSubscription(env, ctx, token, origin, script) {
+async function serveSubscription(env, ctx, token, origin, script, userAgent) {
   const override = script === null ? null : Object.hasOwn(OVERRIDES, script) ? OVERRIDES[script] : undefined;
   if (override === undefined) return text('script 参数只能是 lite（精简）或 full（全量），不覆写请去掉这个参数', 400);
   const record = /^[a-f0-9]{32}$/.test(token) ? await env.SUB_STORE.get(KEY_PREFIX + token, 'json') : null;
@@ -103,6 +104,19 @@ async function serveSubscription(env, ctx, token, origin, script) {
     ok.map((r) => ({ prefix: r.prefix, parsed: r.parsed })),
     { rateTag: record.rateTag === true },
   );
+  const userinfo = sumUserinfo(ok.map((r) => r.userinfo));
+  // 小火箭不带 ?script= 来拿节点时给它自己的节点链接格式（见 rocket.js）；同一个订阅链接，不用重新导入
+  if (!override && isShadowrocket(userAgent)) {
+    const { body, skipped } = toShadowrocket(config.proxies, userinfo);
+    const headers = {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(record.name)}`,
+      'Cache-Control': 'no-store',
+    };
+    if (userinfo) headers['Subscription-Userinfo'] = userinfo;
+    if (skipped) headers['X-MyClash-Skipped'] = String(skipped);
+    return new Response(body, { headers });
+  }
   const landing = override ? markLanding(ok, config.proxies) : 0;
   const chainGroups = override ? (record.aiChainGroups ?? []) : [];
   if (chainGroups.length) config[AI_CHAIN_GROUPS_KEY] = chainGroups;
@@ -141,7 +155,6 @@ async function serveSubscription(env, ctx, token, origin, script) {
     'Profile-Web-Page-Url': `${origin}/#${importHash(token, script)}`,
     'Cache-Control': 'no-store',
   };
-  const userinfo = sumUserinfo(ok.map((r) => r.userinfo));
   if (userinfo) headers['Subscription-Userinfo'] = userinfo;
 
   return new Response(dumpConfig(config, comments), { headers });

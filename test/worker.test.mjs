@@ -102,6 +102,31 @@ test('/sub/<TOKEN>：rateTag 开启时在节点名称标注倍率', async (t) =>
   assert.deepEqual(config.proxies.map((p) => p.name), ['A | 2x | 香港 01', 'A | 日本 01']);
 });
 
+test('/sub/<TOKEN>：小火箭来拿时给小火箭的节点链接，其他客户端照旧给 YAML', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const env = { SUB_STORE: memoryKv() };
+  const base = `http://127.0.0.1:${upstream.address().port}`;
+  const { token } = await (
+    await call(env, 'POST', '/api/subs', { body: { name: 'r', prefixMode: 'none', sources: [{ url: `${base}/yaml` }, { url: `${base}/b64` }] } })
+  ).json();
+  const get = (ua, query = '') => worker.fetch(new Request(`https://w.test/sub/${token}${query}`, { headers: { 'User-Agent': ua } }), env);
+
+  const res = await get('Shadowrocket/2070 CFNetwork/1410.0.3 Darwin/22.6.0');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/plain/);
+  assert.equal(res.headers.get('subscription-userinfo'), 'upload=11; download=22; total=150; expire=1900000000');
+  const uris = Buffer.from(await res.text(), 'base64').toString('utf8').split('\n');
+  assert.match(uris[0], /^STATUS=/);
+  assert.equal(uris.length, 5);
+  assert.ok(uris[1].startsWith('ss://') && uris[1].endsWith('@hk.node:1#%F0%9F%87%AD%F0%9F%87%B0%20%E9%A6%99%E6%B8%AF%2001'), uris[1]);
+  assert.ok(uris.includes('trojan://pw@us.node:443#%E7%BE%8E%E5%9B%BD%2001'));
+
+  assert.ok(yaml.load(await (await get('clash.meta')).text()).proxies.length === 4);
+  // 带 ?script= 的照样是覆写后的 YAML
+  assert.ok(Array.isArray(yaml.load(await (await get('Shadowrocket/2070', '?script=lite')).text())['proxy-groups']));
+});
+
 test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
