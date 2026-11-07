@@ -285,8 +285,7 @@ const LOCAL_PROXY_CORE_RULES = `  // 本机其他代理核心（如 v2rayN 的 x
 
 export function reduceMemory(source) {
   let s = replaceOnce(source, "  newConfig['log-level'] = 'info';\n", "  newConfig['log-level'] = 'warning';\n", '日志级别');
-  const anchor = "const prefixRules = [\n  // 规则集下载域名";
-  return replaceOnce(s, anchor, `const prefixRules = [\n${LOCAL_PROXY_CORE_RULES}  // 规则集下载域名`, '前置规则');
+  return replaceOnce(s, 'const prefixRules = [\n', `const prefixRules = [\n${LOCAL_PROXY_CORE_RULES}`, '前置规则');
 }
 
 // 上游 default-nameserver / proxy-server-nameserver 是「114 明文 UDP + DoT + DoH」三个一起竞速：
