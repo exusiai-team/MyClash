@@ -530,18 +530,28 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
   for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', '台湾']) {
     assert.ok(groups.get(name).includes(`url=${lite.get(name).url}`), name);
   }
-  // 默认选择（第一项）同精简版：AI 默认台湾，台湾组不通（订阅里没有台湾节点）时 fallback 到美国
-  assert.equal(groups.get('AI')[1], '台湾优先');
-  assert.deepEqual(groups.get('台湾优先').slice(0, 3), ['fallback', '台湾', '美国']);
+  // 默认选择（第一项）同精简版：AI 默认台湾，第二项美国（没有台湾节点时手动改选）；
+  // 不用 fallback / url-test 组套其他分组，小火箭手册不建议
+  assert.deepEqual(groups.get('AI').slice(0, 3), ['select', '台湾', '美国']);
+  for (const [name, value] of groups) {
+    if (!['url-test', 'fallback', 'load-balance'].includes(value[0])) continue;
+    for (const policy of value.slice(1).filter((v) => !v.includes('='))) assert.ok(!groups.has(policy), `${name} 套了 ${policy}`);
+  }
   for (const name of ['Google', 'Apple', 'Telegram', 'Steam']) assert.equal(groups.get(name)[1], '默认代理', name);
   // 分流组除 AdBlock 外都可选 DIRECT（同精简版）
   for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.get(name).includes('DIRECT'), name);
   assert.equal(groups.get('AdBlock')[1], 'REJECT');
   // 地区组同精简版分两层：手选组默认选「<地区>-自动选择」，手动选的节点重连后不会被测速改掉
   for (const name of ['香港', '日本', '美国', '新加坡', '台湾']) {
-    assert.deepEqual(groups.get(name).slice(0, 2), ['select', `${name}-自动选择`], name);
+    assert.deepEqual(groups.get(name).slice(0, 3), ['select', `${name}-自动选择`, `${name}-节点`], name);
     assert.equal(groups.get(`${name}-自动选择`)[0], 'url-test', name);
+    assert.equal(groups.get(`${name}-节点`)[0], 'select', name);
     assert.equal(lite.get(name).proxies[0], `${name}-自动选择`, name);
+  }
+  // 小火箭在同一行混写正则与手写策略时只显示正则筛出的节点：带 policy-regex-filter 的组不能再手写策略
+  for (const [name, value] of groups) {
+    if (!value.some((v) => v.startsWith('policy-regex-filter='))) continue;
+    assert.deepEqual(value.slice(1).filter((v) => !v.includes('=')), [], name);
   }
   // 规则只能指向已定义的组或内置策略
   for (const rule of section('Rule')) {
