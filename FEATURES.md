@@ -201,7 +201,7 @@ Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`�
 
 ## 6. iPhone 小火箭（本仓库）
 
-`public/shadowrocket.conf` 手写，对标精简版，不跟上游同步：地区组两层（手选 / 自动选择）、Google、AI、Apple、Telegram、Steam、AdBlock、漏网之鱼，测速网址同精简版；AI 默认「台湾优先」fallback 组。规则集用 blackmatrix7 的 Shadowrocket `.list`（小火箭读不了 mrs），没有 HuggingFace 分流、不做 AI 链式代理。
+`public/shadowrocket.conf` 手写，对标精简版，不跟上游同步：地区组两层（默认「<地区>-自动选择」，可改选「<地区>-节点」手选；正则组不混写手写策略，小火箭混写会丢掉手写项）、Google、AI、Apple、Telegram、Steam、AdBlock、漏网之鱼，测速网址同精简版；AI 默认台湾，没有台湾节点时手动改选美国（不用 fallback 组套分组）。DNS 用阿里、腾讯 DoH，系统 DNS 兜底。规则集用 blackmatrix7 的 Shadowrocket `.list`（小火箭读不了 mrs），国内直连加 China 规则与域名集，没有 HuggingFace 分流、不做 AI 链式代理。
 
 ## 7. 自动化（本仓库）
 

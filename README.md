@@ -135,13 +135,16 @@ AI链式代理（默认选香港）
 小火箭（Shadowrocket）读不了 mihomo 的 `.mrs` 规则集，也不执行覆写脚本，所以节点和分流分开导入：
 
 - **节点**：`/sub/<TOKEN>`（不带 `?script=`）加为小火箭的订阅，Worker 照样合并机场、屏蔽到期的机场
-- **分流**：`/shadowrocket.conf`（即 `public/shadowrocket.conf`），对标精简版：默认代理、自动选择、手动选择，香港 / 日本 / 美国 / 新加坡 / 台湾地区组（按节点名称归组，正则同精简版；同精简版分两层：「<地区>」可手选节点，默认选「<地区>-自动选择」测速挑最快的；
-  手动点了节点就固定用它，重连 VPN 不会被测速结果改掉），
+- **分流**：`/shadowrocket.conf`（即 `public/shadowrocket.conf`），对标精简版：默认代理、自动选择、手动选择，香港 / 日本 / 美国 / 新加坡 / 台湾地区组（按节点名称归组，正则同精简版；同精简版分两层：「<地区>」默认选「<地区>-自动选择」测速挑最快的；
+  要固定用某个节点，在「<地区>」里选「<地区>-节点」再点节点，重连 VPN 不会被测速结果改掉。
+  节点另放「<地区>-节点」组，是因为小火箭在同一行混写正则与手写策略时只显示正则筛出的节点，「<地区>-自动选择」会丢，变成固定用第一个节点），
   Google、AI、Apple、Telegram、Steam（都可选 `DIRECT`）、AdBlock（默认 `REJECT`）与漏网之鱼，测速网址同精简版。
-  AI 默认选「台湾优先」：fallback 组，台湾组测速不通（订阅里没有台湾节点）就改用美国。配置文件不知道订阅里有哪些节点，只能这样对标精简版的「没有台湾就默认美国」。
+  AI 默认选「台湾」，**订阅里没有台湾节点时手动改选「美国」**（第二项）。不用 fallback 组自动切换：小火箭手册不建议在 fallback / url-test 组里套其他分组。
+  DNS 用阿里、腾讯 DoH，失败或超过 2 秒才用系统 DNS（原本只用系统 DNS）。
   小火箭不做 AI 链式代理：中转只能在 App 里给节点设「代理通过」（例如把台湾家宽节点的「代理通过」设成「香港」组），配置文件设不了
   规则集用 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 的 Shadowrocket `.list`（经 `cdn.jsdmirror.com`），
-  与精简版的 bett-rules 不完全相同：没有 HuggingFace 分流，广告只用 blackmatrix7 的 AdvertisingLite，国内只用 `DOMAIN-SUFFIX,cn` 与 `GEOIP,CN` 判断直连
+  与精简版的 bett-rules 不完全相同：没有 HuggingFace 分流，广告只用 blackmatrix7 的 AdvertisingLite，国内用 blackmatrix7 的 China（规则加约 3700 个域名）、`DOMAIN-SUFFIX,cn` 与 `GEOIP,CN` 判断直连。
+  先按域名判断，不在表里的才走 `GEOIP`，少在本地解析
 
 这份配置手写，不跟上游同步；精简版的分流组有变化时要手动对照修改。
 
