@@ -559,6 +559,15 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
     assert.ok(groups.has(policy) || ['DIRECT', 'REJECT'].includes(policy), rule);
   }
   assert.equal(section('Rule').at(-1), 'FINAL,漏网之鱼');
+  // AI 规则排在 Google 前面：Google.list 的 google.com 会先吃掉 Gemini 的 gemini.google.com
+  const rules = section('Rule');
+  const google = rules.findIndex((r) => r.endsWith(',Google'));
+  for (const [i, r] of rules.entries()) if (r.endsWith(',AI')) assert.ok(i < google, r);
+  // 隧道只处理 TCP：不接管 IPv6（排除路由只写得了 IPv4），节点不支持 UDP 时拒绝而非直连
+  const general = new Map(section('General').map((l) => l.split(/ = (.*)/)));
+  assert.equal(general.get('ipv6'), 'false');
+  assert.equal(general.get('udp-policy-not-supported-behaviour'), 'REJECT');
+  assert.ok(general.get('tun-excluded-routes').split(/,\s*/).includes('224.0.0.0/4'));
 });
 
 test('sync-scripts：上游改版找不到修改位置时报错', () => {

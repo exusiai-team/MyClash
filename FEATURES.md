@@ -203,7 +203,7 @@ Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`�
 
 节点：小火箭（User-Agent 含 `Shadowrocket`）不带 `?script=` 拿 `/sub/<TOKEN>` 时，Worker 把合并后的节点转成小火箭自己的节点链接（`src/rocket.js`，写法照 Xboard，不加 `tfo=1`），不给 mihomo YAML。
 
-`public/shadowrocket.conf` 手写，对标精简版，不跟上游同步：地区组两层（默认「<地区>-自动选择」，可改选「<地区>-节点」手选；正则组不混写手写策略，小火箭混写会丢掉手写项）、Google、AI、Apple、Telegram、Steam、AdBlock、漏网之鱼，测速网址同精简版；AI 默认台湾，没有台湾节点时手动改选美国（不用 fallback 组套分组）。DNS 用阿里、腾讯 DoH，系统 DNS 兜底。规则集用 blackmatrix7 的 Shadowrocket `.list`（小火箭读不了 mrs），国内直连加 China 规则与域名集，没有 HuggingFace 分流、不做 AI 链式代理。
+`public/shadowrocket.conf` 手写，对标精简版，不跟上游同步：地区组两层（默认「<地区>-自动选择」，可改选「<地区>-节点」手选；正则组不混写手写策略，小火箭混写会丢掉手写项）、Google、AI、Apple、Telegram、Steam、AdBlock、漏网之鱼，测速网址同精简版；AI 默认台湾，没有台湾节点时手动改选美国（不用 fallback 组套分组）。DNS 用阿里、腾讯 DoH，系统 DNS 兜底。AI 规则排在 Google 前（防 Gemini 被 Google 规则抢走），Apple 默认走代理；`ipv6 = false`（排除路由只写得了 IPv4，局域网 IPv6 组播才不进隧道）、`udp-policy-not-supported-behaviour = REJECT`（对应精简版拒绝走代理的 QUIC）。规则集用 blackmatrix7 的 Shadowrocket `.list`（小火箭读不了 mrs），国内直连加 China 规则与域名集，没有 HuggingFace 分流、不做 AI 链式代理。
 
 ## 7. 自动化（本仓库）
 
