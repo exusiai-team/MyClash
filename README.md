@@ -52,8 +52,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 | 订阅链接 | 来源 | 说明 |
 | --- | --- | --- |
-| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、AI、Apple、Telegram、Steam、AdBlock（Apple 从全量版搬来） |
-| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Microsoft、TikTok 等 17 个分流组 |
+| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、NovelAI、AI、Apple、Telegram、Steam、AdBlock（Apple 从全量版搬来） |
+| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Microsoft、TikTok 等 17 个分流组（NovelAI 两版都有） |
 | `/sub/<TOKEN>` | 不覆写 | 只合并节点；可自己在客户端加脚本覆写 `/script.js` 或 `/script-full.js` |
 | `/sub/<TOKEN>` + `/shadowrocket.conf` | 小火箭（iPhone） | 管理页选「小火箭」：订阅只给节点，分流用 `public/shadowrocket.conf`，见下方「iPhone：小火箭」 |
 
@@ -66,6 +66,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   AI 改用 `https://api.anthropic.com/v1/models`：Bettbox 的 `/cdn-cgi/trace` 由 Cloudflare 边缘节点直接回应，只测到节点到就近 Cloudflare 的延迟，到不了 Anthropic 源站，地区被封也照样通；`/v1/models` 不带 key 由源站回 401，测的是到源站的整条路径。
   Telegram 改用 `https://api.telegram.org/`：Bettbox 的 `http://91.108.56.100/` 不支持 keep-alive，开了 unified-delay 测速常报错且延迟失准）；Bettbox 没检测的服务与地区、倍率组用通用测速网址 `https://connectivitycheck.gstatic.com/generate_204`（原版为 Apple 的测速网址），测速间隔从原版的 600 秒改为 300 秒。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
+- 新增「NovelAI」分流组（精简、全量都有），排在「AI」前面：bett-rules 没有单独的 novelai 规则集，同步时从「AI」组用的同一份 `category-ai-!cn.list` 挑出 NovelAI 的域名（目前是 `+.novelai.net`）写成规则
 - 「AI」组默认选「台湾」（原版为「美国」），订阅里没有台湾节点时选「美国」，都没有才由客户端退回第一项
 - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个），AdBlock 除外
 - AI 链式代理：Worker 传入的节点与整组直接挂上新增的「AI链式代理」组中转，见下方「AI 链式代理」

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY,AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, TEST_URLS, patchScript, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY,AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, NOVELAI_GROUP, TEST_URLS, novelAiRules, patchScript, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -298,6 +298,25 @@ for (const file of ['script.js', 'script-full.js']) {
     const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
     assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));
     assert.match(out['rule-providers'].huggingface.url, /bett-rules@meta\/geo\/geosite\/huggingface\.mrs$/);
+  });
+}
+
+test('novelAiRules：从 category-ai-!cn.list 挑出 NovelAI 的域名', () => {
+  assert.deepEqual(novelAiRules('# x\n+.openai.com\n+.novelai.net\nimage.novelai.net\nnotnovelai.com\n'), [
+    'DOMAIN-SUFFIX,novelai.net,NovelAI',
+    'DOMAIN,image.novelai.net,NovelAI',
+  ]);
+  assert.throws(() => novelAiRules('+.openai.com\n'), /找不到 NovelAI/);
+});
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：NovelAI 分流组的规则排在 AI 前面`, () => {
+    const out = runScript(file);
+    const names = out['proxy-groups'].map((g) => g.name);
+    assert.ok(names.includes(NOVELAI_GROUP));
+    const novelai = out.rules.indexOf(`DOMAIN-SUFFIX,novelai.net,${NOVELAI_GROUP}`);
+    assert.ok(novelai !== -1 && novelai < out.rules.indexOf('RULE-SET,ai,AI'));
+    assert.equal(out['proxy-groups'].find((g) => g.name === NOVELAI_GROUP).proxies[0], '默认代理');
   });
 }
 
