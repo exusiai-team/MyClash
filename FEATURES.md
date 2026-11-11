@@ -67,6 +67,7 @@
 | AI 默认选择 | 美国 | 台湾，没有台湾节点选美国 | `patchScript` |
 | 分流组「直连」 | 只有 Apple、Steam 等少数几个 | AdBlock 以外全部都有 | `directForAllServices` |
 | 精简版 Apple 组 | 只有全量版有 | 精简版也有 | `addAppleGroup` |
+| NovelAI 组 | 在「AI」组里（category-ai-!cn） | 精简版、全量版都新增「NovelAI」分流组，排在「AI」前面；域名每次同步时从 bett-rules 的 `category-ai-!cn.list` 挑出（bett-rules 没有单独的 novelai 规则集），图标 `public/icons/NovelAI.svg` | `addNovelAiGroup` |
 | IPv6 节点组 | 无 | 名称含 IPv6 / v6、server 是 IPv6 或 `ip-version: ipv6` 的节点，附自动选择组，图标 `public/icons/IPv6.svg` | `addIpv6Group` |
 | 默认选自动选择 | 地区组默认选第一个节点，默认代理默认选第一个地区 | 地区组默认「<地区>-自动选择」，默认代理默认全局「自动选择」 | `defaultToAuto` |
 | 自动选择组排除 | 只排除 DIRECT | 另排除 HTTP / SOCKS5、高倍率与「勿跑大流量」节点；排除后为空的组不排除 | `excludeFromAutoGroups` |
@@ -165,6 +166,7 @@ hosts:                               # 上游；本仓库删掉了用不到的 d
 | `douyin` | 抖音 | DNS 走火山引擎 | 上游（数据：bett-rules） |
 | 各分流组的 geosite / geoip | Google、AI、Telegram… | 对应分流组 | 上游（数据：bett-rules） |
 | `huggingface` | HuggingFace | 默认代理（抢在 AI 前面） | **本仓库**（数据：bett-rules） |
+| NovelAI 规则（非规则集） | `category-ai-!cn.list` 里 NovelAI 的域名（目前是 `+.novelai.net`），写成 `DOMAIN-SUFFIX` 规则 | NovelAI（抢在 AI 前面） | **本仓库**同步时生成（数据：bett-rules） |
 | `sukka-reject` | Sukka Reject Base 的域名集 `domainset/reject`，加上 `non_ip/reject` 与 `non_ip/reject-no-drop`（PCDN）里的 DOMAIN / DOMAIN-SUFFIX，约 14.8 万条；转成 mrs 约 1.4 MB | AdBlock（默认 REJECT） | **本仓库**每天用 mihomo 转换，放 `rules` 分支（数据：Sukka） |
 | `sukka-reject-classical` | 同上两份 non_ip 清单里 mrs 放不下的：约 146 条关键词（`adserver`、`umeng`、`admob`…）、22 条通配（`ads-*.tiktok.com`）、51 条 IP 段；classical 文本，约 7 KB | AdBlock，规则带 `no-resolve` | **本仓库**每天生成，放 `rules` 分支（数据：Sukka） |
 

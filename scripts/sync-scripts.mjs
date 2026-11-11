@@ -1,6 +1,7 @@
 // 生成物（覆写脚本与规则集）都写到输出目录 OUT_DIR（默认 rules-out/），由 GitHub Actions 推到 rules 分支，不进 main：
 //   script.js            ← 从 AIsouler/MyClash 抓 Script/Script.js（精简版，管理页默认），套用本项目的改动
 //   script-full.js       ← 同上，Script/mihomoScript.js（全量版）
+//                           两个脚本的「NovelAI」分流组规则取自 bett-rules 的 category-ai-!cn.list
 //   rules/sukka-reject.mrs ← Sukka 的 Reject Base 域名集（ruleset.skk.moe），用 mihomo 转成 mrs，
 //                           换掉两个脚本「AdBlock」组原来的 category-ads
 //   rules/sukka-reject-classical.txt ← Sukka non_ip 规则里 mrs 放不下的关键词、通配、IP 规则，同样给「AdBlock」组
@@ -476,6 +477,46 @@ export function addAiChain(source) {
   return replaceOnce(s, anchor, AI_CHAIN + anchor, '规则集组装代码');
 }
 
+// 「NovelAI」分流组：bett-rules 没有单独的 novelai 规则集，NovelAI 只在「AI」组用的 category-ai-!cn 里（+.novelai.net）。
+// 同步时从同一个地址（上游的 ruleSetBaseUrl）取 category-ai-!cn.list，挑出 NovelAI 的域名写成规则，
+// 跟着上游规则增减；分流组放在「AI」前面，规则才会抢在 category-ai-!cn 之前
+export const NOVELAI_GROUP = 'NovelAI';
+const NOVELAI_LIST = 'geosite/category-ai-!cn.list';
+
+export function ruleSetBaseUrlOf(source) {
+  const found = source.match(/^const ruleSetBaseUrl = '([^']+)';$/m);
+  if (!found) throw new Error('找不到 ruleSetBaseUrl，上游脚本可能改版了');
+  return found[1];
+}
+
+// 域名集写法（+.example.com / example.com）转成 NovelAI 组的规则
+export function novelAiRules(list) {
+  const rules = contentLines(list)
+    .filter((line) => /(^|[.+])novelai\./i.test(line))
+    .map((line) => (line.startsWith('+.') ? `DOMAIN-SUFFIX,${line.slice(2)},${NOVELAI_GROUP}` : `DOMAIN,${line},${NOVELAI_GROUP}`));
+  if (!rules.length) throw new Error(`${NOVELAI_LIST} 里找不到 NovelAI 的域名，上游规则可能改版了`);
+  return rules;
+}
+
+export function addNovelAiGroup(source, rules) {
+  const group = `  {
+    name: '${NOVELAI_GROUP}',
+    baseOption: selectBaseOption,
+    // 规则取自 bett-rules 的 ${NOVELAI_LIST}（没有单独的 novelai 规则集），排在「AI」前面才抢得到
+    icon: 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/icons/NovelAI.svg',
+    rules: [${rules.map((r) => `'${r}'`).join(', ')}],
+  },
+`;
+  let s = replaceOnce(source, "  {\n    name: 'AI',\n", `${group}  {\n    name: 'AI',\n`, 'AI 分流组');
+  s = replaceOnce(s, '\n  AI: true,', `\n  ${NOVELAI_GROUP}: true, // NovelAI 小说与绘图\n  AI: true,`, 'AI 开关');
+  return replaceOnce(
+    s,
+    ' * 友情推荐',
+    ' * - 新增「NovelAI」分流组（域名取自 bett-rules 的 category-ai-!cn），排在「AI」前面\n * 友情推荐',
+    '文件开头注释',
+  );
+}
+
 // 精简版从全量版搬来「Apple」分流组（连同开关），放在「Telegram」之前，跟全量版顺序一致；
 // 搬的是套用过改动的全量版，所以测速网址也一起带过来
 export function addAppleGroup(lite, full) {
@@ -553,7 +594,11 @@ async function syncSukkaRuleset() {
 async function main() {
   // 先在内存里把两个脚本都改好，上游改版就在这里报错，不会留下写了一半的输出目录
   const [lite, full] = await Promise.all(
-    TARGETS.map(async ({ from }) => patchScript(await fetchText(UPSTREAM + from), from)),
+    TARGETS.map(async ({ from }) => {
+      const source = await fetchText(UPSTREAM + from);
+      const rules = novelAiRules(await fetchText(ruleSetBaseUrlOf(source) + NOVELAI_LIST));
+      return addNovelAiGroup(patchScript(source, from), rules);
+    }),
   );
   const outputs = [addAppleGroup(lite, full), full];
   await rm(OUT_DIR, { recursive: true, force: true });
