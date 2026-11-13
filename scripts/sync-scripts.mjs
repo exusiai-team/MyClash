@@ -39,7 +39,7 @@ const SUKKA_MIN_NON_IP_RULES = 200;
 export const SUKKA_CLASSICAL = 'rules/sukka-reject-classical';
 export const SUKKA_CLASSICAL_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@rules/${SUKKA_CLASSICAL}.txt`;
 
-// 通用测速网址与间隔（groupBaseOption），对标 NIVA Network 订阅的「自动选择」组
+// 通用测速网址（groupBaseOption）与自动选择组的测速间隔（urlTestBaseOption），对标 NIVA Network 订阅的「自动选择」组
 export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
 export const BASE_TEST_INTERVAL = 300;
 
@@ -141,7 +141,7 @@ export function patchScript(source, file) {
   // 默认选的组不存在（订阅里没有台湾节点）时改选 fallbackSelected（美国），都没有才由客户端退回第一项
   s = replaceOnce(
     s,
-    '    const selected =\n      svc.defaultSelected !== undefined && groupProxies.includes(svc.defaultSelected) ? svc.defaultSelected : undefined;\n',
+    '    const selected = groupProxies.includes(svc.defaultSelected) ? svc.defaultSelected : undefined;\n',
     '    // 默认选的组不存在时改选 fallbackSelected（AI：没有台湾节点就选美国）\n' +
       '    const selected = [svc.defaultSelected, svc.fallbackSelected].find((name) => name !== undefined && groupProxies.includes(name));\n',
     '分流组默认选择代码',
@@ -154,7 +154,7 @@ export function patchScript(source, file) {
   s = useDohBootstrap(s);
   s = defaultToAuto(s);
   s = addSniffer(s);
-  s = adBlockFirst(s);
+  s = adBlockAfterPrivate(s);
   s = excludeFromAutoGroups(s);
   s = directForAllServices(s);
   s = addAiChain(s);
@@ -203,18 +203,18 @@ export function useSukkaReject(source) {
   );
 }
 
-// groupBaseOption 改用 BASE_TEST_URL 与 BASE_TEST_INTERVAL
+// groupBaseOption 改用 BASE_TEST_URL，urlTestBaseOption 改用 BASE_TEST_INTERVAL（上游只给自动选择组定时测速）
 export function setBaseTestOption(source) {
-  const start = source.indexOf('const groupBaseOption = {');
-  const end = source.indexOf('\n};', start);
-  if (start === -1 || end === -1) throw new Error('找不到 groupBaseOption，上游脚本可能改版了');
-  let block = source.slice(start, end);
-  block = block.replace(/\n  interval: \d+,\n/, `\n  interval: ${BASE_TEST_INTERVAL},\n`);
-  block = block.replace(/\n  url: '[^']*',\n/, `\n  url: '${BASE_TEST_URL}',\n`);
-  if (!block.includes(`interval: ${BASE_TEST_INTERVAL},`) || !block.includes(`url: '${BASE_TEST_URL}',`)) {
-    throw new Error('找不到 groupBaseOption 的 interval 或 url，上游脚本可能改版了');
-  }
-  return source.slice(0, start) + block + source.slice(end);
+  const patchBlock = (s, name, re, value) => {
+    const start = s.indexOf(`const ${name} = {`);
+    const end = s.indexOf('\n};', start);
+    if (start === -1 || end === -1) throw new Error(`找不到 ${name}，上游脚本可能改版了`);
+    const block = s.slice(start, end).replace(re, value);
+    if (!block.includes(value)) throw new Error(`找不到 ${name} 的 ${value.trim().split(':')[0]}，上游脚本可能改版了`);
+    return s.slice(0, start) + block + s.slice(end);
+  };
+  const s = patchBlock(source, 'groupBaseOption', /\n  url: '[^']*',\n/, `\n  url: '${BASE_TEST_URL}',\n`);
+  return patchBlock(s, 'urlTestBaseOption', /\n  interval: \d+,\n/, `\n  interval: ${BASE_TEST_INTERVAL},\n`);
 }
 
 // 地区组按 REGION_TEST_URLS 改用各自的测速网址，手动选择组与自动选择组都改
@@ -346,28 +346,20 @@ export function addSniffer(source) {
   return replaceOnce(source, "  newConfig['tun'] = {\n", `${SNIFFER}  newConfig['tun'] = {\n`, 'tun 设置');
 }
 
-// 上游的分流规则（含 AdBlock）都排在前置规则之后，而前置规则先把 geolocation-cn 直连了；
-// geolocation-cn 按 baidu.com、miui.com 等整个域名后缀匹配，国内厂商的广告、统计与小米反诈等域名先被直连，到不了 AdBlock。
-// 把 AdBlock 的规则搬到「私有网络直连」之后：从 functionalRules 里取，AdBlock 关闭或极简模式时就没有，不会指向不存在的组
-const RULES_START = "  newConfig['rules'] = [\n    ...prefixRules,\n";
-const AD_BLOCK_FIRST = `  // 广告规则排在国内直连前面，否则国内厂商的广告域名先被 geolocation-cn 直连
-  const adBlockRules = functionalRules.filter((rule) => rule.split(',')[2] === 'AdBlock');
+// 上游把 AdBlock 的规则（priorityRules）排在最前面，连本机代理核心直连与「私有网络直连」都在它后面；
+// 改排到「私有网络直连」之后、国内直连之前：国内厂商的广告域名仍不会先被 geolocation-cn 直连
+const RULES_START = "  newConfig['rules'] = [\n    ...priorityRules,\n    ...prefixRules,\n";
+const AD_BLOCK_AFTER_PRIVATE = `  // 广告规则排在「私有网络直连」之后、国内直连之前
   const afterPrivate = prefixRules.indexOf('RULE-SET,private,直连') + 1;
   newConfig['rules'] = [
     ...prefixRules.slice(0, afterPrivate),
-    ...adBlockRules,
+    ...priorityRules,
     ...prefixRules.slice(afterPrivate),
 `;
 
-export function adBlockFirst(source) {
+export function adBlockAfterPrivate(source) {
   replaceOnce(source, "  // 私有网络直连\n  'RULE-SET,private,直连',\n", '', '私有网络直连规则');
-  const s = replaceOnce(source, RULES_START, AD_BLOCK_FIRST, '规则组装代码');
-  return replaceOnce(
-    s,
-    '    ...functionalRules,\n',
-    '    ...functionalRules.filter((rule) => !adBlockRules.includes(rule)),\n',
-    '分流规则',
-  );
+  return replaceOnce(source, RULES_START, AD_BLOCK_AFTER_PRIVATE, '规则组装代码');
 }
 
 // 自动选择组（url-test）只看延迟：
@@ -399,10 +391,7 @@ export function excludeFromAutoGroups(source) {
 // 上游只给标了 direct 的分流组（Apple、Steam 等）加「直连」，其余分流组都补上，想直连时不用改规则；
 // AdBlock（REJECT / PASS）与手动选择、自动选择不走这段，不受影响
 export function directForAllServices(source) {
-  const search = "...(svc.direct ? ['直连'] : [])";
-  const count = source.split(search).length - 1;
-  if (count !== 2) throw new Error(`分流组的「直连」选项应有 2 处，找到 ${count} 处，上游脚本可能改版了`);
-  return source.replaceAll(search, "'直连'");
+  return replaceOnce(source, "...(svc.direct ? ['直连'] : [])", "'直连'", '分流组的「直连」选项');
 }
 
 // AI 链式代理（做法同常见的「台湾家宽经香港中转」订阅）：直接给原节点挂 dialer-proxy，不复制节点、不多出组。
