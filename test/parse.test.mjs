@@ -289,11 +289,11 @@ for (const file of ['script.js', 'script-full.js']) {
     // 直连组默认选「IPv6优先」，其余直连节点都还在
     assert.equal(groups.get('直连').proxies[0], '🇨🇳 直连 | IPv6优先');
     assert.equal(groups.get('直连').proxies.length, 5);
-    // 其他组用通用测速网址与间隔
+    // 其他组用通用测速网址，自动选择组用通用测速间隔（上游只给自动选择组定时测速）
     for (const name of ['默认代理', '香港', '香港-自动选择', '漏网之鱼']) {
       assert.equal(groups.get(name).url, BASE_TEST_URL, name);
-      assert.equal(groups.get(name).interval, BASE_TEST_INTERVAL, name);
     }
+    assert.equal(groups.get('香港-自动选择').interval, BASE_TEST_INTERVAL);
 
     const hf = out.rules.indexOf('RULE-SET,huggingface,默认代理');
     assert.ok(hf !== -1 && hf < out.rules.indexOf('RULE-SET,ai,AI'));

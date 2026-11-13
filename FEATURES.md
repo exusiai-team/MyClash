@@ -59,7 +59,7 @@
 
 | 改动 | 原版 | 现在 | 补丁函数 |
 | --- | --- | --- | --- |
-| 通用测速 | Apple 测速网址、600 秒 | `connectivitycheck.gstatic.com/generate_204`、300 秒 | `setBaseTestOption` |
+| 通用测速 | Apple 测速网址，自动选择组 600 秒 | `connectivitycheck.gstatic.com/generate_204`，自动选择组 300 秒 | `setBaseTestOption` |
 | 分流组测速 | 全部共用通用测速网址 | 各用自己服务的网址（数据：Bettbox 服务检测）；AI 用 `api.anthropic.com/v1/models`，Telegram 用 `api.telegram.org` | `TEST_URLS`、`patchScript` |
 | 台湾组测速 | 通用测速网址 | 同 AI 组，按 Claude 连通性挑节点 | `addRegionTestUrls` |
 | 直连组测速与默认 | 通用测速网址，默认「双栈」 | vivo 测速网址（有 IPv6 地址），默认「IPv6优先」 | `addDirectTestUrl` |
@@ -74,7 +74,7 @@
 | 日志级别 | info | warning | `reduceMemory` |
 | 本机代理核心直连 | 无 | xray / sing-box 进程最先直连 | `reduceMemory` |
 | sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，只拿域名匹配规则 | `addSniffer` |
-| 广告规则 | category-ads，排在国内直连之后 | Sukka Reject Base（域名转 mrs + 关键词 / 通配 / IP 的 classical 规则集）与 Sukka 的 PCDN 清单，排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockFirst` |
+| 广告规则 | category-ads，排在所有规则最前面 | Sukka Reject Base（域名转 mrs + 关键词 / 通配 / IP 的 classical 规则集）与 Sukka 的 PCDN 清单，排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockAfterPrivate` |
 | DNS 引导 | 见第 3 节 | 见第 3 节 | `useDohBootstrap` |
 
 ## 3. DNS
