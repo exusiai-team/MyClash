@@ -74,7 +74,7 @@
 | AI 链式代理 | 无（上游的链式代理只给自定义节点用） | 新增「AI链式代理」组，Worker 传入的节点与整组挂上中转；挂了中转的节点从其他组拿掉，防止绕回崩溃 | `addAiChain` |
 | 日志级别 | info | warning | `reduceMemory` |
 | 本机代理核心直连 | 无 | xray / sing-box 进程最先直连 | `reduceMemory` |
-| sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，只拿域名匹配规则 | `addSniffer` |
+| sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，用域名匹配规则并按域名重新解析目标地址 | `addSniffer` |
 | 广告规则 | category-ads，排在所有规则最前面 | Sukka Reject Base（域名转 mrs + 关键词 / 通配 / IP 的 classical 规则集）与 Sukka 的 PCDN 清单，排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockAfterPrivate` |
 | 国内域名兜底直连 | 只有 `geolocation-cn` 直连，B 站、腾讯、阿里、京东、字节等域名缺失（上游转换丢了 v2fly `include:xxx @-!cn` 的子列表，见 [meta-rules-dat#180](https://github.com/MetaCubeX/meta-rules-dat/issues/180)），浏览器安全 DNS 解析到海外 CDN 时落到「漏网之鱼」 | `geolocation-!cn` 之后加 `RULE-SET,cn,直连` | `addCnDirect` |
 | DNS 引导 | 见第 3 节 | 见第 3 节 | `useDohBootstrap` |
@@ -141,13 +141,13 @@ hosts:                               # 上游；本仓库删掉了用不到的 d
 | 规则判为直连的连接，要拿真实 IP | 跟 `nameserver-policy` 一样（`direct-nameserver-follow-policy`），没命中就用阿里、腾讯 UDP | 直连 |
 | 节点的服务器域名 | 机场的私有 DNS（有的话），否则阿里、腾讯 DoH | 直连 |
 | DNS 服务器本身的域名（`cloudflare-dns.com`、`dns.google`） | 先查 `hosts`（写死了 IP）；查不到才用 `default-nameserver` | 直连 |
-| 浏览器安全 DNS、App 自带 DoH、直接连 IP | 不经过 mihomo 的 DNS；sniffer 从 TLS / HTTP / QUIC 里取出域名再走规则 | — |
+| 浏览器安全 DNS、App 自带 DoH、直接连 IP | sniffer 从 TLS / HTTP / QUIC 里取出域名再走规则，目标地址按域名重新解析（同上面几行），不用浏览器查到的 IP | 按规则 |
 
 ### 3.3 本仓库改了什么、为什么
 
 - `default-nameserver` / `proxy-server-nameserver` 改成两个 DoH：原版 114 明文总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时节点域名集中解析就成簇刷屏。DoH 连接可复用，本机实测同样 120 次查询，warning 由 18 条降到 0，中位延迟 48 ms → 18 ms（`useDohBootstrap`）
 - 删掉 `hosts` 里的 `doh.pub`：只有原版的 `proxy-server-nameserver` 用它，改成用 IP 的 DoH 后用不到了（`useDohBootstrap`）
-- 开启 sniffer（`addSniffer`）：`force-dns-mapping`、`parse-pure-ip`，`override-destination: false`（只拿域名匹配规则，不改目标地址），跳过 `Mijia Cloud` 与 `+.push.apple.com`
+- 开启 sniffer（`addSniffer`）：`force-dns-mapping`、`parse-pure-ip`，`override-destination: true`（目标地址换成嗅探到的域名，由 mihomo 按规则重新解析。浏览器安全 DNS 经代理查询，B 站等国内站拿到海外 CDN 的 IP，原样直连时实测 B 站首页 DOMContentLoaded 0.6 s → 60 s），跳过 `Mijia Cloud` 与 `+.push.apple.com`
 
 国内 DNS（`nameserver-policy`、`direct-nameserver`）沿用原版的 UDP：一个包就回，取消也不会记 warning，换成 DoH 只多一点防运营商劫持 53 端口的好处。
 

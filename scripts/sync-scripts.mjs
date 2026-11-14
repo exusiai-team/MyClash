@@ -328,12 +328,14 @@ export function defaultToAuto(source) {
 
 // 上游没有 sniffer（mihomo 默认关闭）：fake-ip 只还原走系统 DNS 的连接，
 // 浏览器的安全 DNS、自带 DoH 的 App、直接连 IP 的流量进来只有 IP，域名规则全部失效。
-// 不改目标地址（override-destination: false），只拿嗅探到的域名来匹配规则
+// 目标地址换成嗅探到的域名（override-destination: true），由 mihomo 按规则重新解析：浏览器的安全 DNS 经代理查询，
+// B 站等国内站拿到的是海外 CDN 的 IP（如 B 站香港 103.151.151.x、新加坡 38.60.x），不换的话命中 cn 规则后
+// 从国内直连海外 IP，实测首页 DOMContentLoaded 0.6 s → 60 s；换了以后直连用 direct-nameserver 解析到国内 CDN
 const SNIFFER = `  newConfig['sniffer'] = {
     enable: true,
     'force-dns-mapping': true,
     'parse-pure-ip': true,
-    'override-destination': false,
+    'override-destination': true,
     sniff: {
       HTTP: { ports: [80, '8080-8880'] },
       TLS: { ports: [443, 8443] },
