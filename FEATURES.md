@@ -74,7 +74,10 @@
 | AI 链式代理 | 无（上游的链式代理只给自定义节点用） | 新增「AI链式代理」组，Worker 传入的节点与整组挂上中转；挂了中转的节点从其他组拿掉，防止绕回崩溃 | `addAiChain` |
 | 日志级别 | info | warning | `reduceMemory` |
 | 本机代理核心直连 | 无 | xray / sing-box 进程最先直连 | `reduceMemory` |
-| sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，用域名匹配规则并按域名重新解析目标地址 | `addSniffer` |
+| sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，用域名匹配规则并按域名重新解析目标地址（HTTP 只匹配不改地址）；不嗅探局域网与保留地址，跳过向日葵、小米设备 | `addSniffer` |
+| TUN UDP NAT | 默认（端点相关） | `endpoint-independent-nat: true`，游戏、P2P、语音的 NAT 类型更好 | `addEndpointIndependentNat` |
+| 屏蔽代理 QUIC | 默认关闭 | 打开：非国内目标的 UDP 443 拒绝，浏览器马上退回 TCP。Helium 实测（新加坡 Trojan 节点）允许时 h3 一次没连上，Google 首字节 572–1294 ms → 586–621 ms，YouTube 首页 DOMContentLoaded 平均 2.01 s → 1.77 s | `blockProxyQuic` |
+| 测速状态码 | 任何状态码都算通 | 测速网址是 `generate_204` 的组要求回 204，劫持页、认证页回的 200 不算通 | `addExpected204` |
 | 广告规则 | category-ads，排在所有规则最前面 | Sukka Reject Base（域名转 mrs + 关键词 / 通配 / IP 的 classical 规则集）与 Sukka 的 PCDN 清单，排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockAfterPrivate` |
 | 国内域名兜底直连 | 只有 `geolocation-cn` 直连，B 站、腾讯、阿里、京东、字节等域名缺失（上游转换丢了 v2fly `include:xxx @-!cn` 的子列表，见 [meta-rules-dat#180](https://github.com/MetaCubeX/meta-rules-dat/issues/180)），浏览器安全 DNS 解析到海外 CDN 时落到「漏网之鱼」 | `geolocation-!cn` 之后加 `RULE-SET,cn,直连` | `addCnDirect` |
 | DNS 引导 | 见第 3 节 | 见第 3 节 | `useDohBootstrap` |
@@ -147,7 +150,7 @@ hosts:                               # 上游；本仓库删掉了用不到的 d
 
 - `default-nameserver` / `proxy-server-nameserver` 改成两个 DoH：原版 114 明文总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时节点域名集中解析就成簇刷屏。DoH 连接可复用，本机实测同样 120 次查询，warning 由 18 条降到 0，中位延迟 48 ms → 18 ms（`useDohBootstrap`）
 - 删掉 `hosts` 里的 `doh.pub`：只有原版的 `proxy-server-nameserver` 用它，改成用 IP 的 DoH 后用不到了（`useDohBootstrap`）
-- 开启 sniffer（`addSniffer`）：`force-dns-mapping`、`parse-pure-ip`，`override-destination: true`（目标地址换成嗅探到的域名，由 mihomo 按规则重新解析。浏览器安全 DNS 经代理查询，B 站等国内站拿到海外 CDN 的 IP，原样直连时实测 B 站首页 DOMContentLoaded 0.6 s → 60 s），跳过 `Mijia Cloud` 与 `+.push.apple.com`
+- 开启 sniffer（`addSniffer`）：`force-dns-mapping`、`parse-pure-ip`，`override-destination: true`（目标地址换成嗅探到的域名，由 mihomo 按规则重新解析。浏览器安全 DNS 经代理查询，B 站等国内站拿到海外 CDN 的 IP，原样直连时实测 B 站首页 DOMContentLoaded 0.6 s → 60 s；HTTP 的 Host 头不可靠，只匹配不改地址），跳过 `Mijia Cloud`、`+.push.apple.com`、`dlg.io.mi.com`、`+.oray.com`（SNI 与实际服务器不符），`skip-dst-address` 排除局域网与保留地址（用 IP 连 NAS 时 SNI 常是公网域名，改地址会绕到公网）
 
 国内 DNS（`nameserver-policy`、`direct-nameserver`）沿用原版的 UDP：一个包就回，取消也不会记 warning，换成 DoH 只多一点防运营商劫持 53 端口的好处。
 
@@ -192,15 +195,16 @@ Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`�
 3. `private` → 直连（上游）
 4. `sukka-reject`、`sukka-reject-classical`（`no-resolve`）→ AdBlock（本仓库：换了规则集，也从分流规则搬到这里）
 5. `geolocation-cn`、`games_cn`、`synology`、`apple_cn`、`microsoft_cn` 与几个固定域名 → 直连（上游）
-6. 屏蔽代理 QUIC（上游，默认关闭）
+6. 屏蔽代理 QUIC：非国内目标的 UDP 443 → REJECT（上游规则，默认关闭，本仓库打开）
 7. `huggingface` → 默认代理（本仓库）
 8. 各分流组域名规则（上游）
 9. `geolocation-!cn` → 默认代理（上游）
-10. 各分流组 IP 规则（上游）
+10. `cn` → 直连（本仓库）
 11. `cn_ip`、`private_ip` → 直连（上游）
-12. `MATCH` → 漏网之鱼（上游；极简模式为默认代理）
+12. 各分流组 IP 规则（上游）
+13. `MATCH` → 漏网之鱼（上游；极简模式为默认代理）
 
-第 10 条起是 IP 规则：域名走到这里还没命中，mihomo 会先解析出 IP。`cn` 里的域名经阿里、腾讯解析，很快；两张表都没有的域名经「默认代理」查 Cloudflare / Google DoH，第一次访问会慢一点，之后有缓存。
+第 11 条起是 IP 规则：域名走到这里还没命中，mihomo 会先解析出 IP。`cn` 里的域名经阿里、腾讯解析，很快；两张表都没有的域名经「默认代理」查 Cloudflare / Google DoH，第一次访问会慢一点，之后有缓存。
 
 ## 6. iPhone 小火箭（本仓库）
 

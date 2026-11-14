@@ -116,6 +116,8 @@ export function patchScript(source, file) {
  * - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个）
  * - AI 链式代理：MyClash Worker 选的节点与整组走链式的地区组直接挂上新增的「AI链式代理」组中转，「AI」组默认选它们
  * - 「geolocation-!cn」之后加「cn」规则集直连，补上 geolocation-cn 缺的 B 站、腾讯、阿里、京东、字节等域名
+ * - sniffer 按嗅探到的域名重新解析目标地址（HTTP 除外），不嗅探局域网与保留地址，跳过向日葵与小米设备
+ * - TUN 开启端点无关 NAT；打开「屏蔽代理QUIC流量」；测速网址是 generate_204 的组要求回 204
  * 友情推荐`,
     '文件开头注释',
   );
@@ -160,6 +162,9 @@ export function patchScript(source, file) {
   s = directForAllServices(s);
   s = addAiChain(s);
   s = addCnDirect(s);
+  s = addEndpointIndependentNat(s);
+  s = blockProxyQuic(s);
+  s = addExpected204(s);
 
   return replaceOnce(
     s,
@@ -337,17 +342,66 @@ const SNIFFER = `  newConfig['sniffer'] = {
     'parse-pure-ip': true,
     'override-destination': true,
     sniff: {
-      HTTP: { ports: [80, '8080-8880'] },
+      // HTTP 的 Host 头常是假的或内网名（IoT、80 端口的局域网服务），只拿来匹配规则，不改目标地址
+      HTTP: { ports: [80, '8080-8880'], 'override-destination': false },
       TLS: { ports: [443, 8443] },
       QUIC: { ports: [443, 8443] },
     },
-    'skip-domain': ['Mijia Cloud', '+.push.apple.com'],
+    // 向日葵（oray）与小米设备（dlg.io.mi.com）的 SNI 与实际服务器不符，改目标地址会连不上
+    'skip-domain': ['Mijia Cloud', '+.push.apple.com', 'dlg.io.mi.com', '+.oray.com'],
+    // 局域网与保留地址不嗅探：用 IP 连 NAS、路由器时 SNI 常是公网域名（如 xxx.synology.me），
+    // 改目标地址会解析到公网 IP 绕出去。fake-ip 段 198.18.0.0/15 不在里面
+    'skip-dst-address': [
+      '10.0.0.0/8',
+      '100.64.0.0/10',
+      '127.0.0.0/8',
+      '169.254.0.0/16',
+      '172.16.0.0/12',
+      '192.168.0.0/16',
+      '224.0.0.0/4',
+      'fc00::/7',
+      'fe80::/10',
+      'ff00::/8',
+    ],
   };
 
 `;
 
 export function addSniffer(source) {
   return replaceOnce(source, "  newConfig['tun'] = {\n", `${SNIFFER}  newConfig['tun'] = {\n`, 'tun 设置');
+}
+
+// TUN 的 UDP 用端点无关 NAT（Full Cone）：游戏、P2P、语音的 NAT 类型更好，mihomo 文档说只有轻微的性能代价
+export function addEndpointIndependentNat(source) {
+  return replaceOnce(
+    source,
+    "    'auto-detect-interface': true,\n",
+    "    'auto-detect-interface': true,\n    'endpoint-independent-nat': true,\n",
+    'tun auto-detect-interface',
+  );
+}
+
+// 打开上游的「屏蔽代理QUIC流量」：非国内目标的 UDP 443 直接拒绝，浏览器马上退回 TCP。
+// 节点多是 Trojan / VLESS / AnyTLS，UDP 经 TCP 隧道转发，QUIC 常握手失败，Chrome 要白白试一次才回落；
+// 用 Helium 实测（新加坡 Trojan 节点，每轮全新配置，各 3 轮）：允许 QUIC 时 h3 一次都没连上，
+// Google 首字节 572–1294 ms → 586–621 ms，YouTube 首页 DOMContentLoaded 平均 2.01 s → 1.77 s。
+// 国内目标（cn、cn_ip）不受影响，它们在前面的国内直连规则就已命中
+export function blockProxyQuic(source) {
+  return replaceOnce(source, '  屏蔽代理QUIC流量: false,', '  屏蔽代理QUIC流量: true,', '屏蔽代理QUIC流量开关');
+}
+
+// 测速网址是 generate_204 的组要求回 204：不设时任何状态码都算通，运营商劫持或公共 Wi-Fi 认证页回 200，
+// 坏节点也会被当成可用。其他测速网址（Anthropic 回 401、YouTube 回 200 等）不设
+const EXPECTED_204 = `  // 测速网址是 generate_204 的组要求回 204，劫持页、认证页回的 200 不算通
+  for (const group of newConfig['proxy-groups']) {
+    if (/\\/generate_204$/.test(group.url ?? '')) group['expected-status'] = 204;
+  }
+
+`;
+
+export function addExpected204(source) {
+  const anchor = "  newConfig['rule-providers'] = finalRuleProviders;\n";
+  return replaceOnce(source, anchor, EXPECTED_204 + anchor, 'rule-providers 赋值');
 }
 
 // 上游把 AdBlock 的规则（priorityRules）排在最前面，连本机代理核心直连与「私有网络直连」都在它后面；
