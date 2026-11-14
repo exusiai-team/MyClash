@@ -479,11 +479,12 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
-  test(`覆写脚本 public/${file}：开启 sniffer，只拿域名匹配规则、不改目标地址`, () => {
+  test(`覆写脚本 public/${file}：开启 sniffer，目标地址换成嗅探到的域名`, () => {
     const { sniffer } = runScript(file);
     assert.equal(sniffer.enable, true);
     assert.equal(sniffer['parse-pure-ip'], true);
-    assert.equal(sniffer['override-destination'], false);
+    // 浏览器安全 DNS 拿到的海外 CDN IP 不能原样直连，要按域名重新解析
+    assert.equal(sniffer['override-destination'], true);
     for (const p of ['HTTP', 'TLS', 'QUIC']) assert.ok(sniffer.sniff[p].ports.length > 0, p);
   });
 }
