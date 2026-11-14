@@ -76,6 +76,7 @@
 | 本机代理核心直连 | 无 | xray / sing-box 进程最先直连 | `reduceMemory` |
 | sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，只拿域名匹配规则 | `addSniffer` |
 | 广告规则 | category-ads，排在所有规则最前面 | Sukka Reject Base（域名转 mrs + 关键词 / 通配 / IP 的 classical 规则集）与 Sukka 的 PCDN 清单，排在「私有网络直连」之后、国内直连之前 | `useSukkaReject`、`adBlockAfterPrivate` |
+| 国内域名兜底直连 | 只有 `geolocation-cn` 直连，B 站、腾讯、阿里、京东、字节等域名缺失（上游转换丢了 v2fly `include:xxx @-!cn` 的子列表，见 [meta-rules-dat#180](https://github.com/MetaCubeX/meta-rules-dat/issues/180)），浏览器安全 DNS 解析到海外 CDN 时落到「漏网之鱼」 | `geolocation-!cn` 之后加 `RULE-SET,cn,直连` | `addCnDirect` |
 | DNS 引导 | 见第 3 节 | 见第 3 节 | `useDohBootstrap` |
 
 ## 3. DNS

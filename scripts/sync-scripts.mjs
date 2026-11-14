@@ -115,6 +115,7 @@ export function patchScript(source, file) {
  * - 自动选择组不选 HTTP / SOCKS5 节点（多是公开代理），也不选高倍率与「勿跑大流量」节点
  * - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个）
  * - AI 链式代理：MyClash Worker 选的节点与整组走链式的地区组直接挂上新增的「AI链式代理」组中转，「AI」组默认选它们
+ * - 「geolocation-!cn」之后加「cn」规则集直连，补上 geolocation-cn 缺的 B 站、腾讯、阿里、京东、字节等域名
  * 友情推荐`,
     '文件开头注释',
   );
@@ -158,6 +159,7 @@ export function patchScript(source, file) {
   s = excludeFromAutoGroups(s);
   s = directForAllServices(s);
   s = addAiChain(s);
+  s = addCnDirect(s);
 
   return replaceOnce(
     s,
@@ -464,6 +466,20 @@ export function addAiChain(source) {
   const s = replaceOnce(source, start, AI_CHAIN_READ + start, 'main 开头');
   const anchor = "  newConfig['rule-providers'] = finalRuleProviders;\n";
   return replaceOnce(s, anchor, AI_CHAIN + anchor, '规则集组装代码');
+}
+
+// bett-rules 的 geolocation-cn 缺了 v2fly 用 `include:xxx @-!cn` 引入的整份子列表（B 站、腾讯、阿里、京东、字节等 34 家）：
+// 上游转换工具 Loyalsoldier/domain-list-custom 把「排除 !cn 属性」当成「要求带 !cn 属性」，一条都匹配不上，整份丢掉
+// （MetaCubeX/meta-rules-dat#180、Loyalsoldier/domain-list-custom#135）。这些域名平时靠 cn_ip 兜底直连，
+// 浏览器安全 DNS 解析到海外 CDN（如 B 站的 ov-gotcha 节点）时就落到「漏网之鱼」走代理。
+// cn 规则集（tld-cn + geolocation-cn）里有这些域名，加在「geolocation-!cn」之后：分流组与国外域名先匹配，只接住剩下的国内域名
+export function addCnDirect(source) {
+  return replaceOnce(
+    source,
+    "    'RULE-SET,geolocation-!cn,默认代理',\n",
+    "    'RULE-SET,geolocation-!cn,默认代理',\n    // geolocation-cn 缺了 B 站、腾讯、阿里等域名（上游转换丢了 @-!cn 的子列表），用 cn 规则集补上\n    'RULE-SET,cn,直连',\n",
+    'geolocation-!cn 规则',
+  );
 }
 
 // 「NovelAI」分流组：bett-rules 没有单独的 novelai 规则集，NovelAI 只在「AI」组用的 category-ai-!cn 里（+.novelai.net）。
