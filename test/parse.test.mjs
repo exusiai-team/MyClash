@@ -497,6 +497,16 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.equal(rules.indexOf('RULE-SET,sukka-reject-classical,AdBlock,no-resolve'), ad + 1);
     assert.equal(rules.filter((r) => r.split(',')[2] === 'AdBlock').length, 2);
   });
+
+  test(`覆写脚本 public/${file}：cn 规则集直连排在 geolocation-!cn 之后、cn_ip 与兜底之前`, () => {
+    const out = runScript(file);
+    const { rules } = out;
+    const cn = rules.indexOf('RULE-SET,cn,直连');
+    assert.equal(cn, rules.indexOf('RULE-SET,geolocation-!cn,默认代理') + 1);
+    assert.ok(cn < rules.indexOf('RULE-SET,cn_ip,直连'));
+    assert.ok(cn < rules.findIndex((r) => r.startsWith('MATCH,')));
+    assert.match(out['rule-providers'].cn.url, /geosite\/cn\.mrs$/);
+  });
 }
 
 for (const file of ['script.js', 'script-full.js']) {

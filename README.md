@@ -83,6 +83,7 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   原本 114 总是先回，DoT / DoH 连接还没建好就被取消，每次记一条 `dial DIRECT ... operation was canceled`，测速时成簇刷屏；DoH 连接可复用，本机实测 warning 归零、解析也更快。
   `hosts` 里原本给 `doh.pub` 写死的 IP 用不到了，一并删掉。完整的 DNS 设置见 [FEATURES.md](FEATURES.md#3-dns)
 - 开启 sniffer（原版没有，mihomo 默认关闭）：fake-ip 只能还原走系统 DNS 的连接，浏览器的安全 DNS、自带 DoH 的 App、直接连 IP 的流量进来只有 IP，`ai`、`google` 等域名规则全部失效。嗅探 HTTP / TLS / QUIC，只拿域名匹配规则，不改目标地址（`override-destination: false`）
+- 「geolocation-!cn」之后加 `RULE-SET,cn,直连`：bett-rules 的 `geolocation-cn` 缺了 B 站、腾讯、阿里、京东、字节等 34 家的域名（上游转换工具把 v2fly 的 `include:xxx @-!cn` 整份丢掉，见 [meta-rules-dat#180](https://github.com/MetaCubeX/meta-rules-dat/issues/180)），平时靠 `cn_ip` 兜底；浏览器安全 DNS 解析到海外 CDN（如 B 站 `ov-gotcha` 节点）时就落到「漏网之鱼」走代理。`cn` 规则集里有这些域名，排在分流组与国外域名之后，只接住剩下的国内域名
 - 广告规则排在「私有网络直连」之后、国内直连（`geolocation-cn`）之前（原版排在所有规则最前面，连本机代理核心直连、私有网络直连都在它后面）。`geolocation-cn` 按 `baidu.com`、`miui.com` 等整个域名后缀匹配，排在它后面的话国内厂商的广告、统计与小米反诈域名（如 `hm.baidu.com`、`flash.sec.miui.com`）先被直连，到不了 AdBlock。AdBlock 关闭或极简模式时不加这条规则
 - 自动选择组（url-test）只看延迟，所以：
   - 不选 HTTP / SOCKS5 节点（`exclude-type: DIRECT|Http|Socks5`）：机场混进来的这类节点多是公开代理，有的还是明文
