@@ -486,6 +486,27 @@ for (const file of ['script.js', 'script-full.js']) {
     // 浏览器安全 DNS 拿到的海外 CDN IP 不能原样直连，要按域名重新解析
     assert.equal(sniffer['override-destination'], true);
     for (const p of ['HTTP', 'TLS', 'QUIC']) assert.ok(sniffer.sniff[p].ports.length > 0, p);
+    // HTTP 的 Host 头不可靠，只拿来匹配规则
+    assert.equal(sniffer.sniff.HTTP['override-destination'], false);
+    assert.equal(sniffer.sniff.TLS['override-destination'], undefined);
+    for (const d of ['dlg.io.mi.com', '+.oray.com']) assert.ok(sniffer['skip-domain'].includes(d), d);
+    // 局域网不嗅探，fake-ip 段要嗅探
+    for (const cidr of ['192.168.0.0/16', '10.0.0.0/8', 'fc00::/7']) assert.ok(sniffer['skip-dst-address'].includes(cidr), cidr);
+    assert.ok(!sniffer['skip-dst-address'].some((c) => c.startsWith('198.18.')));
+  });
+
+  test(`覆写脚本 public/${file}：TUN 端点无关 NAT，屏蔽代理 QUIC，generate_204 测速要求回 204`, () => {
+    const out = runScript(file);
+    assert.equal(out.tun['endpoint-independent-nat'], true);
+    const quic = out.rules.findIndex((r) => r.startsWith('AND,((NETWORK,UDP),(DST-PORT,443)'));
+    assert.ok(quic !== -1);
+    assert.ok(out.rules[quic].endsWith(',REJECT'));
+    // 国内直连规则在前面，国内的 QUIC 不受影响
+    assert.ok(out.rules.indexOf('RULE-SET,geolocation-cn,直连') < quic);
+    assert.ok(quic < out.rules.indexOf('RULE-SET,geolocation-!cn,默认代理'));
+    const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
+    for (const name of ['默认代理', '自动选择', '直连', 'Google']) assert.equal(groups.get(name)['expected-status'], 204, name);
+    for (const name of ['AI', '台湾', 'Telegram']) assert.equal(groups.get(name)['expected-status'], undefined, name);
   });
 }
 
