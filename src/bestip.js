@@ -18,11 +18,20 @@ export async function fingerprint(proxy) {
 /** best-ip 的扫描结果（schema_version 1）精简成写进 KV 的内容：只留测到落地 IP（status = ok）的节点与分组用得到的字段 */
 export function compactResult(result) {
   if (result?.schema_version !== 1 || !Array.isArray(result.nodes)) throw new Error('best-ip 结果格式不对');
+  // 输入里重名的节点（可能一个测到、一个没测到）按名称分不出是哪个，不留名称；
+  // 指纹相同的也一样（「剩余流量」等信息节点常复制真节点的设置），不留指纹
+  const count = (key) => {
+    const seen = new Map();
+    for (const n of result.nodes) seen.set(n?.[key], (seen.get(n?.[key]) ?? 0) + 1);
+    return (n) => (typeof n[key] === 'string' && seen.get(n[key]) === 1 ? n[key] : null);
+  };
+  const uniqueName = count('name');
+  const uniquePrint = count('fingerprint');
   const nodes = result.nodes
-    .filter((n) => n?.status === 'ok' && typeof n.name === 'string')
+    .filter((n) => n?.status === 'ok' && (uniqueName(n) !== null || uniquePrint(n) !== null))
     .map((n) => ({
-      name: n.name,
-      fingerprint: n.fingerprint,
+      name: uniqueName(n),
+      fingerprint: uniquePrint(n),
       tag: {
         country_code: n.country_code ?? null,
         usage_type: n.usage_type ?? null,
@@ -37,17 +46,18 @@ export function compactResult(result) {
 }
 
 /**
- * 按名称（逐字一致）给节点挂上标签，对不上的再按指纹找（只用唯一的指纹，免得认错），返回挂了几个。
+ * 按名称（逐字一致）给节点挂上标签，对不上的再按指纹找，返回挂了几个。扫描时重名、重指纹的 compactResult 已经去掉；
+ * 这里再防一次指纹重复（旧格式的 KV 内容），免得认错。
  * 直接改 proxies（合并后的节点，覆写脚本之前）
  */
 export async function attachTags(proxies, stored) {
   const byName = new Map();
   const byPrint = new Map();
   for (const n of stored?.nodes ?? []) {
-    if (!byName.has(n.name)) byName.set(n.name, n.tag);
+    if (n.name !== null) byName.set(n.name, n.tag);
     if (n.fingerprint) byPrint.set(n.fingerprint, byPrint.has(n.fingerprint) ? null : n.tag);
   }
-  if (!byName.size) return 0;
+  if (!byName.size && !byPrint.size) return 0;
   let count = 0;
   for (const [i, p] of proxies.entries()) {
     const tag = byName.get(p.name) ?? (byPrint.size ? byPrint.get(await fingerprint(p)) : null);

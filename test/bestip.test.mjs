@@ -20,12 +20,25 @@ test('compactResult：只留 status = ok 的节点与分组用得到的字段，
     score: 50, risk: { proxy: false }, ai: { openai: 'ok' }, same_exit: [], ...extra,
   });
   const out = compactResult({
-    schema_version: 1, scan_id: 's', finished_at: 'f', node_count: 3,
-    nodes: [node('a', 'ok'), node('b', 'failed'), node(null, 'ok')],
+    schema_version: 1, scan_id: 's', finished_at: 'f', node_count: 8,
+    nodes: [
+      node('a', 'ok'), node('b', 'failed'),
+      // 重名的节点一个测到、一个没测到：分不出是哪个，不留名称，只靠指纹
+      node('c', 'ok', { fingerprint: 'fc' }), node('c', 'failed'),
+      node(null, 'ok', { fingerprint: null }), node(null, 'ok', { fingerprint: 'fn' }),
+      // 「剩余流量」信息节点复制了 d 的设置（指纹相同，best-ip 跳过）：d 只按名称对，信息节点不会沾到 d 的标签
+      node('d', 'ok', { fingerprint: 'fd' }), node('剩余流量：1 GB', 'skipped', { fingerprint: 'fd' }),
+    ],
   });
+  const tag = { country_code: 'JP', usage_type: 'mobile', native: false, score: 50, risk: { proxy: false }, ai: { openai: 'ok' }, checked_at: 't' };
   assert.deepEqual(out, {
-    scanId: 's', finishedAt: 'f', nodeCount: 3,
-    nodes: [{ name: 'a', fingerprint: 'f', tag: { country_code: 'JP', usage_type: 'mobile', native: false, score: 50, risk: { proxy: false }, ai: { openai: 'ok' }, checked_at: 't' } }],
+    scanId: 's', finishedAt: 'f', nodeCount: 8,
+    nodes: [
+      { name: 'a', fingerprint: null, tag }, // 'f' 被 b、c 共用
+      { name: null, fingerprint: 'fc', tag },
+      { name: null, fingerprint: 'fn', tag },
+      { name: 'd', fingerprint: null, tag },
+    ],
   });
   assert.ok(!JSON.stringify(out).includes('203.0.113.7'));
   assert.throws(() => compactResult({ schema_version: 2, nodes: [] }), /格式不对/);
