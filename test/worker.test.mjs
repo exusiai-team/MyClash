@@ -169,7 +169,7 @@ test('/sub/<TOKEN>?script=：在服务端套用精简 / 全量覆写脚本', asy
   assert.equal((await get('?script=nope')).status, 400);
 });
 
-test('AI 链式代理：勾选的机场节点与整组直接挂上「AI链式代理」中转', async (t) => {
+test('AI 链式代理：勾选的机场节点与整组各复制一份经「AI链式代理」中转，原节点不动', async (t) => {
   const upstream = await startUpstream();
   t.after(() => upstream.close());
   const env = { SUB_STORE: memoryKv() };
@@ -188,13 +188,14 @@ test('AI 链式代理：勾选的机场节点与整组直接挂上「AI链式代
   const body = await get('?script=lite');
   assert.match(body, /^# AI 链式代理：1 个单独勾的节点，经「AI链式代理」组中转/m);
   const config = yaml.load(body);
-  // 原节点直接挂中转，不复制；勾了但机场没有的节点不生效
+  // 复制一份挂中转，原节点不动；勾了但机场没有的节点不生效
   assert.ok(!config.proxies.some((p) => 'myclash-ai-chain' in p));
-  assert.deepEqual(config.proxies.filter((p) => p['dialer-proxy']).map((p) => [p.server, p['dialer-proxy']]), [['jp.node', 'AI链式代理']]);
+  const jp = config.proxies.find((p) => p.server === 'jp.node' && !p['dialer-proxy']).name;
+  assert.deepEqual(config.proxies.filter((p) => p['dialer-proxy']).map((p) => [p.name, p.server, p['dialer-proxy']]), [[`🔗 ${jp}`, 'jp.node', 'AI链式代理']]);
   const groups = new Map(config['proxy-groups'].map((g) => [g.name, g]));
-  const jp = config.proxies.find((p) => p.server === 'jp.node').name;
-  assert.equal(groups.get('AI').proxies[0], jp);
-  assert.equal(groups.get('AI')['default-selected'], jp);
+  assert.ok(groups.get('日本').proxies.includes(jp));
+  assert.equal(groups.get('AI').proxies[0], `🔗 ${jp}`);
+  assert.equal(groups.get('AI')['default-selected'], `🔗 ${jp}`);
   assert.equal(groups.get('AI链式代理')['default-selected'], '香港');
   assert.equal(groups.get('AI链式代理').proxies.at(-1), '直连');
 
@@ -206,9 +207,9 @@ test('AI 链式代理：勾选的机场节点与整组直接挂上「AI链式代
   const grouped = await get('?script=lite');
   assert.match(grouped, /^# AI 链式代理：整组 台湾、日本，经「AI链式代理」组中转/m);
   const c2 = yaml.load(grouped);
-  // 没有台湾节点，整组台湾略过；AI 默认选日本
-  assert.equal(c2['proxy-groups'].find((g) => g.name === 'AI')['default-selected'], '日本');
-  assert.equal(c2.proxies.find((p) => p.server === 'jp.node')['dialer-proxy'], 'AI链式代理');
+  // 没有台湾节点，整组台湾略过；AI 默认选「日本-链式」
+  assert.equal(c2['proxy-groups'].find((g) => g.name === 'AI')['default-selected'], '日本-链式');
+  assert.deepEqual(c2.proxies.filter((p) => p.server === 'jp.node').map((p) => p['dialer-proxy'] ?? null), [null, 'AI链式代理']);
   assert.ok(!('myclash-ai-chain-groups' in c2));
   assert.deepEqual((await put(undefined)).aiChainGroups, []);
 });

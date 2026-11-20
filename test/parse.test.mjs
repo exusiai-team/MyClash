@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY,AI_CHAIN_RELAY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, NOVELAI_GROUP, TEST_URLS, novelAiRules, patchScript, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY, AI_CHAIN_PREFIX, AI_CHAIN_RELAY, AI_CHAIN_SUFFIX, BESTIP_KEY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, NOVELAI_GROUP, TEST_URLS, novelAiRules, patchScript, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -341,68 +341,93 @@ for (const file of ['script.js', 'script-full.js']) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
-  test(`覆写脚本 public/${file}：AI 链式代理直接给节点挂中转，AI 组默认选它们`, () => {
+  test(`覆写脚本 public/${file}：AI 链式代理复制一份节点挂中转，原节点不动，AI 组默认选复制品`, () => {
     const tw2 = { ...BASE_NODES[4], name: '🇹🇼 台湾 02', server: 'tw2.example' };
     const groupsOf = (out) => new Map(out['proxy-groups'].map((g) => [g.name, g]));
     const check = (out) => {
       const names = out['proxy-groups'].map((g) => g.name);
       const defined = new Set([...out.proxies.map((p) => p.name), ...names, 'DIRECT', 'REJECT', 'REJECT-DROP', 'PASS']);
       for (const g of out['proxy-groups']) for (const n of g.proxies) assert.ok(defined.has(n), `${g.name} → ${n}`);
-      for (const p of out.proxies) assert.ok(!(AI_CHAIN_KEY in p), p.name);
+      for (const p of out.proxies) assert.ok(!(AI_CHAIN_KEY in p) && !(BESTIP_KEY in p), p.name);
       assert.ok(!(AI_CHAIN_GROUPS_KEY in out));
+      // 复制品只在「<地区>-链式」组与「AI」组；中转组连不到复制品，不会绕回
+      const groups = groupsOf(out);
+      const reach = (name, seen = new Set()) => (seen.has(name) ? [] : (seen.add(name), groups.has(name) ? groups.get(name).proxies.flatMap((n) => reach(n, seen)) : [name]));
+      if (groups.has(AI_CHAIN_GROUP)) assert.ok(!reach(AI_CHAIN_GROUP).some((n) => n.startsWith(AI_CHAIN_PREFIX)));
+      for (const g of out['proxy-groups']) {
+        if (g.name === 'AI' || g.name === 'GLOBAL' || g.name.includes(AI_CHAIN_SUFFIX)) continue;
+        assert.ok(!g.proxies.some((n) => n.startsWith(AI_CHAIN_PREFIX)), g.name);
+      }
     };
     // 什么都没选：不生成「AI链式代理」组，AI 照旧默认台湾
-    const none = groupsOf(runScript(file, [tw2]));
+    const plain = runScript(file, [tw2]);
+    const none = groupsOf(plain);
     assert.ok(!none.has(AI_CHAIN_GROUP));
 
     // 整组台湾（没有这个地区组的家宽节点略过）
     const out = runScript(file, [tw2], { [AI_CHAIN_GROUPS_KEY]: ['台湾', '家宽节点'] });
     check(out);
     const groups = groupsOf(out);
-    const chained = [...out.proxies].filter((p) => p['dialer-proxy']).map((p) => [p.name, p['dialer-proxy']]);
-    assert.deepEqual(chained, [['🇹🇼 台湾 01', AI_CHAIN_GROUP], ['🇹🇼 台湾 02', AI_CHAIN_GROUP]]);
-    // 不复制节点、不多出组；台湾组原样（自动选择组全是台湾节点，留着）
-    assert.equal(out.proxies.length, runScript(file, [tw2]).proxies.length);
-    assert.ok(!out['proxy-groups'].some((g) => g.name.includes('🔗')));
-    assert.deepEqual([...groups.get('台湾-自动选择').proxies], ['🇹🇼 台湾 01', '🇹🇼 台湾 02']);
-    // 混着其他节点的自动选择组拿掉台湾节点
-    assert.ok(!groups.get('自动选择').proxies.some((n) => n.includes('台湾')));
-    assert.ok(groups.get('自动选择').proxies.length > 0);
-    // AI 组默认选台湾，选项不变
+    // 原节点原样，多出两个挂了中转的复制品
+    assert.deepEqual([...out.proxies].filter((p) => p['dialer-proxy']).map((p) => [p.name, p['dialer-proxy'], p.server]), [
+      [`${AI_CHAIN_PREFIX}🇹🇼 台湾 01`, AI_CHAIN_GROUP, 'n4.example'],
+      [`${AI_CHAIN_PREFIX}🇹🇼 台湾 02`, AI_CHAIN_GROUP, 'tw2.example'],
+    ]);
+    assert.equal(out.proxies.length, plain.proxies.length + 2);
+    // 原本的组一个都没变
+    for (const g of plain['proxy-groups']) {
+      if (g.name === 'AI' || g.name === 'GLOBAL') continue;
+      assert.deepEqual([...groups.get(g.name).proxies], [...g.proxies], g.name);
+    }
+    // 「台湾-链式」组附自动选择组，测速网址同 AI 组
+    const chain = `台湾${AI_CHAIN_SUFFIX}`;
+    assert.deepEqual([...groups.get(`${chain}-自动选择`).proxies], [`${AI_CHAIN_PREFIX}🇹🇼 台湾 01`, `${AI_CHAIN_PREFIX}🇹🇼 台湾 02`]);
+    assert.equal(groups.get(chain).proxies[0], `${chain}-自动选择`);
+    assert.equal(groups.get(`${chain}-自动选择`).url, TEST_URLS.AI);
+    assert.ok(!groups.has(`家宽节点${AI_CHAIN_SUFFIX}`));
+    // AI 组最前面是链式组并默认选它，其余选项不变（台湾仍可直接选）
     const ai = groups.get('AI');
-    assert.equal(ai['default-selected'], '台湾');
-    assert.deepEqual([...ai.proxies], [...none.get('AI').proxies]);
-    // 中转组紧跟在 AI 组后面（GLOBAL 里也是），默认香港，测速网址同 AI 组；
-    // 台湾节点从其他组拿掉后，只有台湾组与含有它的默认代理连得到台湾节点，不当中转，不会绕回自己
+    assert.equal(ai['default-selected'], chain);
+    assert.deepEqual([...ai.proxies], [chain, ...none.get('AI').proxies]);
+    // 中转组紧跟在 AI 组后面（GLOBAL 里也是），默认香港，选项同 AI 组原本的选项，「直连」放最后
     const names = out['proxy-groups'].map((g) => g.name);
-    assert.equal(names[names.indexOf('AI') + 1], AI_CHAIN_GROUP);
+    assert.deepEqual([...names.slice(names.indexOf('AI') + 1, names.indexOf('AI') + 3)], [AI_CHAIN_GROUP, chain]);
     const global = groups.get('GLOBAL').proxies;
-    assert.equal(global[global.indexOf('AI') + 1], AI_CHAIN_GROUP);
+    assert.deepEqual([...global.slice(global.indexOf('AI') + 1, global.indexOf('AI') + 3)], [AI_CHAIN_GROUP, chain]);
     const relay = groups.get(AI_CHAIN_GROUP);
     assert.equal(relay.type, 'select');
     assert.equal(relay['default-selected'], AI_CHAIN_RELAY);
     assert.equal(relay.url, TEST_URLS.AI);
-    assert.equal(relay.proxies.at(-1), '直连');
-    assert.deepEqual([...relay.proxies], [...none.get('AI').proxies.filter((n) => !['台湾', '默认代理', '直连'].includes(n)), '直连']);
-    // 其他组（手动选择等）里拿掉台湾节点
-    for (const g of out['proxy-groups']) {
-      if (['台湾', '台湾-自动选择', 'AI'].includes(g.name)) continue;
-      assert.ok(!g.proxies.some((n) => n.includes('🇹🇼')), g.name);
-    }
+    assert.deepEqual([...relay.proxies], [...none.get('AI').proxies.filter((n) => n !== '直连'), '直连']);
 
-    // 只勾单个节点：挂上中转，放在 AI 组最前面并设为默认；同组的其他节点不挂
+    // 只勾单个节点：复制品放在 AI 组最前面并设为默认，不生成链式组
     const one = runConfig(file, {
       proxies: [...BASE_NODES.map((p) => (p.name.includes('台湾') ? { ...p, [AI_CHAIN_KEY]: true } : p)), tw2],
     });
     check(one);
     const g1 = groupsOf(one);
-    assert.deepEqual([...one.proxies].filter((p) => p['dialer-proxy']).map((p) => p.name), ['🇹🇼 台湾 01']);
-    assert.equal(g1.get('AI').proxies[0], '🇹🇼 台湾 01');
-    assert.equal(g1.get('AI')['default-selected'], '🇹🇼 台湾 01');
-    // 台湾组混着没挂中转的台湾 02：台湾 01 只留在 AI 组，台湾组与其自动选择组拿掉它，台湾组也能当中转
-    assert.deepEqual([...g1.get('台湾-自动选择').proxies], ['🇹🇼 台湾 02']);
-    assert.ok(!g1.get('台湾').proxies.includes('🇹🇼 台湾 01'));
-    assert.ok(g1.get(AI_CHAIN_GROUP).proxies.includes('台湾'));
+    assert.deepEqual([...one.proxies].filter((p) => p['dialer-proxy']).map((p) => p.name), [`${AI_CHAIN_PREFIX}🇹🇼 台湾 01`]);
+    assert.equal(g1.get('AI').proxies[0], `${AI_CHAIN_PREFIX}🇹🇼 台湾 01`);
+    assert.equal(g1.get('AI')['default-selected'], `${AI_CHAIN_PREFIX}🇹🇼 台湾 01`);
+    assert.ok(g1.get('台湾').proxies.includes('🇹🇼 台湾 01'));
+    assert.ok(!g1.has(chain));
+
+    // 有 best-ip 实测标签：整组只复制实测家宽（机房不复制，没标签的照样复制）；一个家宽都没有就整组复制
+    const tag = (usage_type) => ({ [BESTIP_KEY]: { country_code: 'TW', usage_type, native: true, ai: {} } });
+    const tw3 = { ...BASE_NODES[4], name: '🇹🇼 台湾 03', server: 'tw3.example' };
+    const tagged = runConfig(file, {
+      proxies: [...BASE_NODES.map((p) => (p.name.includes('台湾') ? { ...p, ...tag('hosting') } : p)), { ...tw2, ...tag('residential') }, tw3],
+      [AI_CHAIN_GROUPS_KEY]: ['台湾'],
+    });
+    check(tagged);
+    assert.deepEqual([...groupsOf(tagged).get(`${chain}-自动选择`).proxies], [`${AI_CHAIN_PREFIX}🇹🇼 台湾 02`, `${AI_CHAIN_PREFIX}🇹🇼 台湾 03`]);
+    // 实测住宅的台湾节点照常进家宽节点组
+    assert.ok(groupsOf(tagged).get('家宽节点').proxies.includes('🇹🇼 台湾 02'));
+    const allHosting = runConfig(file, {
+      proxies: BASE_NODES.map((p) => (p.name.includes('台湾') ? { ...p, ...tag('hosting') } : p)),
+      [AI_CHAIN_GROUPS_KEY]: ['台湾'],
+    });
+    assert.deepEqual([...groupsOf(allHosting).get(`${chain}-自动选择`).proxies], [`${AI_CHAIN_PREFIX}🇹🇼 台湾 01`]);
 
     // 香港不在中转选项里（例如没有香港节点）就不设默认
     const noHk = runConfig(file, { proxies: BASE_NODES.filter((p) => !p.name.includes('香港')), [AI_CHAIN_GROUPS_KEY]: ['台湾'] });
