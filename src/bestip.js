@@ -39,6 +39,8 @@ export function compactResult(result) {
         score: n.score ?? null,
         risk: n.risk ?? null,
         ai: n.ai ?? {},
+        // 经这个节点访问 IPv6 地址时的出口；null 是带不出 IPv6 或没测
+        exit_ipv6: n.exit_ipv6 ?? null,
         checked_at: n.checked_at ?? null,
       },
     }));

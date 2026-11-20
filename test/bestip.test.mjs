@@ -30,7 +30,7 @@ test('compactResult：只留 status = ok 的节点与分组用得到的字段，
       node('d', 'ok', { fingerprint: 'fd' }), node('剩余流量：1 GB', 'skipped', { fingerprint: 'fd' }),
     ],
   });
-  const tag = { country_code: 'JP', usage_type: 'mobile', native: false, score: 50, risk: { proxy: false }, ai: { openai: 'ok' }, checked_at: 't' };
+  const tag = { country_code: 'JP', usage_type: 'mobile', native: false, score: 50, risk: { proxy: false }, ai: { openai: 'ok' }, exit_ipv6: null, checked_at: 't' };
   assert.deepEqual(out, {
     scanId: 's', finishedAt: 'f', nodeCount: 8,
     nodes: [
@@ -108,3 +108,24 @@ for (const file of ['script.js', 'script-full.js']) {
 test('addBestIp：上游改版找不到修改位置时报错', () => {
   assert.throws(() => addBestIp('function main() {}'), /上游脚本可能改版/);
 });
+
+for (const file of ['script.js', 'script-full.js']) {
+  test(`覆写脚本 public/${file}：IPv6 组按 best-ip 实测的 IPv6 出口组成，IPv6 地址的连接走它`, () => {
+    const t = (exit_ipv6) => ({ country_code: 'JP', usage_type: 'hosting', native: false, ai: {}, exit_ipv6 });
+    const { out, groups } = run(file, [
+      node('🇯🇵 日本 01', 0, t('2001:db8::1')),
+      // 名称写了 IPv6，但实测带不出 IPv6：不算
+      node('🇯🇵 日本 IPv6', 1, t(null)),
+      // 没有标签：照旧看名称
+      node('🇯🇵 日本 v6', 2),
+      node('🇯🇵 日本 02', 3, t(null)),
+    ]);
+    assert.deepEqual([...groups.get('IPv6')].slice(1), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
+    const rule = out.rules.indexOf('IP-CIDR6,::/0,IPv6,no-resolve');
+    assert.ok(rule > out.rules.indexOf('RULE-SET,cn_ip,直连') && rule === out.rules.length - 2);
+    // 没有 IPv6 组就不加这条规则
+    const none = run(file, [node('🇯🇵 日本 02', 3, t(null))]).out;
+    assert.ok(!none['proxy-groups'].some((g) => g.name === 'IPv6'));
+    assert.ok(!none.rules.some((r) => r.startsWith('IP-CIDR6,::/0')));
+  });
+}
