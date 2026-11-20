@@ -69,7 +69,7 @@
 | 分流组「直连」 | 只有 Apple、Steam 等少数几个 | AdBlock 以外全部都有 | `directForAllServices` |
 | 精简版 Apple 组 | 只有全量版有 | 精简版也有 | `addAppleGroup` |
 | NovelAI 组 | 在「AI」组里（category-ai-!cn） | 精简版、全量版都新增「NovelAI」分流组，排在「AI」前面；域名每次同步时从 bett-rules 的 `category-ai-!cn.list` 挑出（bett-rules 没有单独的 novelai 规则集），图标 `public/icons/NovelAI.svg` | `addNovelAiGroup` |
-| IPv6 节点组 | 无 | 只收本机能用 IPv6 连上（server 是 IPv6 地址，或每天从各运营商视角查到域名都有 IPv6 地址）且带得出 IPv6（有 best-ip 实测标签的看 `exit_ipv6`，没有的看名称含 IPv6 / v6）的节点，组里的节点设 `ip-version: ipv6`（只用 IPv6 连）。附自动选择组，图标 `public/icons/IPv6.svg`；目标是 IPv6 地址的连接走这个组（`IP-CIDR6,::/0,IPv6,no-resolve`，排在兜底之前） | `addIpv6Group`、`addIpv6Rule` |
+| IPv6 节点组 | 无 | 只看入口：收本机能用 IPv6 连上（server 是 IPv6 地址，或每天从各运营商视角查到域名都有 IPv6 地址）的节点，落地有没有 IPv6 不管；组里的节点设 `ip-version: ipv6`（只用 IPv6 连）。附自动选择组，图标 `public/icons/IPv6.svg` | `addIpv6Group` |
 | 默认选自动选择 | 地区组默认选第一个节点，默认代理默认选第一个地区 | 地区组默认「<地区>-自动选择」，默认代理默认全局「自动选择」 | `defaultToAuto` |
 | 自动选择组排除 | 只排除 DIRECT | 另排除 HTTP / SOCKS5、高倍率与「勿跑大流量」节点；排除后为空的组不排除 | `excludeFromAutoGroups` |
 | AI 链式代理 | 无（上游的链式代理只给自定义节点用） | Worker 传入的节点与整组（有实测标签时只取实测家宽）各复制一份（🔗 开头），复制品经新增的「AI链式代理」组中转、放进「<地区>-链式」组；原节点不动，中转组连不到复制品，不会绕回 | `addAiChain` |
@@ -204,8 +204,7 @@ Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`�
 10. `cn` → 直连（本仓库）
 11. `cn_ip`、`private_ip` → 直连（上游）
 12. 各分流组 IP 规则（上游）
-13. `IP-CIDR6,::/0,no-resolve` → IPv6（本仓库，有 IPv6 组时）：目标是 IPv6 地址的连接走有 IPv6 出口的节点
-14. `MATCH` → 漏网之鱼（上游；极简模式为默认代理）
+13. `MATCH` → 漏网之鱼（上游；极简模式为默认代理）
 
 第 11 条起是 IP 规则：域名走到这里还没命中，mihomo 会先解析出 IP。`cn` 里的域名经阿里、腾讯解析，很快；两张表都没有的域名经「默认代理」查 Cloudflare / Google DoH，第一次访问会慢一点，之后有缓存。
 

@@ -105,9 +105,8 @@ export function patchScript(source, file) {
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，域名转成 mrs，含小米反诈 / 云扫描等域名；
  *   关键词、通配、IP 规则与 PCDN 域名另放一个 classical 规则集）
- * - 新增「IPv6」节点组：只收本机能用 IPv6 连上（server 是 IPv6 地址或域名有 IPv6 地址）且带得出 IPv6
- *   （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称）的节点，组里的节点设 ip-version: ipv6（只用 IPv6 连）；
- *   并加进「默认代理」；目标是 IPv6 地址的连接走这个组
+ * - 新增「IPv6」节点组：只收本机能用 IPv6 连上（server 是 IPv6 地址或域名有 IPv6 地址）的节点，
+ *   组里的节点设 ip-version: ipv6（只用 IPv6 连）；并加进「默认代理」
  * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时；默认选「IPv6优先」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
  * - default-nameserver 与 proxy-server-nameserver 只用阿里、腾讯两个 DoH，测速时不再刷屏「operation was canceled」；去掉用不到的 doh.pub hosts
@@ -156,7 +155,6 @@ export function patchScript(source, file) {
   s = setBaseTestOption(s);
   s = addRegionTestUrls(s);
   s = addIpv6Group(s);
-  s = addIpv6Rule(s);
   s = addDirectTestUrl(s);
   s = reduceMemory(s);
   s = useDohBootstrap(s);
@@ -246,30 +244,18 @@ export function addRegionTestUrls(source) {
 }
 
 // 「IPv6」节点组放在地区组之后、「其他节点」之前，跟地区组一样是 select 组，
-// 所以会自动出现在「默认代理」、各分流组与「漏网之鱼」里。只收全程走得了 IPv6 的节点：
-// - 本机能用 IPv6 连上：server 本身是 IPv6 地址，或 MyClash Worker 查到 server 的域名有 IPv6 地址
-//   （proxy['myclash-ipv6-entry']，见 src/bestip.js）
-// - 带得出 IPv6：有 best-ip 实测标签（proxy['_bestip']）的看实测有没有 IPv6 出口（exit_ipv6），名称写了 IPv6 但实测出不去的不算；
-//   没有标签的看名称标有 IPv6 / v6、server 是 IPv6 地址或强制只用 IPv6
+// 所以会自动出现在「默认代理」、各分流组与「漏网之鱼」里。只看入口：收本机能用 IPv6 连上的节点，
+// 即 server 本身是 IPv6 地址，或 MyClash Worker 查到 server 的域名有 IPv6 地址（proxy['myclash-ipv6-entry']，见 src/bestip.js）。
+// 节点出不出得了 IPv6（落地有没有 IPv6）不管，所以不把目标是 IPv6 地址的连接分到这个组
 // 组里的节点设 ip-version: ipv6（本机只用 IPv6 连节点，连不上就测速失败，不退回 IPv4）：节点名称要唯一、不改名就复制不了，
 // 所以直接设在节点上，它们在其他组里也只用 IPv6 连。所以只收各地区都拿得到 IPv6 地址的节点（见 src/bestip.js 的 ipv6Hosts）
-// 目标本身是 IPv6 地址的连接走这个组（addIpv6Rule），不会被分到带不出 IPv6 的节点
 export const BESTIP_KEY = '_bestip';
 export const IPV6_ENTRY_KEY = 'myclash-ipv6-entry';
 export const IPV6_GROUP_NAME = 'IPv6';
 export const IPV6_GROUP_IP_VERSION = 'ipv6';
-const IPV6_GROUP = `  // IPv6 节点：本机能用 IPv6 连上（server 是 IPv6 地址，或 MyClash Worker 查到域名有 IPv6 地址），且带得出 IPv6
-  // （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称标有 IPv6 / v6）
-  const ipv6NameRegex = /ipv6|(?<![a-z0-9])v6(?![a-z0-9])/i;
+const IPV6_GROUP = `  // IPv6 节点：本机能用 IPv6 连上（server 是 IPv6 地址，或 MyClash Worker 查到域名有 IPv6 地址）；落地有没有 IPv6 不管
   const ipv6Proxies = [...filteredProxies, ...customProxies]
-    .filter((proxy) => {
-      const ipv6Server = String(proxy.server ?? '').includes(':');
-      const entry = ipv6Server || proxy['${IPV6_ENTRY_KEY}'] === true;
-      const exit = proxy['${BESTIP_KEY}']
-        ? Boolean(proxy['${BESTIP_KEY}'].exit_ipv6)
-        : ipv6NameRegex.test(toMatchableName(proxy.name)) || ipv6Server || proxy['ip-version'] === 'ipv6';
-      return entry && exit;
-    })
+    .filter((proxy) => String(proxy.server ?? '').includes(':') || proxy['${IPV6_ENTRY_KEY}'] === true)
     .map((proxy) => proxy.name);
   // 上游没有 IPv6 图标，Global.svg 已给 GLOBAL 组用，改用本仓库仿上游风格画的 public/icons/IPv6.svg
   if (ipv6Proxies.length > 0) {
@@ -294,18 +280,6 @@ export function addIpv6Group(source) {
   const s = replaceOnce(source, anchor, IPV6_GROUP + anchor, '其他节点组生成代码');
   const proxies = "  newConfig['proxies'] = [...mappedProxies, ...customProxies, ...directProxies];\n";
   return replaceOnce(s, proxies, proxies + IPV6_VERSION, '节点组装代码');
-}
-
-// 目标本身是 IPv6 地址的连接（程序直接连 IPv6 地址，域名连接不受影响）走「IPv6」组：
-// 只有 IPv6 出口的节点才带得出去，分到只有 IPv4 出口的节点会连不上。排在国内直连（cn_ip）与分流组的 IP 规则之后、兜底之前；
-// no-resolve：域名连接不为这条规则去解析
-export function addIpv6Rule(source) {
-  return replaceOnce(
-    source,
-    "    ...functionalIpRules,\n    `MATCH,",
-    `    ...functionalIpRules,\n    // IPv6 地址的连接走「${IPV6_GROUP_NAME}」组（有这个组时），只有 IPv6 出口的节点带得出去\n    ...(newConfig['proxy-groups'].some((g) => g.name === '${IPV6_GROUP_NAME}') ? ['IP-CIDR6,::/0,${IPV6_GROUP_NAME},no-resolve'] : []),\n    \`MATCH,`,
-    '兜底规则',
-  );
 }
 
 // 「直连」组（极简模式与完整模式各一处）改用 DIRECT_TEST_URL，
