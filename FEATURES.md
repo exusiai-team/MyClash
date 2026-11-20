@@ -32,6 +32,7 @@
 | 节点筛选 | 全局 / 每个机场的倍率门槛，再逐个排除节点；被排除节点的 `dialer-proxy` 依赖者一并去掉 | `src/parse.js`、`public/index.html` |
 | 服务端覆写 | `?script=lite\|full` 在 Worker 里直接执行覆写脚本，客户端不用再加脚本 | `src/worker.js`、`scripts/build-overrides.mjs` |
 | AI 链式代理（传参） | 订阅记录里存勾选的节点与整组；输出时给节点加 `myclash-ai-chain` 标记、整组放进 `config['myclash-ai-chain-groups']`，脚本读完就删 | `src/worker.js` |
+| best-ip 实测标签（传参） | GitHub Actions 每天交 best-ip 实测，结果精简后存 KV `res:<TOKEN>`；输出时按名称（对不上按指纹）给节点挂 `_bestip`，脚本读完就删 | `scripts/classify.mjs`、`src/bestip.js`、`src/worker.js` |
 | 自动导入 | 浏览器打开订阅链接或按客户端「首页」跳到管理页并导入 | `src/worker.js`、`public/index.html` |
 | 多种格式 | mihomo / Clash YAML，base64 的 ss / vmess / vless / trojan / hysteria2 | `src/parse.js` |
 | 精简 YAML 输出 | 自带 `dumpYaml`，比 js-yaml 快 4～6 倍，不超过免费方案 10 ms CPU | `src/parse.js` |
@@ -72,6 +73,7 @@
 | 默认选自动选择 | 地区组默认选第一个节点，默认代理默认选第一个地区 | 地区组默认「<地区>-自动选择」，默认代理默认全局「自动选择」 | `defaultToAuto` |
 | 自动选择组排除 | 只排除 DIRECT | 另排除 HTTP / SOCKS5、高倍率与「勿跑大流量」节点；排除后为空的组不排除 | `excludeFromAutoGroups` |
 | AI 链式代理 | 无（上游的链式代理只给自定义节点用） | 新增「AI链式代理」组，Worker 传入的节点与整组挂上中转；挂了中转的节点从其他组拿掉，防止绕回崩溃 | `addAiChain` |
+| 实测分组 | 地区组、家宽节点组只看名称 | 有 best-ip 实测标签时：地区以实测落地国家为准；家宽加上实测住宅 / 移动网络、拿掉实测机房；新增「原生IP」「AI实测可用」组（各带自动选择组）。没有标签照旧 | `addBestIp` |
 | 日志级别 | info | warning | `reduceMemory` |
 | 本机代理核心直连 | 无 | xray / sing-box 进程最先直连 | `reduceMemory` |
 | sniffer | 关闭 | 开启，嗅探 HTTP / TLS / QUIC，用域名匹配规则并按域名重新解析目标地址（HTTP 只匹配不改地址）；不嗅探局域网与保留地址，跳过向日葵、小米设备 | `addSniffer` |
@@ -218,6 +220,7 @@ Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`�
 | --- | --- |
 | 同步上游覆写脚本（每天 UTC+8 04:00） | 抓上游两个脚本套补丁、转换 Sukka 规则集，测试通过才强制推到 `rules` 孤儿分支；脚本有变化时调 Deploy Hook 重新部署 |
 | 代抓订阅缓存（每 24 小时） | 非 Cloudflare IP 代抓机场订阅写进 KV |
+| best-ip 实测节点（每天 UTC+8 03:47） | 每个合并订阅交 best-ip 实测落地标签，写进 KV `res:<TOKEN>` |
 | 测试 | PR 与 `main` 有更新时跑单元测试与 `wrangler deploy --dry-run` |
 | 依赖更新 | Dependabot 每月合成一个 PR，测试通过自动合并 |
 

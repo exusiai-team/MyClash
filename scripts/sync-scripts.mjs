@@ -118,6 +118,7 @@ export function patchScript(source, file) {
  * - 「geolocation-!cn」之后加「cn」规则集直连，补上 geolocation-cn 缺的 B 站、腾讯、阿里、京东、字节等域名
  * - sniffer 按嗅探到的域名重新解析目标地址（HTTP 除外），不嗅探局域网与保留地址，跳过向日葵与小米设备
  * - TUN 开启端点无关 NAT；打开「屏蔽代理QUIC流量」；测速网址是 generate_204 的组要求回 204
+ * - 按 MyClash Worker 挂上的 best-ip 实测标签修正地区组与家宽节点组，新增「原生IP」「AI实测可用」组（没有标签时照旧只看名称）
  * 友情推荐`,
     '文件开头注释',
   );
@@ -165,6 +166,7 @@ export function patchScript(source, file) {
   s = addEndpointIndependentNat(s);
   s = blockProxyQuic(s);
   s = addExpected204(s);
+  s = addBestIp(s);
 
   return replaceOnce(
     s,
@@ -536,6 +538,81 @@ export function addCnDirect(source) {
     "    'RULE-SET,geolocation-!cn,默认代理',\n    // geolocation-cn 缺了 B 站、腾讯、阿里等域名（上游转换丢了 @-!cn 的子列表），用 cn 规则集补上\n    'RULE-SET,cn,直连',\n",
     'geolocation-!cn 规则',
   );
+}
+
+// best-ip 实测标签：MyClash Worker 把每天扫描的结果挂在 proxy['_bestip']（src/bestip.js），按它细化分组，节点名称不改；
+// 没有标签的节点（客户端自己套脚本、还没扫过、没测到落地 IP）照旧只看名称：
+// - 地区组：实测落地国家与名称推断的地区不同时以实测为准；落在五个地区以外的归到「其他节点」
+// - 家宽节点组：名称命中 ∪ 实测为住宅（residential）或移动网络（mobile）；名称写了家宽但实测是机房（hosting）的拿掉
+// - 新增「原生IP」组：实测原生（native = true）的节点
+// - 新增「AI实测可用」组：AI 服务至少一项实测可用（ok）且没有一项被封（blocked）的节点；目前 best-ip 只实测 OpenAI
+// 三个开关都放在脚本开头的常量里，关掉就退回原本只看名称的做法
+export const BESTIP_KEY = '_bestip';
+export const NATIVE_GROUP = '原生IP';
+export const AI_OK_GROUP = 'AI实测可用';
+const BESTIP_REGIONS = `// best-ip 实测标签（MyClash Worker 挂在 proxy['${BESTIP_KEY}'] 上，见 exusiai-team/MyClash 的 src/bestip.js）
+const bestIpOptions = {
+  按实测修正地区: true, // 实测落地国家与名称推断的地区不同时以实测为准
+  移动网络算家宽: true, // usage_type = mobile 也放进家宽节点组
+  剔除机房假家宽: true, // 名称写了家宽、实测是机房（hosting）的节点不放进家宽节点组
+};
+const bestIpCountryRegions = { HK: '香港', JP: '日本', US: '美国', SG: '新加坡', TW: '台湾' };
+
+/**
+ * 按 best-ip 实测标签调整名称匹配到的地区组与家宽节点组；没有标签就原样返回
+ */
+function bestIpRegions(proxy, regions) {
+  const tag = proxy['${BESTIP_KEY}'];
+  if (!tag) return regions;
+  let result = regions;
+  if (bestIpOptions.按实测修正地区 && tag.country_code) {
+    const measured = regionDefinitions.find((r) => r.name === bestIpCountryRegions[tag.country_code]);
+    result = [...(measured ? [measured] : []), ...result.filter((r) => !regionDefinitions.includes(r))];
+  }
+  const homeTypes = bestIpOptions.移动网络算家宽 ? ['residential', 'mobile'] : ['residential'];
+  if (homeTypes.includes(tag.usage_type)) {
+    result = [...result.filter((r) => !homeRegionDefinitions.includes(r)), ...homeRegionDefinitions];
+  } else if (bestIpOptions.剔除机房假家宽 && tag.usage_type === 'hosting') {
+    result = result.filter((r) => !homeRegionDefinitions.includes(r));
+  }
+  return result;
+}
+
+`;
+const BESTIP_GROUPS = `  // best-ip 实测：原生 IP 节点，与 AI 服务实测可用（至少一项 ok、没有一项 blocked）的节点
+  const bestIpTagged = [...filteredProxies, ...customProxies].filter((proxy) => proxy['${BESTIP_KEY}']);
+  const nativeProxies = bestIpTagged.filter((proxy) => proxy['${BESTIP_KEY}'].native === true).map((proxy) => proxy.name);
+  if (nativeProxies.length > 0) {
+    generatedRegionGroups.push(...createRegionGroup('${NATIVE_GROUP}', \`\${iconBaseUrl}Static.svg\`, nativeProxies));
+  }
+  const aiOkProxies = bestIpTagged
+    .filter((proxy) => {
+      const results = Object.values(proxy['${BESTIP_KEY}'].ai ?? {});
+      return results.includes('ok') && !results.includes('blocked');
+    })
+    .map((proxy) => proxy.name);
+  if (aiOkProxies.length > 0) {
+    generatedRegionGroups.push(...createRegionGroup('${AI_OK_GROUP}', \`\${iconBaseUrl}OpenAI.svg\`, aiOkProxies));
+  }
+
+`;
+const BESTIP_STRIP = `  // best-ip 实测标签只用来分组，不带进输出的配置
+  newConfig['proxies'] = newConfig['proxies'].map(({ ['${BESTIP_KEY}']: _, ...p }) => p);
+
+`;
+
+export function addBestIp(source) {
+  let s = replaceOnce(source, '// ---构建地区组和倍率组---\n', `// ---构建地区组和倍率组---\n\n${BESTIP_REGIONS}`, '地区组段落');
+  s = replaceOnce(
+    s,
+    '    const matchedRegions = getMatchedRegions(proxy.name);\n',
+    '    // 有 best-ip 实测标签时按实测调整地区组与家宽节点组\n    const matchedRegions = bestIpRegions(proxy, getMatchedRegions(proxy.name));\n',
+    '地区组归类代码',
+  );
+  const others = "  if (otherProxies.length > 0) {\n    generatedRegionGroups.push(...createRegionGroup('其他节点'";
+  s = replaceOnce(s, others, BESTIP_GROUPS + others, '其他节点组生成代码');
+  const anchor = "  newConfig['rule-providers'] = finalRuleProviders;\n";
+  return replaceOnce(s, anchor, BESTIP_STRIP + anchor, 'rule-providers 赋值');
 }
 
 // 「NovelAI」分流组：bett-rules 没有单独的 novelai 规则集，NovelAI 只在「AI」组用的 category-ai-!cn 里（+.novelai.net）。

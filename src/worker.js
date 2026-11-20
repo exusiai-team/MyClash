@@ -1,6 +1,7 @@
 import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey, CACHE_TTL_SECONDS } from './cache.js';
 import { isShadowrocket, toShadowrocket } from './rocket.js';
+import { RESULT_PREFIX, RESULT_TTL_SECONDS, BESTIP_KEY, attachTags } from './bestip.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
 
@@ -120,6 +121,10 @@ async function serveSubscription(env, ctx, token, origin, script, userAgent) {
   const landing = override ? markLanding(ok, config.proxies) : 0;
   const chainGroups = override ? (record.aiChainGroups ?? []) : [];
   if (chainGroups.length) config[AI_CHAIN_GROUPS_KEY] = chainGroups;
+  // best-ip 实测标签只给覆写脚本分组用；不覆写的输出（含 best-ip 每天来拿的这份）不挂
+  const bestip = override ? await env.SUB_STORE.get(RESULT_PREFIX + token, 'json').catch(() => null) : null;
+  const tagged = bestip ? await attachTags(config.proxies, bestip) : 0;
+  const merged = config.proxies.length;
   if (override) {
     try {
       config = override.run(config);
@@ -128,11 +133,15 @@ async function serveSubscription(env, ctx, token, origin, script, userAgent) {
       return text(`套用${override.label}版覆写脚本失败：${err?.message ?? err}`, 502);
     }
     // 还没认得标记的旧版覆写脚本会把它原样带出来
-    for (const p of config.proxies ?? []) delete p[AI_CHAIN_KEY];
+    for (const p of config.proxies ?? []) {
+      delete p[AI_CHAIN_KEY];
+      delete p[BESTIP_KEY];
+    }
   }
   const comments = [
     `MyClash 合并订阅：${record.name}${override ? `，已套用${override.label}版覆写脚本` : ''}`,
     `更新时间：${new Date().toISOString()}`,
+    ...(tagged ? [`best-ip 实测：${tagged} / ${merged} 个节点按实测标签分组（扫描完成于 ${bestip.finishedAt}）`] : []),
     ...(landing || chainGroups.length
       ? [`AI 链式代理：${[chainGroups.length && `整组 ${chainGroups.join('、')}`, landing && `${landing} 个单独勾的节点`].filter(Boolean).join('，')}，经「AI链式代理」组中转`]
       : []),
@@ -364,6 +373,7 @@ async function api(request, env, ctx, parts) {
     }
     if (method === 'DELETE') {
       await env.SUB_STORE.delete(KEY_PREFIX + token);
+      await env.SUB_STORE.delete(RESULT_PREFIX + token);
       return json({ ok: true });
     }
   }
@@ -379,6 +389,12 @@ async function api(request, env, ctx, parts) {
     const updated = { ...record, updatedAt: Date.now() };
     await putRecord(env, next, updated);
     await env.SUB_STORE.delete(KEY_PREFIX + token);
+    // best-ip 实测标签跟着搬到新 TOKEN，不用等下次扫描
+    const bestip = await env.SUB_STORE.get(RESULT_PREFIX + token);
+    if (bestip) {
+      await env.SUB_STORE.put(RESULT_PREFIX + next, bestip, { expirationTtl: RESULT_TTL_SECONDS });
+      await env.SUB_STORE.delete(RESULT_PREFIX + token);
+    }
     return json({ token: next, ...updated });
   }
 

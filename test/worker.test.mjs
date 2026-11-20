@@ -4,6 +4,7 @@ import http from 'node:http';
 import * as yaml from 'js-yaml';
 import worker from '../src/worker.js';
 import { cacheKey } from '../src/cache.js';
+import { RESULT_PREFIX, BESTIP_KEY, fingerprint } from '../src/bestip.js';
 
 // 内存版 KV，只实作 worker 用到的方法
 function memoryKv() {
@@ -210,6 +211,57 @@ test('AI 链式代理：勾选的机场节点与整组直接挂上「AI链式代
   assert.equal(c2.proxies.find((p) => p.server === 'jp.node')['dialer-proxy'], 'AI链式代理');
   assert.ok(!('myclash-ai-chain-groups' in c2));
   assert.deepEqual((await put(undefined)).aiChainGroups, []);
+});
+
+test('best-ip 实测标签：按名称（对不上按指纹）挂给覆写脚本分组，输出不带标签；换 TOKEN 跟着搬，删除一起删', async (t) => {
+  const upstream = await startUpstream();
+  t.after(() => upstream.close());
+  const env = { SUB_STORE: memoryKv() };
+  const url = `http://127.0.0.1:${upstream.address().port}/yaml`;
+  const { token } = await (await call(env, 'POST', '/api/subs', { body: { name: 'b', prefixMode: 'none', sources: [{ url }] } })).json();
+  const tag = (country_code, usage_type, native, openai) => ({ country_code, usage_type, native, score: 80, risk: null, ai: { openai, claude: 'unknown' } });
+  const jpPrint = await fingerprint({ type: 'ss', server: 'jp.node', port: 1, password: 'x' });
+  await env.SUB_STORE.put(
+    RESULT_PREFIX + token,
+    JSON.stringify({
+      scanId: 'clf-1',
+      finishedAt: '2026-11-20T19:41:12Z',
+      nodeCount: 3,
+      nodes: [
+        // 名称写香港、实测落地日本的家宽原生节点
+        { name: '🇭🇰 香港 01', fingerprint: 'none', tag: tag('JP', 'residential', true, 'ok') },
+        // 机场改了名称，靠指纹对上：名称写日本、实测落地美国的机房
+        { name: '日本 01 旧名', fingerprint: jpPrint, tag: tag('US', 'hosting', false, 'blocked') },
+        { name: '不在订阅里', fingerprint: 'gone', tag: tag('SG', 'residential', true, 'ok') },
+      ],
+    }),
+  );
+  const get = async (query, t = token) => (await worker.fetch(new Request(`https://w.test/sub/${t}${query}`), env)).text();
+
+  // 不覆写的输出（best-ip 每天来拿的就是这份）不挂标签
+  assert.ok(!yaml.load(await get('')).proxies.some((p) => BESTIP_KEY in p));
+
+  for (const script of ['lite', 'full']) {
+    const body = await get(`?script=${script}`);
+    assert.match(body, /^# best-ip 实测：2 \/ 2 个节点按实测标签分组（扫描完成于 2026-11-20T19:41:12Z）$/m);
+    const config = yaml.load(body);
+    assert.ok(!config.proxies.some((p) => BESTIP_KEY in p));
+    const groups = new Map(config['proxy-groups'].map((g) => [g.name, g.proxies]));
+    const hk = config.proxies.find((p) => p.server === 'hk.node').name;
+    const jp = config.proxies.find((p) => p.server === 'jp.node').name;
+    assert.deepEqual(groups.get('日本').slice(1), [hk], script);
+    assert.deepEqual(groups.get('美国').slice(1), [jp], script);
+    assert.ok(!groups.has('香港'), script);
+    assert.deepEqual(groups.get('家宽节点').slice(1), [hk], script);
+    assert.deepEqual(groups.get('原生IP').slice(1), [hk], script);
+    assert.deepEqual(groups.get('AI实测可用').slice(1), [hk], script);
+  }
+
+  const { token: next } = await (await call(env, 'POST', `/api/subs/${token}/rotate`)).json();
+  assert.equal(await env.SUB_STORE.get(RESULT_PREFIX + token), null);
+  assert.match(await get('?script=lite', next), /^# best-ip 实测：2 \/ 2 个节点/m);
+  await call(env, 'DELETE', `/api/subs/${next}`);
+  assert.equal(env.SUB_STORE.store.size, 1); // 只剩机场订阅缓存
 });
 
 test('/sub/<TOKEN>：浏览器网址栏打开时跳到管理页自动导入，「首页」按钮也带上 TOKEN', async (t) => {
