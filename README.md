@@ -11,7 +11,7 @@
 - **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
 - **AI 链式代理**：整个地区组或勾选的机场节点经「AI链式代理」组选的地区中转，「AI」组默认选它们（例如只能经香港中转才连得上的台湾家宽）
-- **实测分组**：每天交给 [best-ip](https://best-ip.silverwolfx.workers.dev) 实测每个节点的落地，按实测结果修正地区组、家宽组与 IPv6 组；节点名称不改
+- **实测分组**：每天交给 [best-ip](https://best-ip.silverwolfx.workers.dev) 实测每个节点的落地，按实测结果修正地区组与家宽组；节点名称不改
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
@@ -80,14 +80,10 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
   Sukka 另有 mrs 放不下的关键词、通配、IP 规则（`non_ip/reject`）与 PCDN 清单（`non_ip/reject-no-drop`）：其中的纯域名也并进上面的 mrs，其余放进 classical 规则集 `rules/sukka-reject-classical.txt`（规则带 `no-resolve`）。推送 SDK 清单 `reject-drop` 不取，免得国内 App 收不到通知。
   清单比 `category-ads` 激进，碰到误杀可在 AdBlock 组改选 `PASS`（连同广告规则一起放行）
-- 新增「IPv6」节点组：全程走 IPv6 时用，只收同时满足两个条件的节点：
-  - 本机能用 IPv6 连上节点：server 本身是 IPv6 地址，或 server 的域名有 IPv6 地址（GitHub Actions 每天随实测用阿里 DoH 查，机场域名常按地区给不同地址，所以不带子网与带电信、联通、移动网段各查一次、查得到的视角都有 IPv6 地址才算（只在部分地区有的不算，免得你那边的 DNS 不给 IPv6 地址时连不上），结果存在 `res:<TOKEN>` 的 `ipv6Hosts`）
-  - 节点带得出 IPv6：有 best-ip 实测数据的看实测经它访问 IPv6 地址出不出得去（有 IPv6 出口），名称写了 IPv6 但实测出不去的不算；没有实测数据的看名称标有 IPv6 / v6
-  
+- 新增「IPv6」节点组：本机用 IPv6 连节点时用，只看入口，收本机能用 IPv6 连上的节点：server 本身是 IPv6 地址，或 server 的域名有 IPv6 地址（GitHub Actions 每天随实测用阿里 DoH 查，机场域名常按地区给不同地址，所以不带子网与带电信、联通、移动网段各查一次、查得到的视角都有 IPv6 地址才算（只在部分地区有的不算，免得你那边的 DNS 不给 IPv6 地址时连不上），结果存在 `res:<TOKEN>` 的 `ipv6Hosts`）。
+  节点落地有没有 IPv6 不管（名称写「(IPv6)」的专线节点多半只有 IPv4 落地，也会进来），所以目标是 IPv6 地址的连接不特地分到这个组，照常按规则走。
   组里的节点设 `ip-version: ipv6`，本机只用 IPv6 连节点，连不上就测速失败、不退回 IPv4；节点名称不变（不改名就复制不了，所以直接设在节点上，它们在其他组里也只用 IPv6）。
-  脚本里的 `ipv6GroupIpVersion` 改成 `'ipv6-prefer'` 就是 IPv6 优先、连不上退回 IPv4。节点同时保留在原地区组，附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成。
-  目标本身是 IPv6 地址的连接走这个组（`IP-CIDR6,::/0,IPv6,no-resolve`，排在国内直连之后、兜底之前），不会被分到带不出 IPv6 的节点。
-  想让所有代理流量都有 IPv6，在「默认代理」选「IPv6」；访问同时有 IPv4、IPv6 的网站时，落地用哪个由机场服务端决定
+  脚本里的 `ipv6GroupIpVersion` 改成 `'ipv6-prefer'` 就是 IPv6 优先、连不上退回 IPv4。节点同时保留在原地区组，附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成
 - 「直连」组改用 vivo 的测速网址 `https://wifi.vivo.com.cn/generate_204`（同时有 IPv4 与 IPv6 地址）。通用测速网址 `connectivitycheck.gstatic.com` 在国内 DNS 只有 IPv4 地址，「🇨🇳 直连 | 仅IPv6」解析不到 IPv6 地址，测速会一直超时；默认选「🇨🇳 直连 | IPv6优先」（原版默认「双栈」）
 - 省内存：日志级别 `info` → `warning`（info 会逐条记录连接）；本机 `xray` / `sing-box` 进程（如 v2rayN 的核心）最先直连，不经节点再代理一次。
   Sparkle 会把配置文件里的日志级别强制写成 `info`、启动后再按它自己的设置调整，用 Sparkle 时请在 Sparkle 里设日志级别
@@ -155,7 +151,6 @@ GitHub Actions 每天（UTC+8 03:47，在代抓缓存之后）把每个合并订
 
 - 地区组：实测落地国家与名称推断的地区不同时以实测为准（名称写香港、实测落地日本的节点放进「日本」）；落在五个地区以外的归到「其他节点」
 - 家宽节点组：名称命中，或实测为住宅（`residential`）、移动网络（`mobile`）；名称写了家宽但实测是机房（`hosting`）的拿掉
-- 「IPv6」组：本机能用 IPv6 连上、实测经节点访问 IPv6 地址也出得去的节点，只用 IPv6 连，见上方「新增「IPv6」节点组」
 - 没有标签的节点（还没扫过、没测到落地 IP、客户端自己套 `/script.js`）照旧只看名称；三条规则可在脚本开头的 `bestIpOptions` 关掉
 - 配置开头注释 `# best-ip 实测：N / M 个节点按实测标签分组（扫描完成于 …）`；换 TOKEN 时标签跟着搬，删除订阅时一起删
 

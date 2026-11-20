@@ -107,27 +107,27 @@ test('addBestIp：上游改版找不到修改位置时报错', () => {
 });
 
 for (const file of ['script.js', 'script-full.js']) {
-  test(`覆写脚本 public/${file}：IPv6 组按 best-ip 实测的 IPv6 出口组成，IPv6 地址的连接走它`, () => {
+  test(`覆写脚本 public/${file}：IPv6 组只看本机能不能用 IPv6 连上节点，不管落地有没有 IPv6`, () => {
     const t = (exit_ipv6) => ({ country_code: 'JP', usage_type: 'hosting', native: false, ai: {}, exit_ipv6 });
     const entry = { 'myclash-ipv6-entry': true };
     const { out, groups } = run(file, [
       { ...node('🇯🇵 日本 01', 0, t('2001:db8::1')), ...entry },
       // 实测带得出 IPv6，但本机连不了 IPv6（域名没有 IPv6 地址）：不算
       node('🇯🇵 日本 03', 4, t('2001:db8::3')),
-      // 名称写了 IPv6，但实测带不出 IPv6：不算
+      // 实测带不出 IPv6，但本机能用 IPv6 连上：算
       { ...node('🇯🇵 日本 IPv6', 1, t(null)), ...entry },
-      // 没有标签：看名称
-      { ...node('🇯🇵 日本 v6', 2), ...entry },
-      node('🇯🇵 日本 02', 3, t(null)),
+      // server 本身是 IPv6 地址：算
+      { ...node('🇯🇵 日本 v6', 2), server: '2001:db8::2' },
+      // 名称写了 IPv6，本机连不了 IPv6：不算
+      node('🇯🇵 日本 02 IPv6', 3),
     ]);
-    assert.deepEqual([...groups.get('IPv6')].slice(1), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
-    assert.deepEqual([...out.proxies].filter((p) => p.type !== 'direct' && p['ip-version'] === 'ipv6').map((p) => p.name), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
-    const rule = out.rules.indexOf('IP-CIDR6,::/0,IPv6,no-resolve');
-    assert.ok(rule > out.rules.indexOf('RULE-SET,cn_ip,直连') && rule === out.rules.length - 2);
-    // 没有 IPv6 组就不加这条规则
+    const want = ['🇯🇵 日本 01', '🇯🇵 日本 IPv6', '🇯🇵 日本 v6'];
+    assert.deepEqual([...groups.get('IPv6')].slice(1), want);
+    assert.deepEqual([...out.proxies].filter((p) => p.type !== 'direct' && p['ip-version'] === 'ipv6').map((p) => p.name), want);
+    // 不把目标是 IPv6 地址的连接分到这个组
+    assert.ok(!out.rules.some((r) => r.startsWith('IP-CIDR6,::/0')));
     const none = run(file, [node('🇯🇵 日本 02', 3, t(null))]).out;
     assert.ok(!none['proxy-groups'].some((g) => g.name === 'IPv6'));
-    assert.ok(!none.rules.some((r) => r.startsWith('IP-CIDR6,::/0')));
   });
 }
 
