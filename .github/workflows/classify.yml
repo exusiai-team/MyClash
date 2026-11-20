@@ -1,0 +1,31 @@
+name: best-ip 实测节点
+
+# 每天把每个合并订阅交给 best-ip 实测落地标签（家宽 / 机房、原生、落地国家、AI 可用性），写进 Worker 的 KV（res:<TOKEN>），
+# Worker 套用覆写脚本时按它细化分组（scripts/classify.mjs、src/bestip.js）。没设 BESTIP_SERVICE_TOKEN 就跳过
+on:
+  schedule:
+    - cron: '47 19 * * *' # 每天 UTC 19:47（UTC+8 03:47，在 03:17 代抓订阅缓存之后，节点是最新的）
+  workflow_dispatch:
+
+concurrency: classify
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    # 订阅一个接一个扫，每个最多等 45 分钟
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: latest
+          cache: npm
+      - run: npm ci --omit=dev --no-audit --no-fund
+      - run: node scripts/classify.mjs
+        env:
+          BESTIP_SERVICE_TOKEN: ${{ secrets.BESTIP_SERVICE_TOKEN }}
+          BESTIP_URL: ${{ vars.BESTIP_URL }}
+          MYCLASH_URL: ${{ vars.MYCLASH_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}

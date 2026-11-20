@@ -11,6 +11,7 @@
 - **节点筛选**：全局「倍率 ≥ X 的节点不导入」，每个机场也可以单独设门槛（跟随全局 / 不限 / 自定义），再逐个勾选要导入的节点（可搜索、全选 / 全不选、Shift 连选）
 - **服务端覆写**：同一个订阅可选精简 / 全量 / 不覆写三种链接，客户端不用再加脚本；分流组按服务测速，HuggingFace 不走「AI」组
 - **AI 链式代理**：整个地区组或勾选的机场节点经「AI链式代理」组选的地区中转，「AI」组默认选它们（例如只能经香港中转才连得上的台湾家宽）
+- **实测分组**：每天交给 [best-ip](https://best-ip.silverwolfx.workers.dev) 实测每个节点的落地，按实测结果修正地区组与家宽组，另有「原生IP」「AI实测可用」组；节点名称不改
 - **自动导入**：订阅链接贴进浏览器网址栏、或按客户端的「首页」按钮，就会打开管理页并导入，换设备也能马上管理
 - **多种格式**：mihomo / Clash YAML，以及 base64 的 `ss` / `vmess` / `vless` / `trojan` / `hysteria2`
 
@@ -40,6 +41,10 @@ KV（`myclash-sub-store`）会自动创建。部署后打开 `https://myclash.<�
 **3. 管理页「立即刷新缓存」「立即同步」**（选做）：建 GitHub [Fine-grained token](https://github.com/settings/personal-access-tokens/new)
 （只选本仓库，`Actions: Read and write`），在 Cloudflare 的 myclash → 设置 → 变量和机密，加**密钥** `GITHUB_TOKEN`。
 fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
+
+**4. best-ip 实测分组**（选做，需先完成第 2 步）：仓库 **Settings → Secrets → Actions** 新增 `BESTIP_SERVICE_TOKEN`（best-ip 的服务令牌），
+**Variables** 新增 `MYCLASH_URL`（Worker 地址，如 `https://myclash.<账号>.workers.dev`；不设时用 API 令牌查 workers.dev 子域名拼出来，令牌没有这个权限就会失败）。
+再按 **Actions → best-ip 实测节点 → Run workflow** 执行一次，之后每天自动执行。不用 best-ip 的正式地址时，另设 Variable `BESTIP_URL`。
 
 ## 使用
 
@@ -132,6 +137,19 @@ AI链式代理（默认选香港）
 - 「AI链式代理」默认选香港，客户端里改选后会记住
 - 落地节点断了不会自动退回机场节点（悄悄换掉出口 IP 就失去意义），请在 AI 组手动改选
 - 选择存在 KV 的订阅记录里，不进公开的 `/script.js`；Worker 给勾选的节点加 `myclash-ai-chain` 标记、把整组放在 `config['myclash-ai-chain-groups']` 传给覆写脚本，输出的配置不会带着它们
+
+**best-ip 实测分组**（部署第 4 步，只对 `?script=lite|full` 的链接生效）：节点名称写的地区、「家宽」常与实际落地不符。
+GitHub Actions 每天（UTC+8 03:47，在代抓缓存之后）把每个合并订阅不覆写的节点内联交给 best-ip 的 `/api/v1/classify` 实测
+（不交出带 TOKEN 的订阅链接），一个订阅扫完再交下一个；节点设置没变、20 小时内测过的直接复用，不重测。
+结果只留测到落地 IP 的节点与分组用得到的字段（落地国家、usage_type、原生、健康分、风险、AI 可用性），写进 KV 的 `res:<TOKEN>`，保留 7 天；
+扫描失败时改用 best-ip 上这个订阅最近一次成功的结果。Worker 套用覆写脚本前按节点名称（逐字一致）对上结果，对不上的再按节点指纹（`type|server|port|uuid 或 password` 的 SHA-256 前 16 位，机场改名也认得），给节点挂 `_bestip` 标签，输出的配置不会带着它：
+
+- 地区组：实测落地国家与名称推断的地区不同时以实测为准（名称写香港、实测落地日本的节点放进「日本」）；落在五个地区以外的归到「其他节点」
+- 家宽节点组：名称命中，或实测为住宅（`residential`）、移动网络（`mobile`）；名称写了家宽但实测是机房（`hosting`）的拿掉
+- 「原生IP」组：实测原生（IP 注册地与落地一致）的节点
+- 「AI实测可用」组：AI 服务至少一项实测可用、没有一项被封的节点。best-ip 目前只实测 OpenAI（Claude、Gemini 固定为未知），所以现在等于「OpenAI 可用」
+- 没有标签的节点（还没扫过、没测到落地 IP、客户端自己套 `/script.js`）照旧只看名称；三条规则可在脚本开头的 `bestIpOptions` 关掉
+- 配置开头注释 `# best-ip 实测：N / M 个节点按实测标签分组（扫描完成于 …）`；换 TOKEN 时标签跟着搬，删除订阅时一起删
 
 ## iPhone：小火箭
 
@@ -268,6 +286,7 @@ LocalSend 先用 UDP 组播（`224.0.0.167:53317`）广播自己，收到的一�
 | 项目 | 时间 | 内容 |
 | --- | --- | --- |
 | 代抓订阅缓存 | 每 24 小时，或管理页触发 | `.github/workflows/refresh-cache.yml` |
+| best-ip 实测节点 | 每天 UTC+8 03:47 | `.github/workflows/classify.yml`，没设 `BESTIP_SERVICE_TOKEN` 就跳过 |
 | 测试 | PR 与 `main` 有更新时（只改文档不跑） | 单元测试 + `wrangler deploy --dry-run` |
 | 依赖更新 | 每月 1 号 | Dependabot 合成一个 PR，测试通过后自动合并 |
 | 部署 | `main` 有更新时 | Cloudflare 自动重新部署 |
@@ -298,7 +317,10 @@ npx wrangler dev    # 本机运行（含本机 KV）
 | `src/worker.js` | 路由、订阅输出、管理 API |
 | `src/parse.js` | 订阅解析、倍率提取、流量与到期日、合并、YAML 输出 |
 | `src/cache.js` | 代抓缓存的 KV 键名 |
+| `src/bestip.js` | best-ip 实测标签：KV 键名、节点指纹、结果精简与挂标签 |
 | `scripts/refresh-cache.mjs` | GitHub Actions 代抓脚本 |
+| `scripts/classify.mjs` | GitHub Actions 交 best-ip 实测、写 `res:<TOKEN>`（接口见 `docs/bestip-interface.md`） |
+| `scripts/cloudflare.mjs` | 上面两个脚本共用的 Cloudflare KV API |
 | `public/index.html` | 管理页 |
 | `public/script.js`、`public/script-full.js` | 修改版 MyClash 覆写脚本（不进 git，部署 / 测试前由 `scripts/build-overrides.mjs` 从 `rules` 分支取来；`rules` 分支上叫 `script.js`、`script-full.js`，由 `scripts/sync-scripts.mjs` 生成） |
 | `rules` 分支的 `rules/sukka-reject.mrs`、`rules/sukka-reject-classical.txt` | Sukka Reject Base 规则集（由 `scripts/sync-scripts.mjs` 生成，不在 `main` 上） |
