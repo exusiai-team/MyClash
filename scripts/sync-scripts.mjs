@@ -105,7 +105,8 @@ export function patchScript(source, file) {
  * - 「台湾」地区组与「台湾-自动选择」用 Claude 的测速网址
  * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，域名转成 mrs，含小米反诈 / 云扫描等域名；
  *   关键词、通配、IP 规则与 PCDN 域名另放一个 classical 规则集）
- * - 新增「IPv6」节点组（有 best-ip 实测标签的看实测有没有 IPv6 出口，没有的看名称标有 IPv6 / v6 或 server 为 IPv6 地址），
+ * - 新增「IPv6」节点组：只收本机能用 IPv6 连上（server 是 IPv6 地址或域名有 IPv6 地址）且带得出 IPv6
+ *   （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称）的节点，组里的节点设 ip-version: ipv6-prefer；
  *   并加进「默认代理」；目标是 IPv6 地址的连接走这个组
  * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时；默认选「IPv6优先」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
@@ -245,23 +246,30 @@ export function addRegionTestUrls(source) {
 }
 
 // 「IPv6」节点组放在地区组之后、「其他节点」之前，跟地区组一样是 select 组，
-// 所以会自动出现在「默认代理」、各分流组与「漏网之鱼」里。
-// 有 best-ip 实测标签（MyClash Worker 挂的 proxy['_bestip']）的节点以实测为准：经代理访问 IPv6 地址测得到出口
-// （exit_ipv6）才算，名称写了 IPv6 但实测出不去的不算；没有标签的照旧看名称与 server。
+// 所以会自动出现在「默认代理」、各分流组与「漏网之鱼」里。只收全程走得了 IPv6 的节点：
+// - 本机能用 IPv6 连上：server 本身是 IPv6 地址，或 MyClash Worker 查到 server 的域名有 IPv6 地址
+//   （proxy['myclash-ipv6-entry']，见 src/bestip.js）
+// - 带得出 IPv6：有 best-ip 实测标签（proxy['_bestip']）的看实测有没有 IPv6 出口（exit_ipv6），名称写了 IPv6 但实测出不去的不算；
+//   没有标签的看名称标有 IPv6 / v6、server 是 IPv6 地址或强制只用 IPv6
+// 组里的节点设 ip-version: ipv6-prefer（本机优先用 IPv6 连节点）：节点名称要唯一、不改名就复制不了，
+// 所以直接设在节点上，它们在其他组里也优先用 IPv6 连（都有 IPv6 地址，连得上）。
 // 目标本身是 IPv6 地址的连接走这个组（addIpv6Rule），不会被分到带不出 IPv6 的节点
 export const BESTIP_KEY = '_bestip';
+export const IPV6_ENTRY_KEY = 'myclash-ipv6-entry';
 export const IPV6_GROUP_NAME = 'IPv6';
-const IPV6_GROUP = `  // IPv6 节点：有 best-ip 实测标签的看实测有没有 IPv6 出口；
-  // 没有标签的看名称标有 IPv6 / v6，或 server 本身是 IPv6 地址，或强制只用 IPv6
+export const IPV6_GROUP_IP_VERSION = 'ipv6-prefer';
+const IPV6_GROUP = `  // IPv6 节点：本机能用 IPv6 连上（server 是 IPv6 地址，或 MyClash Worker 查到域名有 IPv6 地址），且带得出 IPv6
+  // （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称标有 IPv6 / v6）
   const ipv6NameRegex = /ipv6|(?<![a-z0-9])v6(?![a-z0-9])/i;
   const ipv6Proxies = [...filteredProxies, ...customProxies]
-    .filter((proxy) =>
-      proxy['${BESTIP_KEY}']
+    .filter((proxy) => {
+      const ipv6Server = String(proxy.server ?? '').includes(':');
+      const entry = ipv6Server || proxy['${IPV6_ENTRY_KEY}'] === true;
+      const exit = proxy['${BESTIP_KEY}']
         ? Boolean(proxy['${BESTIP_KEY}'].exit_ipv6)
-        : ipv6NameRegex.test(toMatchableName(proxy.name)) ||
-          String(proxy.server ?? '').includes(':') ||
-          proxy['ip-version'] === 'ipv6',
-    )
+        : ipv6NameRegex.test(toMatchableName(proxy.name)) || ipv6Server || proxy['ip-version'] === 'ipv6';
+      return entry && exit;
+    })
     .map((proxy) => proxy.name);
   // 上游没有 IPv6 图标，Global.svg 已给 GLOBAL 组用，改用本仓库仿上游风格画的 public/icons/IPv6.svg
   if (ipv6Proxies.length > 0) {
@@ -272,9 +280,20 @@ const IPV6_GROUP = `  // IPv6 节点：有 best-ip 实测标签的看实测有�
 
 `;
 
+const IPV6_VERSION = `  // 「${IPV6_GROUP_NAME}」组里的节点本机优先用 IPv6 连；改成 'ipv6' 就只用 IPv6（连不上就测速失败，不退回 IPv4）
+  const ipv6GroupIpVersion = '${IPV6_GROUP_IP_VERSION}';
+  const ipv6GroupNodes = new Set(generatedRegionGroups.find((g) => g.name === '${IPV6_GROUP_NAME}')?.proxies ?? []);
+  newConfig['proxies'] = newConfig['proxies'].map((p) =>
+    ipv6GroupNodes.has(p.name) ? { ...p, 'ip-version': ipv6GroupIpVersion } : p,
+  );
+
+`;
+
 export function addIpv6Group(source) {
   const anchor = "  if (otherProxies.length > 0) {\n    generatedRegionGroups.push(...createRegionGroup('其他节点'";
-  return replaceOnce(source, anchor, IPV6_GROUP + anchor, '其他节点组生成代码');
+  const s = replaceOnce(source, anchor, IPV6_GROUP + anchor, '其他节点组生成代码');
+  const proxies = "  newConfig['proxies'] = [...mappedProxies, ...customProxies, ...directProxies];\n";
+  return replaceOnce(s, proxies, proxies + IPV6_VERSION, '节点组装代码');
 }
 
 // 目标本身是 IPv6 地址的连接（程序直接连 IPv6 地址，域名连接不受影响）走「IPv6」组：
@@ -645,7 +664,7 @@ const BESTIP_GROUPS = `  // best-ip 实测：原生 IP 节点，与 AI 服务实
 
 `;
 const BESTIP_STRIP = `  // best-ip 实测标签只用来分组，不带进输出的配置
-  newConfig['proxies'] = newConfig['proxies'].map(({ ['${BESTIP_KEY}']: _, ...p }) => p);
+  newConfig['proxies'] = newConfig['proxies'].map(({ ['${BESTIP_KEY}']: _, ['${IPV6_ENTRY_KEY}']: __, ...p }) => p);
 
 `;
 

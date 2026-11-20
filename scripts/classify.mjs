@@ -3,7 +3,8 @@
 // best-ip 同一个令牌同时只跑一个扫描，所以一个订阅扫完再交下一个。扫描失败时取 best-ip 上这个订阅最近一次成功的结果兜底。
 // 订阅内容直接内联交给 best-ip，不把带 TOKEN 的订阅链接交出去；日志只印序号与数量，不印 TOKEN 与节点。
 import { readFile } from 'node:fs/promises';
-import { RESULT_PREFIX, RESULT_TTL_SECONDS, compactResult } from '../src/bestip.js';
+import { RESULT_PREFIX, RESULT_TTL_SECONDS, compactResult, ipv6Hosts } from '../src/bestip.js';
+import { parseSubscription } from '../src/parse.js';
 import { hasToken, openKv, cf } from './cloudflare.mjs';
 
 const BESTIP_URL = (process.env.BESTIP_URL || 'https://best-ip.silverwolfx.workers.dev').replace(/\/+$/, '');
@@ -109,7 +110,13 @@ async function classify(token, workerBase, log) {
     result = latest.body;
   }
   if (result.label !== label) throw new Error(`best-ip 回传的结果属于别的订阅（${result.label}）`);
-  return compactResult(result);
+  const compact = compactResult(result);
+  // 本机能用 IPv6 连上的节点：server 域名有 IPv6 地址的（覆写脚本的「IPv6」组只收这些）
+  if (yamlText) {
+    compact.ipv6Hosts = await ipv6Hosts(parseSubscription(yamlText).proxies);
+    log(`${compact.ipv6Hosts.length} 个节点域名有 IPv6 地址`);
+  }
+  return compact;
 }
 
 async function main() {

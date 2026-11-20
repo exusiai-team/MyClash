@@ -69,7 +69,7 @@
 | 分流组「直连」 | 只有 Apple、Steam 等少数几个 | AdBlock 以外全部都有 | `directForAllServices` |
 | 精简版 Apple 组 | 只有全量版有 | 精简版也有 | `addAppleGroup` |
 | NovelAI 组 | 在「AI」组里（category-ai-!cn） | 精简版、全量版都新增「NovelAI」分流组，排在「AI」前面；域名每次同步时从 bett-rules 的 `category-ai-!cn.list` 挑出（bett-rules 没有单独的 novelai 规则集），图标 `public/icons/NovelAI.svg` | `addNovelAiGroup` |
-| IPv6 节点组 | 无 | 有 best-ip 实测标签的节点看实测有没有 IPv6 出口（`exit_ipv6`）；没有的看名称含 IPv6 / v6、server 是 IPv6 或 `ip-version: ipv6`。附自动选择组，图标 `public/icons/IPv6.svg`；目标是 IPv6 地址的连接走这个组（`IP-CIDR6,::/0,IPv6,no-resolve`，排在兜底之前） | `addIpv6Group`、`addIpv6Rule` |
+| IPv6 节点组 | 无 | 只收本机能用 IPv6 连上（server 是 IPv6 地址，或每天查到域名有 IPv6 地址）且带得出 IPv6（有 best-ip 实测标签的看 `exit_ipv6`，没有的看名称含 IPv6 / v6）的节点，组里的节点设 `ip-version: ipv6-prefer`。附自动选择组，图标 `public/icons/IPv6.svg`；目标是 IPv6 地址的连接走这个组（`IP-CIDR6,::/0,IPv6,no-resolve`，排在兜底之前） | `addIpv6Group`、`addIpv6Rule` |
 | 默认选自动选择 | 地区组默认选第一个节点，默认代理默认选第一个地区 | 地区组默认「<地区>-自动选择」，默认代理默认全局「自动选择」 | `defaultToAuto` |
 | 自动选择组排除 | 只排除 DIRECT | 另排除 HTTP / SOCKS5、高倍率与「勿跑大流量」节点；排除后为空的组不排除 | `excludeFromAutoGroups` |
 | AI 链式代理 | 无（上游的链式代理只给自定义节点用） | Worker 传入的节点与整组（有实测标签时只取实测家宽）各复制一份（🔗 开头），复制品经新增的「AI链式代理」组中转、放进「<地区>-链式」组；原节点不动，中转组连不到复制品，不会绕回 | `addAiChain` |

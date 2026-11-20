@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { BESTIP_KEY, attachTags, compactResult, fingerprint } from '../src/bestip.js';
+import { BESTIP_KEY, IPV6_ENTRY_KEY, attachTags, compactResult, fingerprint, ipv6Hosts, markIpv6Entry } from '../src/bestip.js';
 import { AI_OK_GROUP, NATIVE_GROUP, addBestIp } from '../scripts/sync-scripts.mjs';
 
 test('fingerprint：跟 best-ip 的参考值一致，缺的字段当空串，uuid 优先于 password', async () => {
@@ -112,15 +112,19 @@ test('addBestIp：上游改版找不到修改位置时报错', () => {
 for (const file of ['script.js', 'script-full.js']) {
   test(`覆写脚本 public/${file}：IPv6 组按 best-ip 实测的 IPv6 出口组成，IPv6 地址的连接走它`, () => {
     const t = (exit_ipv6) => ({ country_code: 'JP', usage_type: 'hosting', native: false, ai: {}, exit_ipv6 });
+    const entry = { 'myclash-ipv6-entry': true };
     const { out, groups } = run(file, [
-      node('🇯🇵 日本 01', 0, t('2001:db8::1')),
+      { ...node('🇯🇵 日本 01', 0, t('2001:db8::1')), ...entry },
+      // 实测带得出 IPv6，但本机连不了 IPv6（域名没有 IPv6 地址）：不算
+      node('🇯🇵 日本 03', 4, t('2001:db8::3')),
       // 名称写了 IPv6，但实测带不出 IPv6：不算
-      node('🇯🇵 日本 IPv6', 1, t(null)),
-      // 没有标签：照旧看名称
-      node('🇯🇵 日本 v6', 2),
+      { ...node('🇯🇵 日本 IPv6', 1, t(null)), ...entry },
+      // 没有标签：看名称
+      { ...node('🇯🇵 日本 v6', 2), ...entry },
       node('🇯🇵 日本 02', 3, t(null)),
     ]);
     assert.deepEqual([...groups.get('IPv6')].slice(1), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
+    assert.deepEqual([...out.proxies].filter((p) => p.type !== 'direct' && p['ip-version'] === 'ipv6-prefer').map((p) => p.name), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
     const rule = out.rules.indexOf('IP-CIDR6,::/0,IPv6,no-resolve');
     assert.ok(rule > out.rules.indexOf('RULE-SET,cn_ip,直连') && rule === out.rules.length - 2);
     // 没有 IPv6 组就不加这条规则
@@ -129,3 +133,27 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.ok(!none.rules.some((r) => r.startsWith('IP-CIDR6,::/0')));
   });
 }
+
+test('ipv6Hosts / markIpv6Entry：只查域名、去重，查到 AAAA 的打标记', async () => {
+  const asked = [];
+  const fetchImpl = async (url) => {
+    const name = new URL(url).searchParams.get('name');
+    asked.push(name);
+    assert.equal(new URL(url).searchParams.get('type'), '28');
+    return { json: async () => (name === 'v6.example' ? { Answer: [{ type: 5 }, { type: 28 }] } : name === 'bad.example' ? null : { Answer: [{ type: 5 }] }) };
+  };
+  const proxies = [
+    { name: 'a', server: 'v6.example' }, { name: 'b', server: 'v6.example' }, { name: 'c', server: 'v4.example' },
+    { name: 'd', server: '203.0.113.1' }, { name: 'e', server: '2001:db8::1' }, { name: 'f', server: 'bad.example' },
+  ];
+  const hosts = await ipv6Hosts(proxies, { fetchImpl });
+  assert.deepEqual(hosts, ['v6.example']);
+  // 有 IPv6 地址就不再换视角查；没有的各视角都查一次
+  assert.deepEqual([...new Set(asked)].sort(), ['bad.example', 'v4.example', 'v6.example']);
+  assert.equal(asked.filter((h) => h === 'v6.example').length, 1);
+  assert.equal(asked.filter((h) => h === 'v4.example').length, 4);
+  const copy = proxies.map((p) => ({ ...p }));
+  assert.equal(markIpv6Entry(copy, hosts), 2);
+  assert.deepEqual(copy.filter((p) => p[IPV6_ENTRY_KEY]).map((p) => p.name), ['a', 'b']);
+  assert.equal(markIpv6Entry(copy, undefined), 0);
+});

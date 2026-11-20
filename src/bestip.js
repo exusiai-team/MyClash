@@ -6,6 +6,52 @@ export const RESULT_PREFIX = 'res:';
 // 扫描停了（令牌失效、best-ip 下线）就让旧标签自然过期，不一直按几天前的落地分组
 export const RESULT_TTL_SECONDS = 7 * 24 * 3600;
 export const BESTIP_KEY = '_bestip';
+// 本机能用 IPv6 连上的节点（server 的域名有 IPv6 地址）：Worker 打这个标记，覆写脚本据此组「IPv6」组（不带进输出）
+export const IPV6_ENTRY_KEY = 'myclash-ipv6-entry';
+// 查节点域名有没有 IPv6 地址：阿里 DoH 的 JSON 接口。机场域名常按地区、运营商给不同的地址
+// （实测良心有 8 个节点的域名北京视角有 IPv6、广东电信视角没有），GitHub Actions 又在海外，
+// 所以不带子网与带国内三家运营商的客户端子网各查一次，任一有 IPv6 地址就算；
+// 「IPv6」组设的是 IPv6 优先，本机的 DNS 没给 IPv6 地址时会退回 IPv4，不会连不上
+const DOH_URL = 'https://223.5.5.5/resolve';
+const DOH_SUBNETS = [null, '202.96.128.0/24', '123.125.81.0/24', '211.136.192.0/24']; // 不带、广东电信、北京联通、广东移动
+
+/** 节点 server 里有 IPv6 地址（AAAA 记录）的域名；IP 地址本身不查（脚本自己认得 IPv6 地址） */
+export async function ipv6Hosts(proxies, { concurrency = 8, fetchImpl = fetch } = {}) {
+  const hosts = [...new Set(proxies.map((p) => String(p?.server ?? '')))].filter((h) => h && !h.includes(':') && !/^\d+(\.\d+){3}$/.test(h));
+  const found = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < hosts.length) {
+      const host = hosts[next++];
+      for (const subnet of DOH_SUBNETS) {
+        try {
+          const url = `${DOH_URL}?name=${encodeURIComponent(host)}&type=28${subnet ? `&edns_client_subnet=${subnet}` : ''}`;
+          const data = await (await fetchImpl(url, { signal: AbortSignal.timeout(10000) })).json();
+          if (data?.Answer?.some((a) => a.type === 28)) {
+            found.push(host);
+            break;
+          }
+        } catch {
+          // 这个视角查不到就看下一个；都没有就当没有 IPv6 地址，不进「IPv6」组
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return found.sort();
+}
+
+/** 合并后的节点里，server 在 ipv6Hosts 名单里的打上 IPV6_ENTRY_KEY，返回打了几个；直接改 proxies */
+export function markIpv6Entry(proxies, hosts) {
+  const set = new Set(hosts ?? []);
+  let count = 0;
+  for (const [i, p] of proxies.entries()) {
+    if (!set.has(String(p.server ?? ''))) continue;
+    proxies[i] = { ...p, [IPV6_ENTRY_KEY]: true };
+    count++;
+  }
+  return count;
+}
 
 /** 节点指纹：sha256(type|server|port|(uuid ?? password ?? "")) 的十六进制前 16 位，跟 best-ip 的算法一样；改名后靠它对上 */
 export async function fingerprint(proxy) {

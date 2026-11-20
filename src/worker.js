@@ -1,7 +1,7 @@
 import { parseSubscription, mergeSubscriptions, filterProxies, extractRate, sumUserinfo, parseUserinfo, isExpired, isExhausted, dumpConfig, detectAirportName } from './parse.js';
 import { cacheKey, CACHE_TTL_SECONDS } from './cache.js';
 import { isShadowrocket, toShadowrocket } from './rocket.js';
-import { RESULT_PREFIX, RESULT_TTL_SECONDS, BESTIP_KEY, attachTags } from './bestip.js';
+import { RESULT_PREFIX, RESULT_TTL_SECONDS, BESTIP_KEY, IPV6_ENTRY_KEY, attachTags, markIpv6Entry } from './bestip.js';
 import liteScript from './overrides/lite.js';
 import fullScript from './overrides/full.js';
 
@@ -124,6 +124,8 @@ async function serveSubscription(env, ctx, token, origin, script, userAgent) {
   // best-ip 实测标签只给覆写脚本分组用；不覆写的输出（含 best-ip 每天来拿的这份）不挂
   const bestip = override ? await env.SUB_STORE.get(RESULT_PREFIX + token, 'json').catch(() => null) : null;
   const tagged = bestip ? await attachTags(config.proxies, bestip) : 0;
+  // 本机能用 IPv6 连上的节点（每天查到 server 域名有 IPv6 地址的），覆写脚本的「IPv6」组只收这些
+  if (bestip) markIpv6Entry(config.proxies, bestip.ipv6Hosts);
   const merged = config.proxies.length;
   if (override) {
     try {
@@ -136,6 +138,7 @@ async function serveSubscription(env, ctx, token, origin, script, userAgent) {
     for (const p of config.proxies ?? []) {
       delete p[AI_CHAIN_KEY];
       delete p[BESTIP_KEY];
+      delete p[IPV6_ENTRY_KEY];
     }
   }
   const comments = [

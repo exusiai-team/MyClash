@@ -80,8 +80,12 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
   Sukka 只发布文本清单，同步时用 mihomo 转成 mrs 规则集 `rules/sukka-reject.mrs`（约 1.4 MB，清单原文有 3 MB），放在 `rules` 分支；客户端跟其他规则集一样经 CDN 下载、每天更新，不必重新拉订阅。
   Sukka 另有 mrs 放不下的关键词、通配、IP 规则（`non_ip/reject`）与 PCDN 清单（`non_ip/reject-no-drop`）：其中的纯域名也并进上面的 mrs，其余放进 classical 规则集 `rules/sukka-reject-classical.txt`（规则带 `no-resolve`）。推送 SDK 清单 `reject-drop` 不取，免得国内 App 收不到通知。
   清单比 `category-ads` 激进，碰到误杀可在 AdBlock 组改选 `PASS`（连同广告规则一起放行）
-- 新增「IPv6」节点组：经代理也要有 IPv6 时用。有 best-ip 实测数据的节点，实测经它访问 IPv6 地址出得去（有 IPv6 出口）才归进来，名称写了 IPv6 但实测出不去的不算；
-  没有实测数据的节点照旧看名称标有 IPv6 / v6、server 是 IPv6 地址或 `ip-version: ipv6`。节点同时保留在原地区组，附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成。
+- 新增「IPv6」节点组：全程走 IPv6 时用，只收同时满足两个条件的节点：
+  - 本机能用 IPv6 连上节点：server 本身是 IPv6 地址，或 server 的域名有 IPv6 地址（GitHub Actions 每天随实测用阿里 DoH 查，机场域名常按地区给不同地址，所以不带子网与带电信、联通、移动网段各查一次、任一有就算，结果存在 `res:<TOKEN>` 的 `ipv6Hosts`）
+  - 节点带得出 IPv6：有 best-ip 实测数据的看实测经它访问 IPv6 地址出不出得去（有 IPv6 出口），名称写了 IPv6 但实测出不去的不算；没有实测数据的看名称标有 IPv6 / v6
+  
+  组里的节点设 `ip-version: ipv6-prefer`，本机优先用 IPv6 连节点；节点名称不变（不改名就复制不了，所以直接设在节点上，它们在其他组里也优先用 IPv6，都有 IPv6 地址、连得上）。
+  脚本里的 `ipv6GroupIpVersion` 改成 `'ipv6'` 就只用 IPv6、连不上不退回 IPv4。节点同时保留在原地区组，附「IPv6-自动选择」，图标为本仓库仿上游风格画的 `public/icons/IPv6.svg`（上游没有 IPv6 图标），并加进「默认代理」、各分流组与「漏网之鱼」；订阅里没有 IPv6 节点就不生成。
   目标本身是 IPv6 地址的连接走这个组（`IP-CIDR6,::/0,IPv6,no-resolve`，排在国内直连之后、兜底之前），不会被分到带不出 IPv6 的节点。
   想让所有代理流量都有 IPv6，在「默认代理」选「IPv6」；访问同时有 IPv4、IPv6 的网站时，落地用哪个由机场服务端决定
 - 「直连」组改用 vivo 的测速网址 `https://wifi.vivo.com.cn/generate_204`（同时有 IPv4 与 IPv6 地址）。通用测速网址 `connectivitycheck.gstatic.com` 在国内 DNS 只有 IPv4 地址，「🇨🇳 直连 | 仅IPv6」解析不到 IPv6 地址，测速会一直超时；默认选「🇨🇳 直连 | IPv6优先」（原版默认「双栈」）
@@ -153,7 +157,7 @@ GitHub Actions 每天（UTC+8 03:47，在代抓缓存之后）把每个合并订
 - 家宽节点组：名称命中，或实测为住宅（`residential`）、移动网络（`mobile`）；名称写了家宽但实测是机房（`hosting`）的拿掉
 - 「原生IP」组：实测原生（IP 注册地与落地一致）的节点
 - 「AI实测可用」组：AI 服务至少一项实测可用、没有一项被封的节点。best-ip 目前只实测 OpenAI（Claude、Gemini 固定为未知），所以现在等于「OpenAI 可用」
-- 「IPv6」组：实测经节点访问 IPv6 地址出得去（有 IPv6 出口）的节点，见上方「新增「IPv6」节点组」
+- 「IPv6」组：本机能用 IPv6 连上、实测经节点访问 IPv6 地址也出得去的节点，优先用 IPv6 连，见上方「新增「IPv6」节点组」
 - 没有标签的节点（还没扫过、没测到落地 IP、客户端自己套 `/script.js`）照旧只看名称；三条规则可在脚本开头的 `bestIpOptions` 关掉
 - 配置开头注释 `# best-ip 实测：N / M 个节点按实测标签分组（扫描完成于 …）`；换 TOKEN 时标签跟着搬，删除订阅时一起删
 

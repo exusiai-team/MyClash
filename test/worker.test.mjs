@@ -228,9 +228,11 @@ test('best-ip 实测标签：按名称（对不上按指纹）挂给覆写脚本
       scanId: 'clf-1',
       finishedAt: '2026-11-20T19:41:12Z',
       nodeCount: 3,
+      // hk.node 有 IPv6 地址：本机能用 IPv6 连上
+      ipv6Hosts: ['hk.node'],
       nodes: [
         // 名称写香港、实测落地日本的家宽原生节点
-        { name: '🇭🇰 香港 01', fingerprint: 'none', tag: tag('JP', 'residential', true, 'ok') },
+        { name: '🇭🇰 香港 01', fingerprint: 'none', tag: { ...tag('JP', 'residential', true, 'ok'), exit_ipv6: '2001:db8::7' } },
         // 机场改了名称，靠指纹对上：名称写日本、实测落地美国的机房
         { name: '日本 01 旧名', fingerprint: jpPrint, tag: tag('US', 'hosting', false, 'blocked') },
         { name: '不在订阅里', fingerprint: 'gone', tag: tag('SG', 'residential', true, 'ok') },
@@ -256,6 +258,10 @@ test('best-ip 实测标签：按名称（对不上按指纹）挂给覆写脚本
     assert.deepEqual(groups.get('家宽节点').slice(1), [hk], script);
     assert.deepEqual(groups.get('原生IP').slice(1), [hk], script);
     assert.deepEqual(groups.get('AI实测可用').slice(1), [hk], script);
+    // 带得出 IPv6、本机能用 IPv6 连上的进「IPv6」组，优先用 IPv6 连；标记不带进输出
+    assert.deepEqual(groups.get('IPv6').slice(1), [hk], script);
+    assert.equal(config.proxies.find((p) => p.name === hk)['ip-version'], 'ipv6-prefer');
+    assert.ok(!config.proxies.some((p) => 'myclash-ipv6-entry' in p));
   }
 
   const { token: next } = await (await call(env, 'POST', `/api/subs/${token}/rotate`)).json();
