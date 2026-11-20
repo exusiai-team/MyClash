@@ -455,9 +455,9 @@ for (const file of ['script.js', 'script-full.js']) {
     ]);
     const out = groups(config);
     assert.deepEqual([...out.get('IPv6').proxies], ['IPv6-自动选择', '🇯🇵 日本 IPv6 02', '🇺🇸 美国 v6-03', '🇭🇰 香港 02']);
-    // 组里的节点优先用 IPv6 连，名称不变；其他节点不动；标记不带进输出
+    // 组里的节点只用 IPv6 连，名称不变；其他节点不动；标记不带进输出
     const versions = Object.fromEntries(config.proxies.filter((p) => p.type !== 'direct').filter((p) => p.server.includes('6') || p.server.includes(':') || p.server.includes('jp4')).map((p) => [p.name, p['ip-version'] ?? null]));
-    assert.deepEqual(versions, { '🇯🇵 日本 IPv6 02': 'ipv6-prefer', '🇺🇸 美国 v6-03': 'ipv6-prefer', '🇭🇰 香港 02': 'ipv6-prefer', '🇯🇵 日本 IPv6 03': null });
+    assert.deepEqual(versions, { '🇯🇵 日本 IPv6 02': 'ipv6', '🇺🇸 美国 v6-03': 'ipv6', '🇭🇰 香港 02': 'ipv6', '🇯🇵 日本 IPv6 03': null });
     assert.ok(!config.proxies.some((p) => 'myclash-ipv6-entry' in p));
     assert.equal(out.get('IPv6-自动选择').type, 'url-test');
     assert.ok(out.get('默认代理').proxies.includes('IPv6'));
