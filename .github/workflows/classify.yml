@@ -6,6 +6,10 @@ on:
   schedule:
     - cron: '47 19 * * *' # 每天 UTC 19:47（UTC+8 03:47，在 03:17 代抓订阅缓存之后，节点是最新的）
   workflow_dispatch:
+    inputs:
+      reuse_hours:
+        description: 复用多少小时内测过的节点（0 = 全部重测）
+        default: '20'
 
 concurrency: classify
 
@@ -25,6 +29,7 @@ jobs:
         env:
           BESTIP_SERVICE_TOKEN: ${{ secrets.BESTIP_SERVICE_TOKEN }}
           BESTIP_URL: ${{ vars.BESTIP_URL }}
+          BESTIP_REUSE_HOURS: ${{ inputs.reuse_hours }}
           MYCLASH_URL: ${{ vars.MYCLASH_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

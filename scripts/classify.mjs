@@ -9,8 +9,9 @@ import { hasToken, openKv, cf } from './cloudflare.mjs';
 const BESTIP_URL = (process.env.BESTIP_URL || 'https://best-ip.silverwolfx.workers.dev').replace(/\/+$/, '');
 const { BESTIP_SERVICE_TOKEN: SERVICE_TOKEN, MYCLASH_URL, GITHUB_RUN_ID } = process.env;
 const FETCH_UA = 'clash.meta';
-// 节点指纹不变、20 小时内测过的直接复用，每天只重测有变化的节点
-const REUSE_HOURS = 20;
+// 节点指纹不变、20 小时内测过的直接复用，每天只重测有变化的节点；
+// 手动执行时可以改（BESTIP_REUSE_HOURS，例如 best-ip 结果加了新字段后设 0 全部重测一次）
+const REUSE_HOURS = Number(process.env.BESTIP_REUSE_HOURS || 20);
 const MAX_YAML_BYTES = 5 * 1024 * 1024;
 const POLL_MS = 20 * 1000;
 // 300 个节点约 5 分钟；best-ip 的网页扫描与 api 扫描排队执行，多留些时间
