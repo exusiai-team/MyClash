@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { BESTIP_KEY, IPV6_ENTRY_KEY, attachTags, compactResult, fingerprint, ipv6Hosts, markIpv6Entry } from '../src/bestip.js';
-import { AI_OK_GROUP, NATIVE_GROUP, addBestIp } from '../scripts/sync-scripts.mjs';
+import { addBestIp } from '../scripts/sync-scripts.mjs';
 
 test('fingerprint：跟 best-ip 的参考值一致，缺的字段当空串，uuid 优先于 password', async () => {
   assert.equal(await fingerprint({ type: 'ss', server: '8.8.8.8', port: 8388, password: 'pw' }), '55303f6a971a8366');
@@ -74,7 +74,7 @@ function run(file, proxies) {
 }
 
 for (const file of ['script.js', 'script-full.js']) {
-  test(`覆写脚本 public/${file}：按 best-ip 实测标签修正地区与家宽，新增原生IP、AI实测可用组`, () => {
+  test(`覆写脚本 public/${file}：按 best-ip 实测标签修正地区与家宽，不生成原生IP、AI实测可用组`, () => {
     const t = (country_code, usage_type, native = null, ai = {}) => ({ country_code, usage_type, native, ai });
     const { out, groups } = run(file, [
       node('🇺🇸 美国 01', 0),
@@ -92,16 +92,13 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.deepEqual(members('新加坡'), ['🇸🇬 新加坡 01']);
     // 家宽：移动网络算，名称写家宽但实测机房的拿掉，没标签的照名称
     assert.deepEqual(members('家宽节点'), ['🇭🇰 香港 01', '🇯🇵 日本 家宽 02']);
-    assert.deepEqual(members(NATIVE_GROUP), ['🇭🇰 香港 01']);
-    assert.deepEqual(members(AI_OK_GROUP), ['🇭🇰 香港 01']);
-    // 新组跟地区组一样可以在分流组里选
-    assert.ok(groups.get('AI').includes(AI_OK_GROUP));
+    // 不生成「原生IP」「AI实测可用」组
+    assert.ok(!groups.has('原生IP') && !groups.has('AI实测可用'));
 
-    // 没有任何标签时跟原本一样，不生成新组
+    // 没有任何标签时跟原本一样
     const plain = run(file, [node('🇭🇰 香港 02', 2), node('🇯🇵 日本 家宽 01', 3)]).groups;
     assert.deepEqual([...plain.get('香港')].slice(1), ['🇭🇰 香港 02']);
     assert.deepEqual([...plain.get('家宽节点')].slice(1), ['🇯🇵 日本 家宽 01']);
-    assert.ok(!plain.has(NATIVE_GROUP) && !plain.has(AI_OK_GROUP));
   });
 }
 

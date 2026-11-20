@@ -256,8 +256,7 @@ test('best-ip 实测标签：按名称（对不上按指纹）挂给覆写脚本
     assert.deepEqual(groups.get('美国').slice(1), [jp], script);
     assert.ok(!groups.has('香港'), script);
     assert.deepEqual(groups.get('家宽节点').slice(1), [hk], script);
-    assert.deepEqual(groups.get('原生IP').slice(1), [hk], script);
-    assert.deepEqual(groups.get('AI实测可用').slice(1), [hk], script);
+    assert.ok(!groups.has('原生IP') && !groups.has('AI实测可用'), script);
     // 带得出 IPv6、本机能用 IPv6 连上的进「IPv6」组，只用 IPv6 连；标记不带进输出
     assert.deepEqual(groups.get('IPv6').slice(1), [hk], script);
     assert.equal(config.proxies.find((p) => p.name === hk)['ip-version'], 'ipv6');

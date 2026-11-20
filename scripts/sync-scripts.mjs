@@ -121,7 +121,7 @@ export function patchScript(source, file) {
  * - 「geolocation-!cn」之后加「cn」规则集直连，补上 geolocation-cn 缺的 B 站、腾讯、阿里、京东、字节等域名
  * - sniffer 按嗅探到的域名重新解析目标地址（HTTP 除外），不嗅探局域网与保留地址，跳过向日葵与小米设备
  * - TUN 开启端点无关 NAT；打开「屏蔽代理QUIC流量」；测速网址是 generate_204 的组要求回 204
- * - 按 MyClash Worker 挂上的 best-ip 实测标签修正地区组与家宽节点组，新增「原生IP」「AI实测可用」组（没有标签时照旧只看名称）
+ * - 按 MyClash Worker 挂上的 best-ip 实测标签修正地区组与家宽节点组（没有标签时照旧只看名称）
  * 友情推荐`,
     '文件开头注释',
   );
@@ -605,12 +605,8 @@ export function addCnDirect(source) {
 // 没有标签的节点（客户端自己套脚本、还没扫过、没测到落地 IP）照旧只看名称：
 // - 地区组：实测落地国家与名称推断的地区不同时以实测为准；落在五个地区以外的归到「其他节点」
 // - 家宽节点组：名称命中 ∪ 实测为住宅（residential）或移动网络（mobile）；名称写了家宽但实测是机房（hosting）的拿掉
-// - 新增「原生IP」组：实测原生（native = true）的节点
-// - 新增「AI实测可用」组：AI 服务至少一项实测可用（ok）且没有一项被封（blocked）的节点；目前 best-ip 只实测 OpenAI
 // - AI 链式代理整组走链式时，只复制实测是家宽的节点（isBestIpHome，见 addAiChain）
 // 三个开关都放在脚本开头的常量里，关掉就退回原本只看名称的做法
-export const NATIVE_GROUP = '原生IP';
-export const AI_OK_GROUP = 'AI实测可用';
 const BESTIP_REGIONS = `// best-ip 实测标签（MyClash Worker 挂在 proxy['${BESTIP_KEY}'] 上，见 exusiai-team/MyClash 的 src/bestip.js）
 const bestIpOptions = {
   按实测修正地区: true, // 实测落地国家与名称推断的地区不同时以实测为准
@@ -646,23 +642,6 @@ function bestIpRegions(proxy, regions) {
 }
 
 `;
-const BESTIP_GROUPS = `  // best-ip 实测：原生 IP 节点，与 AI 服务实测可用（至少一项 ok、没有一项 blocked）的节点
-  const bestIpTagged = [...filteredProxies, ...customProxies].filter((proxy) => proxy['${BESTIP_KEY}']);
-  const nativeProxies = bestIpTagged.filter((proxy) => proxy['${BESTIP_KEY}'].native === true).map((proxy) => proxy.name);
-  if (nativeProxies.length > 0) {
-    generatedRegionGroups.push(...createRegionGroup('${NATIVE_GROUP}', \`\${iconBaseUrl}Static.svg\`, nativeProxies));
-  }
-  const aiOkProxies = bestIpTagged
-    .filter((proxy) => {
-      const results = Object.values(proxy['${BESTIP_KEY}'].ai ?? {});
-      return results.includes('ok') && !results.includes('blocked');
-    })
-    .map((proxy) => proxy.name);
-  if (aiOkProxies.length > 0) {
-    generatedRegionGroups.push(...createRegionGroup('${AI_OK_GROUP}', \`\${iconBaseUrl}OpenAI.svg\`, aiOkProxies));
-  }
-
-`;
 const BESTIP_STRIP = `  // best-ip 实测标签只用来分组，不带进输出的配置
   newConfig['proxies'] = newConfig['proxies'].map(({ ['${BESTIP_KEY}']: _, ['${IPV6_ENTRY_KEY}']: __, ...p }) => p);
 
@@ -676,8 +655,6 @@ export function addBestIp(source) {
     '    // 有 best-ip 实测标签时按实测调整地区组与家宽节点组\n    const matchedRegions = bestIpRegions(proxy, getMatchedRegions(proxy.name));\n',
     '地区组归类代码',
   );
-  const others = "  if (otherProxies.length > 0) {\n    generatedRegionGroups.push(...createRegionGroup('其他节点'";
-  s = replaceOnce(s, others, BESTIP_GROUPS + others, '其他节点组生成代码');
   const anchor = "  newConfig['rule-providers'] = finalRuleProviders;\n";
   return replaceOnce(s, anchor, BESTIP_STRIP + anchor, 'rule-providers 赋值');
 }
