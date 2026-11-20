@@ -106,7 +106,7 @@ export function patchScript(source, file) {
  * - 「AdBlock」组的广告规则集由 category-ads 换成 Sukka 的 Reject Base（ruleset.skk.moe，域名转成 mrs，含小米反诈 / 云扫描等域名；
  *   关键词、通配、IP 规则与 PCDN 域名另放一个 classical 规则集）
  * - 新增「IPv6」节点组：只收本机能用 IPv6 连上（server 是 IPv6 地址或域名有 IPv6 地址）且带得出 IPv6
- *   （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称）的节点，组里的节点设 ip-version: ipv6-prefer；
+ *   （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称）的节点，组里的节点设 ip-version: ipv6（只用 IPv6 连）；
  *   并加进「默认代理」；目标是 IPv6 地址的连接走这个组
  * - 「直连」组改用有 IPv6 地址的 vivo 测速网址，「仅IPv6」不再一直超时；默认选「IPv6优先」
  * - 日志级别改为 warning，不再逐条记录连接；本机 xray / sing-box 进程直连，不经节点再代理一次
@@ -251,13 +251,13 @@ export function addRegionTestUrls(source) {
 //   （proxy['myclash-ipv6-entry']，见 src/bestip.js）
 // - 带得出 IPv6：有 best-ip 实测标签（proxy['_bestip']）的看实测有没有 IPv6 出口（exit_ipv6），名称写了 IPv6 但实测出不去的不算；
 //   没有标签的看名称标有 IPv6 / v6、server 是 IPv6 地址或强制只用 IPv6
-// 组里的节点设 ip-version: ipv6-prefer（本机优先用 IPv6 连节点）：节点名称要唯一、不改名就复制不了，
-// 所以直接设在节点上，它们在其他组里也优先用 IPv6 连（都有 IPv6 地址，连得上）。
+// 组里的节点设 ip-version: ipv6（本机只用 IPv6 连节点，连不上就测速失败，不退回 IPv4）：节点名称要唯一、不改名就复制不了，
+// 所以直接设在节点上，它们在其他组里也只用 IPv6 连。所以只收各地区都拿得到 IPv6 地址的节点（见 src/bestip.js 的 ipv6Hosts）
 // 目标本身是 IPv6 地址的连接走这个组（addIpv6Rule），不会被分到带不出 IPv6 的节点
 export const BESTIP_KEY = '_bestip';
 export const IPV6_ENTRY_KEY = 'myclash-ipv6-entry';
 export const IPV6_GROUP_NAME = 'IPv6';
-export const IPV6_GROUP_IP_VERSION = 'ipv6-prefer';
+export const IPV6_GROUP_IP_VERSION = 'ipv6';
 const IPV6_GROUP = `  // IPv6 节点：本机能用 IPv6 连上（server 是 IPv6 地址，或 MyClash Worker 查到域名有 IPv6 地址），且带得出 IPv6
   // （有 best-ip 实测标签的看实测 IPv6 出口，没有的看名称标有 IPv6 / v6）
   const ipv6NameRegex = /ipv6|(?<![a-z0-9])v6(?![a-z0-9])/i;
@@ -280,7 +280,7 @@ const IPV6_GROUP = `  // IPv6 节点：本机能用 IPv6 连上（server 是 IPv
 
 `;
 
-const IPV6_VERSION = `  // 「${IPV6_GROUP_NAME}」组里的节点本机优先用 IPv6 连；改成 'ipv6' 就只用 IPv6（连不上就测速失败，不退回 IPv4）
+const IPV6_VERSION = `  // 「${IPV6_GROUP_NAME}」组里的节点本机只用 IPv6 连（连不上就测速失败，不退回 IPv4）；改成 'ipv6-prefer' 就是 IPv6 优先
   const ipv6GroupIpVersion = '${IPV6_GROUP_IP_VERSION}';
   const ipv6GroupNodes = new Set(generatedRegionGroups.find((g) => g.name === '${IPV6_GROUP_NAME}')?.proxies ?? []);
   newConfig['proxies'] = newConfig['proxies'].map((p) =>

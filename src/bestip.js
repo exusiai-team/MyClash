@@ -10,12 +10,13 @@ export const BESTIP_KEY = '_bestip';
 export const IPV6_ENTRY_KEY = 'myclash-ipv6-entry';
 // 查节点域名有没有 IPv6 地址：阿里 DoH 的 JSON 接口。机场域名常按地区、运营商给不同的地址
 // （实测良心有 8 个节点的域名北京视角有 IPv6、广东电信视角没有），GitHub Actions 又在海外，
-// 所以不带子网与带国内三家运营商的客户端子网各查一次，任一有 IPv6 地址就算；
-// 「IPv6」组设的是 IPv6 优先，本机的 DNS 没给 IPv6 地址时会退回 IPv4，不会连不上
+// 所以不带子网与带国内三家运营商的客户端子网各查一次，每个查得到的视角都有 IPv6 地址才算：
+// 「IPv6」组的节点强制只用 IPv6 连（ip-version: ipv6，设在节点上，其他组里也一样），
+// 只在部分地区有 IPv6 地址的节点放进去，本机的 DNS 恰好不给 IPv6 地址时它在所有组里都会连不上
 const DOH_URL = 'https://223.5.5.5/resolve';
 const DOH_SUBNETS = [null, '202.96.128.0/24', '123.125.81.0/24', '211.136.192.0/24']; // 不带、广东电信、北京联通、广东移动
 
-/** 节点 server 里有 IPv6 地址（AAAA 记录）的域名；IP 地址本身不查（脚本自己认得 IPv6 地址） */
+/** 节点 server 里各视角都有 IPv6 地址（AAAA 记录）的域名；IP 地址本身不查（脚本自己认得 IPv6 地址） */
 export async function ipv6Hosts(proxies, { concurrency = 8, fetchImpl = fetch } = {}) {
   const hosts = [...new Set(proxies.map((p) => String(p?.server ?? '')))].filter((h) => h && !h.includes(':') && !/^\d+(\.\d+){3}$/.test(h));
   const found = [];
@@ -23,18 +24,24 @@ export async function ipv6Hosts(proxies, { concurrency = 8, fetchImpl = fetch } 
   const worker = async () => {
     while (next < hosts.length) {
       const host = hosts[next++];
+      let answered = 0;
+      let missing = false;
       for (const subnet of DOH_SUBNETS) {
         try {
           const url = `${DOH_URL}?name=${encodeURIComponent(host)}&type=28${subnet ? `&edns_client_subnet=${subnet}` : ''}`;
           const data = await (await fetchImpl(url, { signal: AbortSignal.timeout(10000) })).json();
-          if (data?.Answer?.some((a) => a.type === 28)) {
-            found.push(host);
+          if (data?.Status !== 0) continue;
+          answered++;
+          if (!data.Answer?.some((a) => a.type === 28)) {
+            missing = true;
             break;
           }
         } catch {
-          // 这个视角查不到就看下一个；都没有就当没有 IPv6 地址，不进「IPv6」组
+          // 这个视角查询失败不算数，看其他视角
         }
       }
+      // 至少一个视角答了、答了的都有 IPv6 地址才算；一个都没答成就当没有，不进「IPv6」组
+      if (answered > 0 && !missing) found.push(host);
     }
   };
   await Promise.all(Array.from({ length: concurrency }, worker));

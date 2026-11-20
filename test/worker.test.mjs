@@ -258,9 +258,9 @@ test('best-ip 实测标签：按名称（对不上按指纹）挂给覆写脚本
     assert.deepEqual(groups.get('家宽节点').slice(1), [hk], script);
     assert.deepEqual(groups.get('原生IP').slice(1), [hk], script);
     assert.deepEqual(groups.get('AI实测可用').slice(1), [hk], script);
-    // 带得出 IPv6、本机能用 IPv6 连上的进「IPv6」组，优先用 IPv6 连；标记不带进输出
+    // 带得出 IPv6、本机能用 IPv6 连上的进「IPv6」组，只用 IPv6 连；标记不带进输出
     assert.deepEqual(groups.get('IPv6').slice(1), [hk], script);
-    assert.equal(config.proxies.find((p) => p.name === hk)['ip-version'], 'ipv6-prefer');
+    assert.equal(config.proxies.find((p) => p.name === hk)['ip-version'], 'ipv6');
     assert.ok(!config.proxies.some((p) => 'myclash-ipv6-entry' in p));
   }
 

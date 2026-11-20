@@ -124,7 +124,7 @@ for (const file of ['script.js', 'script-full.js']) {
       node('🇯🇵 日本 02', 3, t(null)),
     ]);
     assert.deepEqual([...groups.get('IPv6')].slice(1), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
-    assert.deepEqual([...out.proxies].filter((p) => p.type !== 'direct' && p['ip-version'] === 'ipv6-prefer').map((p) => p.name), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
+    assert.deepEqual([...out.proxies].filter((p) => p.type !== 'direct' && p['ip-version'] === 'ipv6').map((p) => p.name), ['🇯🇵 日本 01', '🇯🇵 日本 v6']);
     const rule = out.rules.indexOf('IP-CIDR6,::/0,IPv6,no-resolve');
     assert.ok(rule > out.rules.indexOf('RULE-SET,cn_ip,直连') && rule === out.rules.length - 2);
     // 没有 IPv6 组就不加这条规则
@@ -140,18 +140,25 @@ test('ipv6Hosts / markIpv6Entry：只查域名、去重，查到 AAAA 的打标�
     const name = new URL(url).searchParams.get('name');
     asked.push(name);
     assert.equal(new URL(url).searchParams.get('type'), '28');
-    return { json: async () => (name === 'v6.example' ? { Answer: [{ type: 5 }, { type: 28 }] } : name === 'bad.example' ? null : { Answer: [{ type: 5 }] }) };
+    const subnet = new URL(url).searchParams.get('edns_client_subnet');
+    const v6 = { Status: 0, Answer: [{ type: 5 }, { type: 28 }] };
+    const v4 = { Status: 0, Answer: [{ type: 5 }] };
+    // mixed.example 只在不带子网时有 IPv6 地址（按地区给不同地址）
+    return { json: async () => ({ 'v6.example': v6, 'mixed.example': subnet ? v4 : v6, 'bad.example': null }[name] ?? v4) };
   };
   const proxies = [
     { name: 'a', server: 'v6.example' }, { name: 'b', server: 'v6.example' }, { name: 'c', server: 'v4.example' },
     { name: 'd', server: '203.0.113.1' }, { name: 'e', server: '2001:db8::1' }, { name: 'f', server: 'bad.example' },
+    { name: 'g', server: 'mixed.example' },
   ];
   const hosts = await ipv6Hosts(proxies, { fetchImpl });
   assert.deepEqual(hosts, ['v6.example']);
   // 有 IPv6 地址就不再换视角查；没有的各视角都查一次
-  assert.deepEqual([...new Set(asked)].sort(), ['bad.example', 'v4.example', 'v6.example']);
-  assert.equal(asked.filter((h) => h === 'v6.example').length, 1);
-  assert.equal(asked.filter((h) => h === 'v4.example').length, 4);
+  // 每个视角都要有 IPv6 地址：有的要查完四个视角，一个视角没有就不再查；查询全失败的当没有
+  assert.deepEqual([...new Set(asked)].sort(), ['bad.example', 'mixed.example', 'v4.example', 'v6.example']);
+  assert.equal(asked.filter((h) => h === 'v6.example').length, 4);
+  assert.equal(asked.filter((h) => h === 'v4.example').length, 1);
+  assert.equal(asked.filter((h) => h === 'mixed.example').length, 2);
   const copy = proxies.map((p) => ({ ...p }));
   assert.equal(markIpv6Entry(copy, hosts), 2);
   assert.deepEqual(copy.filter((p) => p[IPV6_ENTRY_KEY]).map((p) => p.name), ['a', 'b']);
