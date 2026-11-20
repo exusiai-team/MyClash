@@ -114,7 +114,8 @@ export function patchScript(source, file) {
  * - 广告规则排在国内直连前面，国内厂商的广告、统计与小米反诈等域名才拦得到
  * - 自动选择组不选 HTTP / SOCKS5 节点（多是公开代理），也不选高倍率与「勿跑大流量」节点
  * - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个）
- * - AI 链式代理：MyClash Worker 选的节点与整组走链式的地区组直接挂上新增的「AI链式代理」组中转，「AI」组默认选它们
+ * - AI 链式代理：MyClash Worker 选的节点与整组走链式的地区组（有实测标签时只取实测家宽）各复制一份，
+ *   复制品经新增的「AI链式代理」组中转、放进「<地区>-链式」组，「AI」组默认选它们；原节点不动
  * - 「geolocation-!cn」之后加「cn」规则集直连，补上 geolocation-cn 缺的 B 站、腾讯、阿里、京东、字节等域名
  * - sniffer 按嗅探到的域名重新解析目标地址（HTTP 除外），不嗅探局域网与保留地址，跳过向日葵与小米设备
  * - TUN 开启端点无关 NAT；打开「屏蔽代理QUIC流量」；测速网址是 generate_204 的组要求回 204
@@ -454,32 +455,35 @@ export function directForAllServices(source) {
   return replaceOnce(source, "...(svc.direct ? ['直连'] : [])", "'直连'", '分流组的「直连」选项');
 }
 
-// AI 链式代理（做法同常见的「台湾家宽经香港中转」订阅）：直接给原节点挂 dialer-proxy，不复制节点、不多出组。
-// mihomo 不允许分组设 dialer-proxy，所以「整组走链式」就是把组里每个节点都挂上：
+// AI 链式代理：把要走链式的节点各复制一份（名称前加「🔗 」），复制品挂上 dialer-proxy 经「AI链式代理」组中转，原节点不动。
+// mihomo 的 dialer-proxy 设在节点上、不能设在分组上：直接改原节点的话，从哪个组选到它都得经中转，
+// 只能把它从其他组拿掉（不然那些组当中转时会绕回自己，mihomo 运行时不查这种循环，内核直接栈溢出崩溃）。
+// 复制一份就没有这些问题：原节点照常留在台湾、家宽节点、自动选择等所有组，复制品只在下面新增的组与「AI」组里，
+// 「AI链式代理」组的选项里没有复制品，结构上就不会绕回。
 // - MyClash Worker 单独勾的节点带着 config 里不会带出去的标记 proxy['myclash-ai-chain']；
-//   config['myclash-ai-chain-groups'] 列出整组走链式的地区组（如「台湾」），组里的节点都挂上
-// - 挂了中转的节点只留在整组走链式的地区组、「AI」组与全是这些节点的组（如「台湾-自动选择」），
-//   其他组（手动选择、日本、家宽节点、自动选择…）里还有别的节点的就拿掉它们：
-//   这些组才能当中转而不绕回自己（mihomo 运行时不查经过分组的 dialer-proxy 循环，绕回去内核直接栈溢出崩溃），
-//   其他流量也不会被选到多绕一趟；「AI」组默认选第一个整组走链式的地区组，
-//   只勾了单个节点时把它们放在「AI」组最前面并设为默认
-// - 「AI链式代理」组决定从哪里连到这些节点，默认选香港（客户端里改选后会记住），选「直连」就是不中转；
-//   选项同「AI」组原本的选项，但拿掉仍连得到挂了中转节点的组（整组走链式的地区组、含有它的默认代理）
+//   config['myclash-ai-chain-groups'] 列出整组走链式的地区组（如「台湾」）
+// - 整组走链式时，有 best-ip 实测标签的节点只复制实测是家宽（住宅 / 移动网络）的，机房不复制；没有标签的照样复制；
+//   一个都不剩就整组复制。每个整组生成「<地区>-链式」组（附自动选择组，测速网址同「AI」组）
+// - 「AI」组最前面依次是「<地区>-链式」组与单独勾的节点的复制品，默认选第一个
+// - 「AI链式代理」组决定从哪里连到复制品，默认选香港（客户端里改选后会记住），选「直连」就是不中转；选项同「AI」组原本的选项
 export const AI_CHAIN_KEY = 'myclash-ai-chain';
 export const AI_CHAIN_GROUPS_KEY = 'myclash-ai-chain-groups';
 export const AI_CHAIN_GROUP = 'AI链式代理';
 export const AI_CHAIN_RELAY = '香港';
+export const AI_CHAIN_PREFIX = '🔗 ';
+export const AI_CHAIN_SUFFIX = '-链式';
+export const BESTIP_KEY = '_bestip';
 const AI_CHAIN_READ = `  // MyClash Worker 传进来的 AI 链式代理：整组走链式的地区组
   const aiChainGroups = config['${AI_CHAIN_GROUPS_KEY}'] ?? [];
 
 `;
-const AI_CHAIN = `  // AI 链式代理：单独勾的节点与整组走链式的地区组里的节点直接挂上中转「${AI_CHAIN_GROUP}」
+const AI_CHAIN = `  // AI 链式代理：单独勾的节点与整组走链式的地区组里的节点各复制一份，复制品挂上中转「${AI_CHAIN_GROUP}」，原节点不动
   const aiGroup = newConfig['proxy-groups'].find((g) => g.name === 'AI');
   const pickedNodes = newConfig['proxies'].filter((p) => p['${AI_CHAIN_KEY}']).map((p) => p.name);
   newConfig['proxies'] = newConfig['proxies'].map(({ ['${AI_CHAIN_KEY}']: _, ...p }) => p);
   const groups = newConfig['proxy-groups'];
   const groupByName = new Map(groups.map((g) => [g.name, g]));
-  const chainRegions = aiChainGroups.filter((name) => groupByName.has(name));
+  const proxyByName = new Map(newConfig['proxies'].map((p) => [p.name, p]));
   // 组里（含子组）的所有节点
   const nodesOf = (name, seen = new Set()) => {
     if (seen.has(name)) return [];
@@ -487,34 +491,52 @@ const AI_CHAIN = `  // AI 链式代理：单独勾的节点与整组走链式的
     const g = groupByName.get(name);
     return g ? g.proxies.flatMap((n) => nodesOf(n, seen)) : [name];
   };
-  const proxyNames = new Set(newConfig['proxies'].map((p) => p.name));
-  const chained = new Set([...pickedNodes, ...chainRegions.flatMap((r) => nodesOf(r))].filter((n) => proxyNames.has(n)));
-  if (chained.size && aiGroup) {
-    newConfig['proxies'] = newConfig['proxies'].map((p) => (chained.has(p.name) ? { ...p, 'dialer-proxy': '${AI_CHAIN_GROUP}' } : p));
-    for (const g of groups) {
-      if (g === aiGroup || chainRegions.includes(g.name) || g.proxies.every((n) => chained.has(n))) continue;
-      g.proxies = g.proxies.filter((n) => !chained.has(n));
-    }
-    const relayProxies = aiGroup.proxies
-      .filter((name) => name !== '直连' && !nodesOf(name).some((n) => chained.has(n)))
-      .concat('直连');
-    groups.splice(groups.indexOf(aiGroup) + 1, 0, {
+  // 整组：有 best-ip 实测标签的只留实测家宽，一个都不剩就整组
+  const chainSets = aiChainGroups
+    .filter((region) => groupByName.has(region))
+    .map((region) => {
+      const nodes = [...new Set(nodesOf(region))].filter((n) => proxyByName.has(n));
+      const home = nodes.filter((n) => {
+        const tag = proxyByName.get(n)['${BESTIP_KEY}'];
+        return !tag || isBestIpHome(tag);
+      });
+      return { region, nodes: home.length ? home : nodes };
+    })
+    .filter((c) => c.nodes.length);
+  const picked = pickedNodes.filter((n) => proxyByName.has(n));
+  const chained = [...new Set([...picked, ...chainSets.flatMap((c) => c.nodes)])];
+  if (chained.length && aiGroup) {
+    const copyName = (name) => \`${AI_CHAIN_PREFIX}\${name}\`;
+    const copies = new Map(chained.map((n) => [copyName(n), { ...proxyByName.get(n), name: copyName(n), 'dialer-proxy': '${AI_CHAIN_GROUP}' }]));
+    newConfig['proxies'].push(...copies.values());
+    const relayProxies = aiGroup.proxies.filter((name) => name !== '直连').concat('直连');
+    const relayGroup = {
       ...selectBaseOption,
       name: '${AI_CHAIN_GROUP}',
       icon: \`\${iconBaseUrl}Bypass.svg\`,
       proxies: relayProxies,
       ...(aiGroup.url && { url: aiGroup.url }),
       ...(relayProxies.includes('${AI_CHAIN_RELAY}') && { 'default-selected': '${AI_CHAIN_RELAY}' }),
-    });
-    if (chainRegions.length) {
-      aiGroup.proxies = [...chainRegions.filter((r) => !aiGroup.proxies.includes(r)), ...aiGroup.proxies];
-      aiGroup['default-selected'] = chainRegions[0];
-    } else {
-      aiGroup.proxies = [...pickedNodes, ...aiGroup.proxies.filter((n) => !pickedNodes.includes(n))];
-      aiGroup['default-selected'] = pickedNodes[0];
-    }
+    };
+    // 「<地区>-链式」组跟地区组一样附自动选择组；自动选择组照样不选 HTTP / SOCKS5、高倍率与「勿跑大流量」节点
+    const chainGroupNames = chainSets.map((c) => \`\${c.region}${AI_CHAIN_SUFFIX}\`);
+    const chainGroups = chainSets.flatMap((c, i) =>
+      createRegionGroup(chainGroupNames[i], groupByName.get(c.region).icon, c.nodes.map(copyName)).map((g) => {
+        if (aiGroup.url) g.url = aiGroup.url;
+        if (g.type !== 'url-test') return g;
+        const usable = g.proxies.filter((n) => !['http', 'socks5'].includes(String(copies.get(n).type).toLowerCase()));
+        if (usable.length === 0) return g;
+        g['exclude-type'] = 'DIRECT|Http|Socks5';
+        if (usable.some((n) => !autoExcludeRegex.test(n))) g['exclude-filter'] = \`(?i)\${autoExcludeRegex.source}\`;
+        return g;
+      }),
+    );
+    groups.splice(groups.indexOf(aiGroup) + 1, 0, relayGroup, ...chainGroups);
+    const pickedCopies = picked.map(copyName);
+    aiGroup.proxies = [...chainGroupNames, ...pickedCopies, ...aiGroup.proxies];
+    aiGroup['default-selected'] = chainGroupNames[0] ?? pickedCopies[0];
     const globalProxies = groups.find((g) => g.name === 'GLOBAL')?.proxies;
-    if (globalProxies?.includes('AI')) globalProxies.splice(globalProxies.indexOf('AI') + 1, 0, '${AI_CHAIN_GROUP}');
+    if (globalProxies?.includes('AI')) globalProxies.splice(globalProxies.indexOf('AI') + 1, 0, '${AI_CHAIN_GROUP}', ...chainGroupNames);
   }
 
 `;
@@ -546,8 +568,8 @@ export function addCnDirect(source) {
 // - 家宽节点组：名称命中 ∪ 实测为住宅（residential）或移动网络（mobile）；名称写了家宽但实测是机房（hosting）的拿掉
 // - 新增「原生IP」组：实测原生（native = true）的节点
 // - 新增「AI实测可用」组：AI 服务至少一项实测可用（ok）且没有一项被封（blocked）的节点；目前 best-ip 只实测 OpenAI
+// - AI 链式代理整组走链式时，只复制实测是家宽的节点（isBestIpHome，见 addAiChain）
 // 三个开关都放在脚本开头的常量里，关掉就退回原本只看名称的做法
-export const BESTIP_KEY = '_bestip';
 export const NATIVE_GROUP = '原生IP';
 export const AI_OK_GROUP = 'AI实测可用';
 const BESTIP_REGIONS = `// best-ip 实测标签（MyClash Worker 挂在 proxy['${BESTIP_KEY}'] 上，见 exusiai-team/MyClash 的 src/bestip.js）
@@ -557,6 +579,13 @@ const bestIpOptions = {
   剔除机房假家宽: true, // 名称写了家宽、实测是机房（hosting）的节点不放进家宽节点组
 };
 const bestIpCountryRegions = { HK: '香港', JP: '日本', US: '美国', SG: '新加坡', TW: '台湾' };
+
+/**
+ * 实测是家宽：住宅，或开了「移动网络算家宽」时的移动网络
+ */
+function isBestIpHome(tag) {
+  return tag.usage_type === 'residential' || (bestIpOptions.移动网络算家宽 && tag.usage_type === 'mobile');
+}
 
 /**
  * 按 best-ip 实测标签调整名称匹配到的地区组与家宽节点组；没有标签就原样返回
@@ -569,8 +598,7 @@ function bestIpRegions(proxy, regions) {
     const measured = regionDefinitions.find((r) => r.name === bestIpCountryRegions[tag.country_code]);
     result = [...(measured ? [measured] : []), ...result.filter((r) => !regionDefinitions.includes(r))];
   }
-  const homeTypes = bestIpOptions.移动网络算家宽 ? ['residential', 'mobile'] : ['residential'];
-  if (homeTypes.includes(tag.usage_type)) {
+  if (isBestIpHome(tag)) {
     result = [...result.filter((r) => !homeRegionDefinitions.includes(r)), ...homeRegionDefinitions];
   } else if (bestIpOptions.剔除机房假家宽 && tag.usage_type === 'hosting') {
     result = result.filter((r) => !homeRegionDefinitions.includes(r));

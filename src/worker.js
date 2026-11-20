@@ -32,7 +32,7 @@ const MAX_LOOKUP = 50;
 // 每个机场最多手动排除几个节点、节点名称最长几个字
 const MAX_EXCLUDE = 2000;
 const MAX_NODE_NAME = 200;
-// AI 链式代理：勾选的机场节点与整组走链式的地区组，由覆写脚本直接给节点挂上「AI链式代理」组中转，「AI」组默认选它们。
+// AI 链式代理：勾选的机场节点与整组走链式的地区组，由覆写脚本各复制一份挂上「AI链式代理」组中转（原节点不动），「AI」组默认选它们。
 // 勾选的节点带着 proxy[AI_CHAIN_KEY] 标记、地区组名称放在 config[AI_CHAIN_GROUPS_KEY] 传给覆写脚本
 // （scripts/sync-scripts.mjs 的同名常量），输出的配置不会带着它们
 const AI_CHAIN_KEY = 'myclash-ai-chain';
@@ -170,7 +170,7 @@ async function serveSubscription(env, ctx, token, origin, script, userAgent) {
 }
 
 /**
- * AI 链式代理：勾选的机场节点在合并后的节点上打标记，由覆写脚本挂上中转，返回打了几个。
+ * AI 链式代理：勾选的机场节点在合并后的节点上打标记，由覆写脚本复制一份挂上中转，返回打了几个。
  * 按机场原本的节点名称勾选；mergeSubscriptions 按顺序合并、只改名称，所以合并后第 k 个节点就是各机场节点依序排下来的第 k 个。
  * 被节点筛选排除的节点不在 parsed.proxies 里，勾了也不会生效
  */
