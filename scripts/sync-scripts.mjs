@@ -43,8 +43,11 @@ export const SUKKA_CLASSICAL_URL = `https://cdn.jsdmirror.com/gh/exusiai-team/My
 export const BASE_TEST_URL = 'https://connectivitycheck.gstatic.com/generate_204';
 export const BASE_TEST_INTERVAL = 300;
 
-// 分流组的测速网址，基本取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）；
-// Bettbox 没检测的服务不列在这里，用通用测速网址 BASE_TEST_URL
+// 分流组的测速网址，基本取自 Bettbox 的服务检测（lib/common/media_unlock_checker.dart）。
+// 不用 /cdn-cgi/trace 这类由 Cloudflare 边缘节点直接回应的地址：只测到「节点 → 就近 Cloudflare」，到不了服务源站；
+// 改用不带凭据由源站回 4xx 的 API，测到源站的整条路径。mihomo 只对 generate_204 要求状态码，其余有回应就算通，
+// 所以源站按地区回 403 也算通，测的是延迟与连通，不是解锁。
+// 没列的分流组（FCM、Microsoft、Line、Emby 等）用通用测速网址 BASE_TEST_URL
 export const TEST_URLS = {
   YouTube: 'https://www.youtube.com/premium',
   Google: 'https://www.google.com/generate_204',
@@ -57,12 +60,15 @@ export const TEST_URLS = {
   Telegram: 'https://api.telegram.org/',
   Steam: 'https://store.steampowered.com/',
   TikTok: 'https://perfops1.byteperf.com/500b-bench.jpg',
-  Twitter: 'https://x.com/cdn-cgi/trace',
+  Twitter: 'https://api.x.com/1.1/help/configuration.json', // 源站回 402
+  Meta: 'https://graph.facebook.com/', // 源站回 400
   Netflix: 'https://www.netflix.com/title/81280792',
   Spotify: 'https://www.spotify.com/signup',
-  Crypto: 'https://www.coinbase.com/cdn-cgi/trace',
+  PikPak: 'https://api-drive.mypikpak.com/drive/v1/about', // 源站回 401
+  Crypto: 'https://api.coinbase.com/v2/time',
   PayPal: 'https://www.paypal.com/',
-  EHentai: 'https://e-hentai.org/cdn-cgi/trace',
+  Patreon: 'https://www.patreon.com/api/current_user', // 源站回 401
+  EHentai: 'https://api.e-hentai.org/api.php',
 };
 
 // 地区组（连同「<地区>-自动选择」）的测速网址；没列的用通用测速网址 BASE_TEST_URL
@@ -637,6 +643,8 @@ export function addBestIp(source) {
 // 同步时从同一个地址（上游的 ruleSetBaseUrl）取 category-ai-!cn.list，挑出 NovelAI 的域名写成规则，
 // 跟着上游规则增减；分流组放在「AI」前面，规则才会抢在 category-ai-!cn 之前
 export const NOVELAI_GROUP = 'NovelAI';
+// NovelAI 的生图 API（POST），GET 由源站回 405，测的就是生图实际走的整条路径
+export const NOVELAI_TEST_URL = 'https://image.novelai.net/ai/generate-image';
 const NOVELAI_LIST = 'geosite/category-ai-!cn.list';
 
 export function ruleSetBaseUrlOf(source) {
@@ -657,6 +665,7 @@ export function novelAiRules(list) {
 export function addNovelAiGroup(source, rules) {
   const group = `  {
     name: '${NOVELAI_GROUP}',
+    testUrl: '${NOVELAI_TEST_URL}',
     baseOption: selectBaseOption,
     // 规则取自 bett-rules 的 ${NOVELAI_LIST}（没有单独的 novelai 规则集），排在「AI」前面才抢得到
     icon: 'https://cdn.jsdmirror.com/gh/exusiai-team/MyClash@main/public/icons/NovelAI.svg',
@@ -688,10 +697,46 @@ export function addAppleGroup(lite, full) {
   return replaceOnce(s, ' * 友情推荐', ' * - 从全量版搬来「Apple」分流组\n * 友情推荐', '文件开头注释');
 }
 
-async function fetchText(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`抓取 ${url} 失败：HTTP ${res.status}`);
-  return res.text();
+// 上游的 ruleSetBaseUrl 是 jsDelivr 的 /gh/ 地址，jsDelivr 偶尔对 Actions 的机器回 403；
+// 同步时直接从 GitHub 原始文件地址取同一份文件（Actions 在 GitHub 上跑，最稳），脚本里写的地址不变
+export function githubRawUrlOf(url) {
+  const found = url.match(/^https:\/\/(?:[\w-]+\.)?jsdelivr\.net\/gh\/([^/]+)\/([^@/]+)@([^/]+)\/(.*)$/);
+  return found ? `https://raw.githubusercontent.com/${found[1]}/${found[2]}/${found[3]}/${found[4]}` : url;
+}
+
+// 网络偶发错误（连不上、5xx、403/429 限流）重试几次，避免每天的定时任务因一次抖动失败
+// 精简版去掉的分流组：Telegram、Steam（连同开关）。在 addAppleGroup 之后去，它要靠「Telegram」定位
+export const LITE_REMOVED_GROUPS = ['Telegram', 'Steam'];
+
+export function removeGroups(source, names) {
+  let s = source;
+  for (const name of names) {
+    const start = s.indexOf(`  {\n    name: '${name}',\n`);
+    const end = s.indexOf('\n  },\n', start);
+    if (start === -1 || end === -1) throw new Error(`找不到「${name}」分流组，上游脚本可能改版了`);
+    s = s.slice(0, start) + s.slice(end + '\n  },\n'.length);
+    const option = s.match(new RegExp(`\n {2}${name}: true,[^\n]*`));
+    if (!option) throw new Error(`找不到「${name}」开关，上游脚本可能改版了`);
+    s = replaceOnce(s, option[0], '', `「${name}」开关`);
+    // 规则指向不存在的组 mihomo 会拒绝整份配置：上游别处还引用它就报错，不推送
+    if (new RegExp(`[,'"]${name}['"]`).test(s)) throw new Error(`去掉「${name}」分流组后仍有地方引用它，上游脚本可能改版了`);
+  }
+  return replaceOnce(s, ' * 友情推荐', ` * - 去掉「${names.join('」「')}」分流组（这些流量按其余规则走，一般是「默认代理」）\n * 友情推荐`, '文件开头注释');
+}
+
+async function fetchText(url, tries = 4) {
+  for (let i = 1; ; i++) {
+    let res;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (res.ok) return await res.text();
+    } catch (err) {
+      if (i >= tries) throw new Error(`抓取 ${url} 失败：${err.message}`);
+    }
+    if (res && !res.ok && (res.status === 404 || i >= tries)) throw new Error(`抓取 ${url} 失败：HTTP ${res.status}`);
+    console.warn(`抓取 ${url} 失败（${res && !res.ok ? `HTTP ${res.status}` : '网络错误'}），${i * 5} 秒后重试`);
+    await new Promise((r) => setTimeout(r, i * 5000));
+  }
 }
 
 function convertToMrs(txt, mrs) {
@@ -752,11 +797,11 @@ async function main() {
   const [lite, full] = await Promise.all(
     TARGETS.map(async ({ from }) => {
       const source = await fetchText(UPSTREAM + from);
-      const rules = novelAiRules(await fetchText(ruleSetBaseUrlOf(source) + NOVELAI_LIST));
+      const rules = novelAiRules(await fetchText(githubRawUrlOf(ruleSetBaseUrlOf(source) + NOVELAI_LIST)));
       return addNovelAiGroup(patchScript(source, from), rules);
     }),
   );
-  const outputs = [addAppleGroup(lite, full), full];
+  const outputs = [removeGroups(addAppleGroup(lite, full), LITE_REMOVED_GROUPS), full];
   await rm(OUT_DIR, { recursive: true, force: true });
   await mkdir(OUT_DIR, { recursive: true });
   // SCRIPTS_ONLY=1：只生成两个脚本（「测试」流程用，测的是这次改动的补丁，不需要 mihomo）

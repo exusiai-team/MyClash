@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSubscription, parseUri, mergeSubscriptions, sumUserinfo, parseUserinfo, isExpired, isExhausted, detectAirportName, shortName, extractRate, filterProxies, dumpYaml, GROUP_NAME } from '../src/parse.js';
 import fs from 'node:fs';
-import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY, AI_CHAIN_PREFIX, AI_CHAIN_RELAY, AI_CHAIN_SUFFIX, BESTIP_KEY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, NOVELAI_GROUP, TEST_URLS, novelAiRules, patchScript, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
+import { AI_CHAIN_GROUP, AI_CHAIN_GROUPS_KEY, AI_CHAIN_KEY, AI_CHAIN_PREFIX, AI_CHAIN_RELAY, AI_CHAIN_SUFFIX, BESTIP_KEY, BASE_TEST_INTERVAL, BASE_TEST_URL, DIRECT_TEST_URL, REGION_TEST_URLS, SUKKA_CLASSICAL_URL, SUKKA_RULESET_URL, LITE_REMOVED_GROUPS, NOVELAI_GROUP, NOVELAI_TEST_URL, TEST_URLS, githubRawUrlOf, novelAiRules, patchScript, removeGroups, splitSukkaNonIp } from '../scripts/sync-scripts.mjs';
 import vm from 'node:vm';
 import * as yaml from 'js-yaml';
 
@@ -273,7 +273,15 @@ for (const file of ['script.js', 'script-full.js']) {
     for (const [name, url] of Object.entries(TEST_URLS)) {
       if (groups.has(name)) assert.equal(groups.get(name).url, url, name);
     }
-    for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.has(name), name);
+    for (const name of ['Google', NOVELAI_GROUP, 'AI', 'Apple']) assert.ok(groups.has(name), name);
+    assert.equal(groups.get(NOVELAI_GROUP).url, NOVELAI_TEST_URL);
+    // 精简版去掉 Telegram、Steam（规则也不能再指向它们），全量版还有
+    for (const name of LITE_REMOVED_GROUPS) {
+      assert.equal(groups.has(name), file === 'script-full.js', name);
+      if (file === 'script.js') assert.ok(!out.rules.some((r) => r.endsWith(`,${name}`)), name);
+    }
+    // 不用 Cloudflare 边缘直接回应的 /cdn-cgi/trace，测不到源站
+    for (const g of groups.values()) assert.ok(!g.url?.includes('/cdn-cgi/'), g.name);
     assert.ok(out.rules.includes('RULE-SET,apple,Apple'));
     // 台湾地区组（含自动选择组）用 Claude 的测速网址
     assert.equal(REGION_TEST_URLS.台湾, TEST_URLS.AI);
@@ -540,7 +548,7 @@ for (const file of ['script.js', 'script-full.js']) {
     assert.ok(quic < out.rules.indexOf('RULE-SET,geolocation-!cn,默认代理'));
     const groups = new Map(out['proxy-groups'].map((g) => [g.name, g]));
     for (const name of ['默认代理', '自动选择', '直连', 'Google']) assert.equal(groups.get(name)['expected-status'], 204, name);
-    for (const name of ['AI', '台湾', 'Telegram']) assert.equal(groups.get(name)['expected-status'], undefined, name);
+    for (const name of ['AI', '台湾', NOVELAI_GROUP]) assert.equal(groups.get(name)['expected-status'], undefined, name);
   });
 }
 
@@ -608,11 +616,11 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
     return [name, value.split(',')];
   }));
   const lite = new Map(runScript('script.js')['proxy-groups'].map((g) => [g.name, g]));
-  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', 'AdBlock', '默认代理', '漏网之鱼', '香港', '日本', '美国', '新加坡', '台湾']) {
+  for (const name of ['Google', 'AI', 'Apple', 'AdBlock', '默认代理', '漏网之鱼', '香港', '日本', '美国', '新加坡', '台湾']) {
     assert.ok(groups.has(name), name);
     assert.ok(lite.has(name), name);
   }
-  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam', '台湾']) {
+  for (const name of ['Google', 'AI', 'Apple', '台湾']) {
     assert.ok(groups.get(name).includes(`url=${lite.get(name).url}`), name);
   }
   // 默认选择（第一项）同精简版：AI 默认台湾，第二项美国（没有台湾节点时手动改选）；
@@ -622,9 +630,10 @@ test('小火箭配置：分流组与测速网址对标精简版', () => {
     if (!['url-test', 'fallback', 'load-balance'].includes(value[0])) continue;
     for (const policy of value.slice(1).filter((v) => !v.includes('='))) assert.ok(!groups.has(policy), `${name} 套了 ${policy}`);
   }
-  for (const name of ['Google', 'Apple', 'Telegram', 'Steam']) assert.equal(groups.get(name)[1], '默认代理', name);
+  for (const name of ['Google', 'Apple']) assert.equal(groups.get(name)[1], '默认代理', name);
   // 分流组除 AdBlock 外都可选 DIRECT（同精简版）
-  for (const name of ['Google', 'AI', 'Apple', 'Telegram', 'Steam']) assert.ok(groups.get(name).includes('DIRECT'), name);
+  for (const name of ['Google', 'AI', 'Apple']) assert.ok(groups.get(name).includes('DIRECT'), name);
+  for (const name of LITE_REMOVED_GROUPS) assert.ok(!groups.has(name), name);
   assert.equal(groups.get('AdBlock')[1], 'REJECT');
   // 地区组同精简版分两层：手选组默认选「<地区>-自动选择」，手动选的节点重连后不会被测速改掉
   for (const name of ['香港', '日本', '美国', '新加坡', '台湾']) {
@@ -694,4 +703,37 @@ test('Sukka 的 non_ip 规则：DOMAIN / DOMAIN-SUFFIX 并进 mrs，其余留给
   ]);
   assert.deepEqual(domains, ['a.example', '+.b.example']);
   assert.deepEqual(classical, ['DOMAIN-KEYWORD,adserver', 'DOMAIN-WILDCARD,ads-*.example', 'IP-CIDR,1.2.3.0/24,no-resolve']);
+});
+
+test('sync-scripts：jsDelivr 的 /gh/ 地址换成 GitHub 原始文件地址', () => {
+  assert.equal(
+    githubRawUrlOf('https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@meta/geo/geosite/category-ai-!cn.list'),
+    'https://raw.githubusercontent.com/appshubcc/bett-rules/meta/geo/geosite/category-ai-!cn.list',
+  );
+  assert.equal(githubRawUrlOf('https://cdn.jsdelivr.net/gh/a/b@main/x.txt'), 'https://raw.githubusercontent.com/a/b/main/x.txt');
+  assert.equal(githubRawUrlOf('https://example.com/x.txt'), 'https://example.com/x.txt');
+});
+
+test('sync-scripts：removeGroups 去掉分流组与开关，还有引用就报错', () => {
+  const src = ` * 友情推荐
+const o = {
+  A: true, // a
+  T: true, // t
+};
+const serviceConfigs = [
+  {
+    name: 'A',
+    rules: ['X,a,A'],
+  },
+  {
+    name: 'T',
+    rules: ['X,t,T'],
+  },
+];
+`;
+  const out = removeGroups(src, ['T']);
+  assert.ok(!out.includes("name: 'T'") && !out.includes('T: true'));
+  assert.ok(out.includes("name: 'A'") && out.includes('A: true'));
+  assert.throws(() => removeGroups(`${src}rules.push('X,y,T');`, ['T']), /仍有地方引用/);
+  assert.throws(() => removeGroups(src, ['Z']), /找不到「Z」/);
 });
