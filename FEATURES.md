@@ -50,7 +50,7 @@
 | 家宽节点组 | 名称含家宽、住宅、原生 IP、ISP 等 |
 | 其他节点组 | 不属于任何地区的节点 |
 | 基础组 | 手动选择、自动选择（全量版另有负载均衡） |
-| 分流组 | 精简版：Google、AI、Telegram、Steam、AdBlock；全量版另有 FCM、YouTube、GitHub、Microsoft、Apple、TikTok、Twitter、Meta、Line、Netflix、Emby、PikPak、Spotify、Crypto、PayPal、Patreon、EHentai |
+| 分流组 | 精简版：Google、AI、Telegram、Steam、AdBlock；全量版另有 FCM、YouTube、GitHub、Microsoft、Apple、TikTok、Twitter、Meta、Line、Netflix、Emby、PikPak、Spotify、Crypto、PayPal、Patreon、EHentai（本仓库改动后精简版见下表） |
 | 默认代理 / 漏网之鱼 / GLOBAL | 未命中分流规则的海外流量走「默认代理」，最后兜底走「漏网之鱼」 |
 | 直连组 | 双栈、IPv4优先、IPv6优先、仅IPv4、仅IPv6 五个 direct 节点 |
 | 开关 | 极简国内外分流模式、屏蔽代理 QUIC、代理 IPv4 / IPv6 优先、过滤高 / 低倍率、过滤非地区节点、自定义节点、链式代理（自定义节点当落地）等，见脚本开头 `ruleOptionsEnable`（服务端覆写用默认值） |
@@ -61,13 +61,14 @@
 | 改动 | 原版 | 现在 | 补丁函数 |
 | --- | --- | --- | --- |
 | 通用测速 | Apple 测速网址，自动选择组 600 秒 | `connectivitycheck.gstatic.com/generate_204`，自动选择组 300 秒 | `setBaseTestOption` |
-| 分流组测速 | 全部共用通用测速网址 | 各用自己服务的网址（数据：Bettbox 服务检测）；AI 用 `api.anthropic.com/v1/models`，Telegram 用 `api.telegram.org` | `TEST_URLS`、`patchScript` |
+| 分流组测速 | 全部共用通用测速网址 | 各用自己服务的网址（数据：Bettbox 服务检测）；AI 用 `api.anthropic.com/v1/models`，NovelAI 用生图 API `image.novelai.net/ai/generate-image`，Telegram 用 `api.telegram.org`；不用 Cloudflare 边缘直接回应的 `/cdn-cgi/trace`（Twitter、Crypto、EHentai 改用源站 API），Meta、PikPak、Patreon 补上 API 测速网址 | `TEST_URLS`、`patchScript` |
 | 台湾组测速 | 通用测速网址 | 同 AI 组，按 Claude 连通性挑节点 | `addRegionTestUrls` |
 | 直连组测速与默认 | 通用测速网址，默认「双栈」 | vivo 测速网址（有 IPv6 地址），默认「IPv6优先」 | `addDirectTestUrl` |
 | HuggingFace | 在「AI」组里 | 用 bett-rules `huggingface` 规则集抢先分到「默认代理」 | `patchScript` |
 | AI 默认选择 | 美国 | 台湾，没有台湾节点选美国 | `patchScript` |
 | 分流组「直连」 | 只有 Apple、Steam 等少数几个 | AdBlock 以外全部都有 | `directForAllServices` |
 | 精简版 Apple 组 | 只有全量版有 | 精简版也有 | `addAppleGroup` |
+| 精简版 Telegram、Steam 组 | 有 | 去掉（连同开关），流量按其余规则走 | `removeGroups` |
 | NovelAI 组 | 在「AI」组里（category-ai-!cn） | 精简版、全量版都新增「NovelAI」分流组，排在「AI」前面；域名每次同步时从 bett-rules 的 `category-ai-!cn.list` 挑出（bett-rules 没有单独的 novelai 规则集），图标 `public/icons/NovelAI.svg` | `addNovelAiGroup` |
 | IPv6 节点组 | 无 | 只看入口：收本机能用 IPv6 连上（server 是 IPv6 地址，或每天从各运营商视角查到域名都有 IPv6 地址）的节点，落地有没有 IPv6 不管；组里的节点设 `ip-version: ipv6`（只用 IPv6 连）。附自动选择组，图标 `public/icons/IPv6.svg` | `addIpv6Group` |
 | 默认选自动选择 | 地区组默认选第一个节点，默认代理默认选第一个地区 | 地区组默认「<地区>-自动选择」，默认代理默认全局「自动选择」 | `defaultToAuto` |
@@ -212,7 +213,7 @@ Sukka 也拦部分 AI 与 Google 的遥测域名（如 `statsig.anthropic.com`�
 
 节点：小火箭（User-Agent 含 `Shadowrocket`）不带 `?script=` 拿 `/sub/<TOKEN>` 时，Worker 把合并后的节点转成小火箭自己的节点链接（`src/rocket.js`，写法照 Xboard，不加 `tfo=1`），不给 mihomo YAML。
 
-`public/shadowrocket.conf` 手写，对标精简版，不跟上游同步：地区组两层（默认「<地区>-自动选择」，可改选「<地区>-节点」手选；正则组不混写手写策略，小火箭混写会丢掉手写项）、Google、AI、Apple、Telegram、Steam、AdBlock、漏网之鱼，测速网址同精简版；AI 默认台湾，没有台湾节点时手动改选美国（不用 fallback 组套分组）。DNS 用阿里、腾讯 DoH，系统 DNS 兜底。AI 规则排在 Google 前（防 Gemini 被 Google 规则抢走），Apple 默认走代理；`ipv6 = false`（排除路由只写得了 IPv4，局域网 IPv6 组播才不进隧道）、`udp-policy-not-supported-behaviour = REJECT`（对应精简版拒绝走代理的 QUIC）。规则集用 blackmatrix7 的 Shadowrocket `.list`（小火箭读不了 mrs），国内直连加 China 规则与域名集，没有 HuggingFace 分流、不做 AI 链式代理。
+`public/shadowrocket.conf` 手写，对标精简版，不跟上游同步：地区组两层（默认「<地区>-自动选择」，可改选「<地区>-节点」手选；正则组不混写手写策略，小火箭混写会丢掉手写项）、Google、AI、Apple、AdBlock、漏网之鱼，测速网址同精简版；AI 默认台湾，没有台湾节点时手动改选美国（不用 fallback 组套分组）。DNS 用阿里、腾讯 DoH，系统 DNS 兜底。AI 规则排在 Google 前（防 Gemini 被 Google 规则抢走），Apple 默认走代理；`ipv6 = false`（排除路由只写得了 IPv4，局域网 IPv6 组播才不进隧道）、`udp-policy-not-supported-behaviour = REJECT`（对应精简版拒绝走代理的 QUIC）。规则集用 blackmatrix7 的 Shadowrocket `.list`（小火箭读不了 mrs），国内直连加 China 规则与域名集，没有 HuggingFace 分流、不做 AI 链式代理。
 
 ## 7. 自动化（本仓库）
 

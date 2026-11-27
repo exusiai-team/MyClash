@@ -57,8 +57,8 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 
 | 订阅链接 | 来源 | 说明 |
 | --- | --- | --- |
-| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、NovelAI、AI、Apple、Telegram、Steam、AdBlock（Apple 从全量版搬来） |
-| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 YouTube、Netflix、GitHub、Microsoft、TikTok 等 17 个分流组（NovelAI 两版都有） |
+| `/sub/<TOKEN>?script=lite` | 精简版 `Script.js` | 管理页默认，分流组：Google、NovelAI、AI、Apple、AdBlock（Apple 从全量版搬来，去掉了原版的 Telegram、Steam） |
+| `/sub/<TOKEN>?script=full` | 全量版 `mihomoScript.js` | 另加 Telegram、Steam、YouTube、Netflix、GitHub、Microsoft、TikTok 等 18 个分流组（NovelAI 两版都有） |
 | `/sub/<TOKEN>` | 不覆写 | 只合并节点；可自己在客户端加脚本覆写 `/script.js` 或 `/script-full.js` |
 | `/sub/<TOKEN>` + `/shadowrocket.conf` | 小火箭（iPhone） | 管理页选「小火箭」：订阅只给节点，分流用 `public/shadowrocket.conf`，见下方「iPhone：小火箭」 |
 
@@ -69,8 +69,10 @@ fork 后请把 `wrangler.jsonc` 的 `vars.GITHUB_REPO` 改成自己的仓库。
 相对原版的改动：
 - 分流组用各自服务的测速网址，取自 [Bettbox](https://github.com/appshubcc/Bettbox) 的服务检测（如 Google → `https://www.google.com/generate_204`）。
   AI 改用 `https://api.anthropic.com/v1/models`：Bettbox 的 `/cdn-cgi/trace` 由 Cloudflare 边缘节点直接回应，只测到节点到就近 Cloudflare 的延迟，到不了 Anthropic 源站，地区被封也照样通；`/v1/models` 不带 key 由源站回 401，测的是到源站的整条路径。
-  Telegram 改用 `https://api.telegram.org/`：Bettbox 的 `http://91.108.56.100/` 不支持 keep-alive，开了 unified-delay 测速常报错且延迟失准）；Bettbox 没检测的服务与地区、倍率组用通用测速网址 `https://connectivitycheck.gstatic.com/generate_204`（原版为 Apple 的测速网址），测速间隔从原版的 600 秒改为 300 秒。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
+  同样的原因，Twitter、Crypto、EHentai 不用 Bettbox 的 `/cdn-cgi/trace`，改用由源站回应的 API（`api.x.com`、`api.coinbase.com/v2/time`、`api.e-hentai.org/api.php`），Meta、PikPak、Patreon 也补上各自 API 的测速网址；NovelAI 用生图 API `https://image.novelai.net/ai/generate-image`（GET 由源站回 405）。
+  Telegram 改用 `https://api.telegram.org/`：Bettbox 的 `http://91.108.56.100/` 不支持 keep-alive，开了 unified-delay 测速常报错且延迟失准；Bettbox 没检测的服务与地区、倍率组用通用测速网址 `https://connectivitycheck.gstatic.com/generate_204`（原版为 Apple 的测速网址），测速间隔从原版的 600 秒改为 300 秒。完整对照见 `scripts/sync-scripts.mjs` 的 `TEST_URLS`
 - 用 [bett-rules](https://github.com/appshubcc/bett-rules) 的 `huggingface` 规则集把 HuggingFace 从「AI」组分出来，改走「默认代理」
+- 精简版去掉「Telegram」「Steam」分流组，这些流量按其余规则走（一般是「默认代理」）；全量版照旧
 - 新增「NovelAI」分流组（精简、全量都有），排在「AI」前面：bett-rules 没有单独的 novelai 规则集，同步时从「AI」组用的同一份 `category-ai-!cn.list` 挑出 NovelAI 的域名（目前是 `+.novelai.net`）写成规则
 - 「AI」组默认选「台湾」（原版为「美国」），订阅里没有台湾节点时选「美国」，都没有才由客户端退回第一项
 - 分流组都加上「直连」选项（原版只有 Apple、Steam 等少数几个），AdBlock 除外
@@ -165,7 +167,7 @@ GitHub Actions 每天（UTC+8 03:47，在代抓缓存之后）把每个合并订
 - **分流**：`/shadowrocket.conf`（即 `public/shadowrocket.conf`），对标精简版：默认代理、自动选择、手动选择，香港 / 日本 / 美国 / 新加坡 / 台湾地区组（按节点名称归组，正则同精简版；同精简版分两层：「<地区>」默认选「<地区>-自动选择」测速挑最快的；
   要固定用某个节点，在「<地区>」里选「<地区>-节点」再点节点，重连 VPN 不会被测速结果改掉。
   节点另放「<地区>-节点」组，是因为小火箭在同一行混写正则与手写策略时只显示正则筛出的节点，「<地区>-自动选择」会丢，变成固定用第一个节点），
-  Google、AI、Apple、Telegram、Steam（都可选 `DIRECT`）、AdBlock（默认 `REJECT`）与漏网之鱼，测速网址同精简版。
+  Google、AI、Apple（都可选 `DIRECT`）、AdBlock（默认 `REJECT`）与漏网之鱼，测速网址同精简版。
   AI 默认选「台湾」，**订阅里没有台湾节点时手动改选「美国」**（第二项）。不用 fallback 组自动切换：小火箭手册不建议在 fallback / url-test 组里套其他分组。
   DNS 用阿里、腾讯 DoH，失败或超过 2 秒才用系统 DNS（原本只用系统 DNS）。
   AI 规则排在 Google 前面（不然 Gemini 会被 Google 规则抢走、走香港）；Apple 默认走代理。
